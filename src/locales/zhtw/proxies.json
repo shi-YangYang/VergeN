@@ -62,7 +62,6 @@
         "description": "目前沒有可顯示的代理群組或節點。請檢查目前訂閱是否包含有效的代理群組和節點，或嘗試重新啟動核心並查看日誌。"
       },
       "actions": {
-        "openProfiles": "前往訂閱",
         "restartCore": "重新啟動核心",
         "openLogs": "開啟日誌目錄"
       }

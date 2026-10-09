@@ -62,7 +62,6 @@
         "description": "No hay grupos ni nodos de proxy para mostrar. Comprueba que la suscripción activa contenga grupos y nodos válidos, o reinicia el núcleo y revisa los registros."
       },
       "actions": {
-        "openProfiles": "Ir a Perfiles",
         "restartCore": "Reiniciar núcleo",
         "openLogs": "Abrir carpeta de registros"
       }

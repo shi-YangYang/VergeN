@@ -62,7 +62,6 @@
         "description": "Não há grupos de proxy nem nós para exibir. Verifique se a assinatura ativa contém grupos e nós de proxy válidos, ou reinicie o núcleo e revise os logs."
       },
       "actions": {
-        "openProfiles": "Ir para Perfis",
         "restartCore": "Reiniciar núcleo",
         "openLogs": "Abrir pasta de logs"
       }

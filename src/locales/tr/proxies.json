@@ -62,7 +62,6 @@
         "description": "Görüntülenecek proxy grubu veya düğümü yok. Etkin aboneliğin geçerli proxy grupları ve düğümleri içerdiğini doğrulayın ya da çekirdeği yeniden başlatıp günlükleri inceleyin."
       },
       "actions": {
-        "openProfiles": "Profillere Git",
         "restartCore": "Çekirdeği Yeniden Başlat",
         "openLogs": "Günlükler Klasörünü Aç"
       }

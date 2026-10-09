@@ -62,7 +62,6 @@
         "description": "Tidak ada grup atau node proksi yang dapat ditampilkan. Pastikan langganan aktif berisi grup dan node yang valid, atau mulai ulang inti dan periksa log."
       },
       "actions": {
-        "openProfiles": "Buka Profil",
         "restartCore": "Mulai Ulang Inti",
         "openLogs": "Buka Folder Log"
       }

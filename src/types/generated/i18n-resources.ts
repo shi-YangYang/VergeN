@@ -566,7 +566,6 @@ export interface TranslationResources {
         empty: {
           actions: {
             openLogs: string
-            openProfiles: string
             restartCore: string
           }
           coreUnavailable: {

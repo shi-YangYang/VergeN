@@ -46,12 +46,12 @@
       "noAvailableGroups": "No proxy groups are available",
       "noProxies": "No proxies",
       "noSubscriptions": {
-        "title": "No subscription imported",
-        "description": "There is nothing to display on the Proxies page. Go to Profiles to import and activate a subscription."
+        "title": "Waiting for company configuration",
+        "description": "Configs are distributed by your company and will be imported automatically after sign-in. Contact IT if nothing appears."
       },
       "inactiveSubscription": {
-        "title": "No active subscription",
-        "description": "Subscriptions were found, but none is currently active. Go to Profiles and select one to activate."
+        "title": "Configuration not active",
+        "description": "The current configuration is not active. Restart the client; contact IT if it persists."
       },
       "coreUnavailable": {
         "title": "Core temporarily unavailable",
@@ -62,7 +62,6 @@
         "description": "There are no proxy groups or nodes to display. Check that the active subscription contains valid proxy groups and nodes, or restart the core and review the logs."
       },
       "actions": {
-        "openProfiles": "Go to Profiles",
         "restartCore": "Restart Core",
         "openLogs": "Open Logs Folder"
       }
