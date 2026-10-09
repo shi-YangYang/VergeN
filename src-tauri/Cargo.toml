@@ -1,10 +1,10 @@
 [package]
-name = "clash-verge"
+name = "vergen"
 version = "1.0.0"
 description = "clash verge"
 authors = ["zzzgydi", "Tunglies", "wonfen", "MystiPanda"]
 license = "GPL-3.0-only"
-default-run = "clash-verge"
+default-run = "vergen"
 build = "build.rs"
 edition = "2024"
 rust-version = "1.99"
