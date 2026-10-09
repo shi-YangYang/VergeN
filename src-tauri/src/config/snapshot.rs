@@ -70,7 +70,7 @@ mod tests {
         let paths = [
             root.join("config.yaml"),
             root.join("verge.yaml"),
-            root.join("clash-verge.yaml"),
+            root.join("vergen.yaml"),
         ];
         for (index, path) in paths.iter().enumerate() {
             tokio::fs::write(path, format!("original-{index}")).await?;

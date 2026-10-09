@@ -54,8 +54,8 @@ pub mod profile {
 }
 
 pub mod files {
-    pub const RUNTIME_CONFIG: &str = "clash-verge.yaml";
-    pub const CHECK_CONFIG: &str = "clash-verge-check.yaml";
+    pub const RUNTIME_CONFIG: &str = "vergen.yaml";
+    pub const CHECK_CONFIG: &str = "vergen-check.yaml";
     pub const DNS_CONFIG: &str = "dns_config.yaml";
     pub const WINDOW_STATE: &str = "window_state.json";
 }
