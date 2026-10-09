@@ -1,0 +1,29 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "identifier": "io.github.vergen.vergen",
+  "bundle": {
+    "targets": ["deb", "rpm"],
+    "linux": {
+      "deb": {
+        "depends": ["openssl", "libayatana-appindicator3-1"],
+        "desktopTemplate": "./packages/linux/vergen.desktop",
+        "postInstallScript": "./packages/linux/post-install.sh",
+        "preRemoveScript": "./packages/linux/pre-remove.sh"
+      },
+      "rpm": {
+        "depends": ["openssl", "libayatana-appindicator-gtk3"],
+        "recommends": ["policycoreutils", "policycoreutils-python-utils"],
+        "desktopTemplate": "./packages/linux/vergen.desktop",
+        "postInstallScript": "./packages/linux/post-install-rpm.sh",
+        "preRemoveScript": "./packages/linux/pre-remove.sh"
+      }
+    },
+    "externalBin": [
+      "./sidecar/clash-verge-service",
+      "./sidecar/clash-verge-service-install",
+      "./sidecar/clash-verge-service-uninstall",
+      "./sidecar/verge-mihomo",
+      "./sidecar/verge-mihomo-alpha"
+    ]
+  }
+}
