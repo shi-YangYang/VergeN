@@ -204,7 +204,9 @@
           "liteModeSettings": "LightWeight Mode Settings",
           "exit": "Чыгу",
           "exportDiagnostics": "Export Diagnostic Info",
-          "vergeVersion": "Verge версиясе"
+          "vergeVersion": "Verge версиясе",
+          "coreLogs": "Core Logs",
+          "networkTests": "Network Tests"
         }
       },
       "theme": {

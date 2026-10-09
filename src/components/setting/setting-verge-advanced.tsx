@@ -2,8 +2,10 @@ import { ContentCopyRounded } from '@mui/icons-material'
 import { Typography } from '@mui/material'
 import { useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useNavigate } from 'react-router'
 
 import { DialogRef, TooltipIcon } from '@/components/base'
+import { useEnterpriseSession } from '@/hooks/use-enterprise'
 import { updateLastCheckTime } from '@/hooks/use-update'
 import {
   exitApp,
@@ -34,6 +36,9 @@ interface Props {
 
 const SettingVergeAdvanced = ({ onError: _ }: Props) => {
   const { t } = useTranslation()
+  const navigate = useNavigate()
+  const configLocked =
+    useEnterpriseSession()?.managed.allow_change_settings === false
 
   const configRef = useRef<DialogRef>(null)
   const hotkeyRef = useRef<DialogRef>(null)
@@ -89,36 +94,58 @@ const SettingVergeAdvanced = ({ onError: _ }: Props) => {
       <BackupViewer ref={backupRef} />
       <LiteModeViewer ref={liteModeRef} />
 
-      <SettingItem
-        onClick={() => backupRef.current?.open()}
-        label={t('settings.components.verge.advanced.fields.backupSetting')}
-        extra={
-          <TooltipIcon
-            title={t('settings.components.verge.advanced.tooltips.backupInfo')}
-            sx={{ opacity: '0.7' }}
+      {configLocked ? null : (
+        <SettingItem
+          onClick={() => backupRef.current?.open()}
+          label={t('settings.components.verge.advanced.fields.backupSetting')}
+          extra={
+            <TooltipIcon
+              title={t(
+                'settings.components.verge.advanced.tooltips.backupInfo',
+              )}
+              sx={{ opacity: '0.7' }}
+            />
+          }
+        />
+      )}
+
+      {configLocked ? null : (
+        <SettingItem
+          onClick={() => configRef.current?.open()}
+          label={t('settings.components.verge.advanced.fields.runtimeConfig')}
+        />
+      )}
+
+      {configLocked ? null : (
+        <>
+          <SettingItem
+            onClick={openAppDir}
+            label={t('settings.components.verge.advanced.fields.openConfDir')}
+            extra={
+              <TooltipIcon
+                title={t(
+                  'settings.components.verge.advanced.tooltips.openConfDir',
+                )}
+                sx={{ opacity: '0.7' }}
+              />
+            }
           />
-        }
-      />
 
-      <SettingItem
-        onClick={() => configRef.current?.open()}
-        label={t('settings.components.verge.advanced.fields.runtimeConfig')}
-      />
-
-      <SettingItem
-        onClick={openAppDir}
-        label={t('settings.components.verge.advanced.fields.openConfDir')}
-        extra={
-          <TooltipIcon
-            title={t('settings.components.verge.advanced.tooltips.openConfDir')}
-            sx={{ opacity: '0.7' }}
+          <SettingItem
+            onClick={openCoreDir}
+            label={t('settings.components.verge.advanced.fields.openCoreDir')}
           />
-        }
+        </>
+      )}
+
+      <SettingItem
+        onClick={() => void navigate('/logs')}
+        label={t('settings.components.verge.advanced.fields.coreLogs')}
       />
 
       <SettingItem
-        onClick={openCoreDir}
-        label={t('settings.components.verge.advanced.fields.openCoreDir')}
+        onClick={() => void navigate('/unlock')}
+        label={t('settings.components.verge.advanced.fields.networkTests')}
       />
 
       <SettingItem
@@ -131,15 +158,17 @@ const SettingVergeAdvanced = ({ onError: _ }: Props) => {
         label={t('settings.components.verge.advanced.fields.checkUpdates')}
       />
 
-      <SettingItem
-        onClick={() => {
-          void mutate(() => openDevTools(), {
-            id: 'open-devtools',
-            errorNotice: false,
-          }).catch(() => {})
-        }}
-        label={t('settings.components.verge.advanced.fields.openDevTools')}
-      />
+      {configLocked ? null : (
+        <SettingItem
+          onClick={() => {
+            void mutate(() => openDevTools(), {
+              id: 'open-devtools',
+              errorNotice: false,
+            }).catch(() => {})
+          }}
+          label={t('settings.components.verge.advanced.fields.openDevTools')}
+        />
+      )}
 
       <SettingItem
         label={t('settings.components.verge.advanced.fields.liteModeSettings')}

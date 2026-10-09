@@ -408,22 +408,6 @@ function SettingsPanel() {
           <label className="check">
             <input
               type="checkbox"
-              checked={settings.managed_flags.allow_edit_profiles}
-              onChange={(e) =>
-                setSettings({
-                  ...settings,
-                  managed_flags: {
-                    ...settings.managed_flags,
-                    allow_edit_profiles: e.target.checked,
-                  },
-                })
-              }
-            />
-            允许员工编辑/增删配置
-          </label>
-          <label className="check">
-            <input
-              type="checkbox"
               checked={settings.managed_flags.allow_change_settings}
               onChange={(e) =>
                 setSettings({

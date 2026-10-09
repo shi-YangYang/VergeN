@@ -533,6 +533,8 @@ export const translationKeys = [
   'settings.components.verge.advanced.fields.exit',
   'settings.components.verge.advanced.fields.exportDiagnostics',
   'settings.components.verge.advanced.fields.vergeVersion',
+  'settings.components.verge.advanced.fields.coreLogs',
+  'settings.components.verge.advanced.fields.networkTests',
   'settings.components.verge.theme.title',
   'settings.components.verge.theme.fields.primaryColor',
   'settings.components.verge.theme.fields.secondaryColor',

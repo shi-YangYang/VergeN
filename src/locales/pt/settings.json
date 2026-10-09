@@ -204,7 +204,9 @@
           "liteModeSettings": "Configurações do Modo Leve",
           "exit": "Sair",
           "exportDiagnostics": "Exportar Informações de Diagnóstico",
-          "vergeVersion": "Versão do Verge"
+          "vergeVersion": "Versão do Verge",
+          "coreLogs": "Core Logs",
+          "networkTests": "Network Tests"
         }
       },
       "theme": {

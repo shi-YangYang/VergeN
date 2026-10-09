@@ -204,7 +204,9 @@
           "liteModeSettings": "Настройки режима LightWeight",
           "exit": "Выход",
           "exportDiagnostics": "Экспорт диагностической информации",
-          "vergeVersion": "Версия VergeN"
+          "vergeVersion": "Версия VergeN",
+          "coreLogs": "Core Logs",
+          "networkTests": "Network Tests"
         }
       },
       "theme": {

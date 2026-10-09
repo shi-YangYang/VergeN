@@ -204,7 +204,9 @@
           "liteModeSettings": "Hafif Mod Ayarları",
           "exit": "Çıkış",
           "exportDiagnostics": "Tanılama Bilgilerini Dışa Aktar",
-          "vergeVersion": "Verge Sürümü"
+          "vergeVersion": "Verge Sürümü",
+          "coreLogs": "Core Logs",
+          "networkTests": "Network Tests"
         }
       },
       "theme": {

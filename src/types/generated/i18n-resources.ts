@@ -724,9 +724,11 @@ export interface TranslationResources {
             fields: {
               backupSetting: string
               checkUpdates: string
+              coreLogs: string
               exit: string
               exportDiagnostics: string
               liteModeSettings: string
+              networkTests: string
               openConfDir: string
               openCoreDir: string
               openDevTools: string
