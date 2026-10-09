@@ -460,9 +460,7 @@ where
     let mut source_file = std::fs::File::open(source)
         .with_context(|| format!("failed to open development Service core source {}", source.display()))?;
 
-    let staging_directory = home
-        .join("Applications/.vergen-dev")
-        .join(staging_directory_name);
+    let staging_directory = home.join("Applications/.vergen-dev").join(staging_directory_name);
     std::fs::create_dir_all(&staging_directory).with_context(|| {
         format!(
             "failed to create development Service core staging directory {}",
@@ -2092,10 +2090,7 @@ mod tests {
     impl TestDirectory {
         fn new(label: &str) -> anyhow::Result<Self> {
             let generation = TEST_DIRECTORY_GENERATION.fetch_add(1, Ordering::Relaxed);
-            let path = std::env::temp_dir().join(format!(
-                "vergen-service-{label}-{}-{generation}",
-                std::process::id()
-            ));
+            let path = std::env::temp_dir().join(format!("vergen-service-{label}-{}-{generation}", std::process::id()));
             std::fs::create_dir(&path)?;
             Ok(Self(path))
         }

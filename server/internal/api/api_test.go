@@ -24,7 +24,11 @@ func newTestBackend(t *testing.T) (http.Handler, *store.Store) {
 	if err != nil {
 		t.Fatalf("new server: %v", err)
 	}
-	return sv.Handler(), s
+	handler, err := sv.Handler()
+	if err != nil {
+		t.Fatalf("build handler: %v", err)
+	}
+	return handler, s
 }
 
 func doJSON(t *testing.T, h http.Handler, method, path, token string, body any) (int, map[string]any) {
@@ -219,4 +223,87 @@ func TestAdminSettingsValidation(t *testing.T) {
 
 func itoa(n int64) string {
 	return strconv.FormatInt(n, 10)
+}
+
+func adminLoginToken(t *testing.T, h http.Handler, s *store.Store) string {
+	t.Helper()
+	hash, err := auth.HashPassword("admin-password-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateUser("admin", hash, "admin", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	code, body := login(t, h, "admin", "admin-password-1")
+	if code != http.StatusOK {
+		t.Fatalf("admin login: status=%d", code)
+	}
+	token, _ := body["access_token"].(string)
+	if token == "" {
+		t.Fatal("admin login returned no access_token")
+	}
+	return token
+}
+
+func TestAdminPanelServing(t *testing.T) {
+	h, _ := newTestBackend(t)
+
+	req, err := http.NewRequest("GET", "/admin", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusFound {
+		t.Fatalf("GET /admin: status=%d", rec.Code)
+	}
+
+	req, err = http.NewRequest("GET", "/admin/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /admin/: status=%d", rec.Code)
+	}
+	if !bytes.Contains(rec.Body.Bytes(), []byte("root")) {
+		t.Fatal("admin panel html does not contain the app root")
+	}
+}
+
+func TestAdminSettingsDingtalk(t *testing.T) {
+	h, s := newTestBackend(t)
+	adminToken := adminLoginToken(t, h, s)
+
+	// Secret set via the panel is stored, never echoed back.
+	code, body := doJSON(t, h, "POST", "/api/v1/admin/settings", adminToken,
+		map[string]any{
+			"dingtalk_app_key":    "app-key",
+			"dingtalk_app_secret": "super-secret-value",
+			"dingtalk_agent_id":   "agent-1",
+		})
+	if code != http.StatusOK {
+		t.Fatalf("set dingtalk settings: status=%d body=%v", code, body)
+	}
+	if body["dingtalk_app_key"] != "app-key" || body["dingtalk_app_secret_set"] != true {
+		t.Fatalf("dingtalk settings view = %v", body)
+	}
+	if _, leaked := body["dingtalk_app_secret"]; leaked {
+		t.Fatal("settings view must not echo the dingtalk secret")
+	}
+
+	// A patch without the secret leaves it configured.
+	code, body = doJSON(t, h, "POST", "/api/v1/admin/settings", adminToken,
+		map[string]any{"dingtalk_agent_id": "agent-2"})
+	if code != http.StatusOK || body["dingtalk_app_secret_set"] != true || body["dingtalk_agent_id"] != "agent-2" {
+		t.Fatalf("patch without secret = %v", body)
+	}
+
+	// An explicit empty string clears it.
+	code, body = doJSON(t, h, "POST", "/api/v1/admin/settings", adminToken,
+		map[string]any{"dingtalk_app_secret": ""})
+	if code != http.StatusOK || body["dingtalk_app_secret_set"] != false {
+		t.Fatalf("clear secret = %v", body)
+	}
 }

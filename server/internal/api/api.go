@@ -13,6 +13,7 @@ import (
 
 	"github.com/shi-YangYang/VergeN/server/internal/auth"
 	"github.com/shi-YangYang/VergeN/server/internal/store"
+	"github.com/shi-YangYang/VergeN/server/internal/web"
 )
 
 const (
@@ -42,8 +43,14 @@ func NewServer(s *store.Store) (*Server, error) {
 	}, nil
 }
 
-func (a *Server) Handler() http.Handler {
+func (a *Server) Handler() (http.Handler, error) {
+	adminPanel, err := web.Handler()
+	if err != nil {
+		return nil, err
+	}
 	mux := http.NewServeMux()
+	mux.Handle("GET /admin", adminPanel)
+	mux.Handle("GET /admin/{path...}", adminPanel)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
@@ -60,7 +67,7 @@ func (a *Server) Handler() http.Handler {
 	mux.Handle("GET /api/v1/admin/settings", a.admin(a.handleAdminGetSettings))
 	mux.Handle("POST /api/v1/admin/settings", a.admin(a.handleAdminSetSettings))
 	mux.Handle("GET /api/v1/admin/dashboard", a.admin(a.handleAdminDashboard))
-	return a.logMiddleware(mux)
+	return a.logMiddleware(mux), nil
 }
 
 func (a *Server) logMiddleware(next http.Handler) http.Handler {

@@ -1,0 +1,284 @@
+:root {
+  color-scheme: dark;
+  font-family: -apple-system, "PingFang SC", "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #16181d;
+  color: #e8eaf0;
+}
+
+button {
+  font: inherit;
+  background: #2f6fed;
+  color: #fff;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+button.ghost {
+  background: transparent;
+  color: #9aa3b2;
+  border: 1px solid #333944;
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+
+button.ghost:hover {
+  color: #e8eaf0;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  background: #1e2127;
+  border: 1px solid #333944;
+  color: #e8eaf0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  min-width: 0;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: #2f6fed;
+}
+
+.shell header {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 14px 24px;
+  border-bottom: 1px solid #262a32;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: #2f6fed;
+  color: #fff;
+  font-weight: 800;
+  font-size: 15px;
+}
+
+.shell nav {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+}
+
+.tab {
+  background: transparent;
+  color: #9aa3b2;
+  border: 0;
+  padding: 6px 12px;
+  border-radius: 8px;
+}
+
+.tab.active {
+  background: #262b35;
+  color: #e8eaf0;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.who {
+  color: #9aa3b2;
+  font-size: 13px;
+}
+
+main {
+  padding: 24px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.panel {
+  background: #1b1e24;
+  border: 1px solid #262a32;
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.panel.narrow {
+  max-width: 640px;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.stack label,
+.row-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: #9aa3b2;
+}
+
+fieldset {
+  border: 1px solid #262a32;
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+legend {
+  color: #9aa3b2;
+  font-size: 13px;
+  padding: 0 6px;
+}
+
+.check {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px !important;
+  color: #e8eaf0 !important;
+  font-size: 14px !important;
+}
+
+.row-form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.error {
+  color: #ff6b6b;
+  margin: 10px 0;
+  font-size: 13px;
+}
+
+.muted {
+  color: #6d7480;
+  font-size: 13px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 14px;
+  font-size: 14px;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid #262a32;
+}
+
+th {
+  color: #6d7480;
+  font-weight: 500;
+  font-size: 13px;
+}
+
+tr.off td {
+  color: #6d7480;
+}
+
+.actions {
+  display: flex;
+  gap: 6px;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+
+.card {
+  background: #1e2127;
+  border: 1px solid #262a32;
+  border-radius: 12px;
+  padding: 18px;
+}
+
+.card-value {
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.card-label {
+  color: #9aa3b2;
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.two-col h3 {
+  font-size: 14px;
+  color: #9aa3b2;
+  font-weight: 500;
+}
+
+.login-wrap {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login-card {
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: #1b1e24;
+  border: 1px solid #262a32;
+  border-radius: 14px;
+  padding: 28px;
+}
+
+.login-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: #9aa3b2;
+}

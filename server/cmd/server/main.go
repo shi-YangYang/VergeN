@@ -60,9 +60,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	handler, err := sv.Handler()
+	if err != nil {
+		slog.Error("build handler", "err", err)
+		os.Exit(1)
+	}
 	httpSrv := &http.Server{
 		Addr:              *addr,
-		Handler:           sv.Handler(),
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}

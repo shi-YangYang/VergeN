@@ -15,9 +15,12 @@ import (
 var usernamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{1,31}$`)
 
 const (
-	settingSubscription = "subscription_url"
-	settingManagedFlags = "managed_flags"
-	settingAnnouncement = "announcement"
+	settingSubscription   = "subscription_url"
+	settingManagedFlags   = "managed_flags"
+	settingAnnouncement   = "announcement"
+	settingDingtalkKey    = "dingtalk_app_key"
+	settingDingtalkSecret = "dingtalk_app_secret"
+	settingDingtalkAgent  = "dingtalk_agent_id"
 )
 
 type createUserReq struct {
@@ -145,6 +148,10 @@ type settingsView struct {
 	SubscriptionURL string        `json:"subscription_url"`
 	ManagedFlags    managedFlags  `json:"managed_flags"`
 	Announcement    *announcement `json:"announcement"`
+	DingtalkAppKey  string        `json:"dingtalk_app_key"`
+	// The secret never round-trips to the panel; only its presence is shown.
+	DingtalkAppSecretSet bool   `json:"dingtalk_app_secret_set"`
+	DingtalkAgentID      string `json:"dingtalk_agent_id"`
 }
 
 type settingsPatch struct {
@@ -152,6 +159,12 @@ type settingsPatch struct {
 	ManagedFlags    *managedFlags `json:"managed_flags"`
 	// Announcement with empty title and content clears the current one.
 	Announcement *announcement `json:"announcement"`
+
+	// Secret pointers follow "present means set": omitted leaves the stored
+	// value untouched, an empty string clears it.
+	DingtalkAppKey    *string `json:"dingtalk_app_key"`
+	DingtalkAppSecret *string `json:"dingtalk_app_secret"`
+	DingtalkAgentID   *string `json:"dingtalk_agent_id"`
 }
 
 func (a *Server) handleAdminGetSettings(w http.ResponseWriter, _ *http.Request) {
@@ -181,6 +194,24 @@ func (a *Server) handleAdminGetSettings(w http.ResponseWriter, _ *http.Request) 
 		if err := json.Unmarshal([]byte(raw), &ann); err == nil && ann.Title != "" {
 			view.Announcement = &ann
 		}
+	}
+	if appKey, found, err := a.store.GetSetting(settingDingtalkKey); err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	} else if found {
+		view.DingtalkAppKey = appKey
+	}
+	if agentID, found, err := a.store.GetSetting(settingDingtalkAgent); err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	} else if found {
+		view.DingtalkAgentID = agentID
+	}
+	if secret, found, err := a.store.GetSetting(settingDingtalkSecret); err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	} else if found && secret != "" {
+		view.DingtalkAppSecretSet = true
 	}
 	writeJSON(w, http.StatusOK, view)
 }
@@ -231,6 +262,24 @@ func (a *Server) handleAdminSetSettings(w http.ResponseWriter, r *http.Request) 
 				fail(w, http.StatusInternalServerError, "internal_error", "internal error")
 				return
 			}
+		}
+	}
+	if req.DingtalkAppKey != nil {
+		if err := a.store.SetSetting(settingDingtalkKey, *req.DingtalkAppKey); err != nil {
+			fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+			return
+		}
+	}
+	if req.DingtalkAppSecret != nil {
+		if err := a.store.SetSetting(settingDingtalkSecret, *req.DingtalkAppSecret); err != nil {
+			fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+			return
+		}
+	}
+	if req.DingtalkAgentID != nil {
+		if err := a.store.SetSetting(settingDingtalkAgent, *req.DingtalkAgentID); err != nil {
+			fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+			return
 		}
 	}
 	a.handleAdminGetSettings(w, r)
