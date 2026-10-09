@@ -4,6 +4,7 @@ mod config;
 mod core_upgrade;
 mod dns;
 mod effects;
+pub(crate) mod enterprise;
 mod executor;
 mod icon;
 mod listener;

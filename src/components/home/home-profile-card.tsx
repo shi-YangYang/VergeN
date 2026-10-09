@@ -1,15 +1,14 @@
 import {
+  CloudDownloadOutlined,
   CloudUploadOutlined,
   DnsOutlined,
   EventOutlined,
   LaunchOutlined,
   SpeedOutlined,
-  StorageOutlined,
   UpdateOutlined,
 } from '@mui/icons-material'
 import {
   Box,
-  Button,
   LinearProgress,
   Link,
   Stack,
@@ -20,9 +19,8 @@ import {
 } from '@mui/material'
 import { useLockFn } from 'ahooks'
 import dayjs from 'dayjs'
-import { useCallback, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from 'react-router'
 
 import { useAppRefreshers } from '@/providers/app-data-context'
 import { updateProfile } from '@/services/cmds'
@@ -252,7 +250,7 @@ const ProfileDetails = ({
 }
 
 // 提取空配置组件
-const EmptyProfile = ({ onClick }: { onClick: () => void }) => {
+const EmptyProfile = () => {
   const { t } = useTranslation()
 
   return (
@@ -263,20 +261,17 @@ const EmptyProfile = ({ onClick }: { onClick: () => void }) => {
         alignItems: 'center',
         justifyContent: 'center',
         py: 2.4,
-        cursor: 'pointer',
-        '&:hover': { bgcolor: 'action.hover' },
         borderRadius: 2,
       }}
-      onClick={onClick}
     >
-      <CloudUploadOutlined
-        sx={{ fontSize: 60, color: 'primary.main', mb: 2 }}
+      <CloudDownloadOutlined
+        sx={{ fontSize: 60, color: 'text.disabled', mb: 2 }}
       />
       <Typography variant="h6" gutterBottom>
-        {t('profiles.page.actions.import')} {t('profiles.page.title')}
+        {t('profiles.components.card.labels.waitingForManagedTitle')}
       </Typography>
       <Typography variant="body2" color="text.secondary">
-        {t('profiles.components.card.labels.clickToImport')}
+        {t('profiles.components.card.labels.waitingForManagedHint')}
       </Typography>
     </Box>
   )
@@ -287,7 +282,6 @@ export const HomeProfileCard = ({
   onProfileUpdated,
 }: HomeProfileCardProps) => {
   const { t } = useTranslation()
-  const navigate = useNavigate()
   const { refreshAll } = useAppRefreshers()
 
   // 更新当前订阅
@@ -313,10 +307,7 @@ export const HomeProfileCard = ({
     }
   })
 
-  // 导航到订阅页面
-  const goToProfiles = useCallback(() => {
-    navigate('/profile')
-  }, [navigate])
+  // 卡片操作:配置由公司统一下发,不再跳转订阅管理页
 
   // 卡片标题
   const cardTitle = useMemo(() => {
@@ -361,29 +352,11 @@ export const HomeProfileCard = ({
     )
   }, [current, t])
 
-  // 卡片操作按钮
-  const cardAction = useMemo(() => {
-    if (!current) return null
-
-    return (
-      <Button
-        variant="outlined"
-        size="small"
-        onClick={goToProfiles}
-        endIcon={<StorageOutlined fontSize="small" />}
-        sx={{ borderRadius: 1.5 }}
-      >
-        {t('layout.components.navigation.tabs.profiles')}
-      </Button>
-    )
-  }, [current, goToProfiles, t])
-
   return (
     <EnhancedCard
       title={cardTitle}
       icon={<CloudUploadOutlined />}
       iconColor="info"
-      action={cardAction}
     >
       {current ? (
         <ProfileDetails
@@ -392,7 +365,7 @@ export const HomeProfileCard = ({
           updating={updating}
         />
       ) : (
-        <EmptyProfile onClick={goToProfiles} />
+        <EmptyProfile />
       )}
     </EnhancedCard>
   )

@@ -1,0 +1,6 @@
+/server
+/server-*
+/vergen-server
+*.db
+*.db-shm
+*.db-wal

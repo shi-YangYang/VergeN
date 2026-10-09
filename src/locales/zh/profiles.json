@@ -37,7 +37,8 @@
         "readFailed": "读取订阅失败",
         "reorderFailed": "调整订阅顺序失败",
         "switchFailed": "切换订阅失败",
-        "updateFailed": "更新订阅失败"
+        "updateFailed": "更新订阅失败",
+        "managedDeviceLocked": "受管设备不允许添加或修改订阅"
       },
       "notifications": {
         "importRetry": "订阅导入失败，尝试使用 Clash 代理导入",
@@ -63,7 +64,9 @@
   "components": {
     "card": {
       "labels": {
-        "clickToImport": "点击导入订阅"
+        "clickToImport": "点击导入订阅",
+        "waitingForManagedTitle": "等待公司下发配置",
+        "waitingForManagedHint": "配置由公司统一管理,登录后将自动导入"
       }
     },
     "fileInput": {

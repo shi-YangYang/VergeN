@@ -84,7 +84,7 @@ export const normalizeListenHost = (value: string): string | null => {
 export const formatHostPort = (host: string, port: string | number) =>
   isIpv6(host) ? `[${host}]:${port}` : `${host}:${port}`
 
-export const isValidIpCidr = (value: string): boolean => {
+const isValidIpCidr = (value: string): boolean => {
   const cidr = value.trim()
   const slashIndex = cidr.lastIndexOf('/')
   if (slashIndex <= 0) {

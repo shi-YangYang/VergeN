@@ -1,0 +1,374 @@
+package api
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"log/slog"
+	"net"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+
+	"github.com/shi-YangYang/VergeN/server/internal/auth"
+	"github.com/shi-YangYang/VergeN/server/internal/store"
+)
+
+const (
+	accessTTLDefault  = 30 * time.Minute
+	refreshTTLDefault = 30 * 24 * time.Hour
+)
+
+type Server struct {
+	store      *store.Store
+	secret     []byte
+	limiter    *auth.Limiter
+	accessTTL  time.Duration
+	refreshTTL time.Duration
+}
+
+func NewServer(s *store.Store) (*Server, error) {
+	secret, err := s.Secret()
+	if err != nil {
+		return nil, err
+	}
+	return &Server{
+		store:      s,
+		secret:     secret,
+		limiter:    auth.NewLimiter(15*time.Minute, 5),
+		accessTTL:  accessTTLDefault,
+		refreshTTL: refreshTTLDefault,
+	}, nil
+}
+
+func (a *Server) Handler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+	mux.HandleFunc("POST /api/v1/auth/login", a.handleLogin)
+	mux.HandleFunc("POST /api/v1/auth/refresh", a.handleRefresh)
+	mux.HandleFunc("POST /api/v1/auth/logout", a.handleLogout)
+	mux.Handle("GET /api/v1/client/bootstrap", a.authed(a.handleBootstrap))
+	mux.Handle("POST /api/v1/client/heartbeat", a.authed(a.handleHeartbeat))
+	mux.Handle("POST /api/v1/admin/users", a.admin(a.handleAdminCreateUser))
+	mux.Handle("GET /api/v1/admin/users", a.admin(a.handleAdminListUsers))
+	mux.Handle("POST /api/v1/admin/users/{id}/status", a.admin(a.handleAdminSetUserStatus))
+	mux.Handle("POST /api/v1/admin/users/{id}/password", a.admin(a.handleAdminSetUserPassword))
+	mux.Handle("GET /api/v1/admin/settings", a.admin(a.handleAdminGetSettings))
+	mux.Handle("POST /api/v1/admin/settings", a.admin(a.handleAdminSetSettings))
+	mux.Handle("GET /api/v1/admin/dashboard", a.admin(a.handleAdminDashboard))
+	return a.logMiddleware(mux)
+}
+
+func (a *Server) logMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		next.ServeHTTP(w, r)
+		slog.Debug("http", "method", r.Method, "path", r.URL.Path, "remote", remoteHost(r),
+			"duration", time.Since(start).String())
+	})
+}
+
+type ctxKey int
+
+const userKey ctxKey = 1
+
+func userFrom(r *http.Request) *store.User {
+	u, _ := r.Context().Value(userKey).(*store.User)
+	return u
+}
+
+func (a *Server) authed(next http.HandlerFunc) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u, ok := a.authenticate(w, r)
+		if !ok {
+			return
+		}
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userKey, u)))
+	})
+}
+
+func (a *Server) admin(next http.HandlerFunc) http.Handler {
+	return a.authed(func(w http.ResponseWriter, r *http.Request) {
+		if userFrom(r).Role != "admin" {
+			fail(w, http.StatusForbidden, "forbidden", "admin role required")
+			return
+		}
+		next(w, r)
+	})
+}
+
+func (a *Server) authenticate(w http.ResponseWriter, r *http.Request) (*store.User, bool) {
+	const prefix = "Bearer "
+	header := r.Header.Get("Authorization")
+	if !strings.HasPrefix(header, prefix) {
+		fail(w, http.StatusUnauthorized, "unauthorized", "missing bearer token")
+		return nil, false
+	}
+	uid, _, err := auth.ParseAccessToken(a.secret, strings.TrimPrefix(header, prefix))
+	if err != nil {
+		fail(w, http.StatusUnauthorized, "invalid_access_token", "access token expired or invalid")
+		return nil, false
+	}
+	u, err := a.store.GetUser(uid)
+	if err != nil {
+		fail(w, http.StatusUnauthorized, "invalid_access_token", "access token expired or invalid")
+		return nil, false
+	}
+	if u.Status != "active" {
+		fail(w, http.StatusForbidden, "account_disabled", "account is disabled")
+		return nil, false
+	}
+	return u, true
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func fail(w http.ResponseWriter, status int, code, message string) {
+	writeJSON(w, status, map[string]any{
+		"error": map[string]string{"code": code, "message": message},
+	})
+}
+
+func readJSON[T any](w http.ResponseWriter, r *http.Request) (T, bool) {
+	var v T
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	if err := json.NewDecoder(r.Body).Decode(&v); err != nil {
+		fail(w, http.StatusBadRequest, "bad_request", "invalid JSON body")
+		return v, false
+	}
+	return v, true
+}
+
+func remoteHost(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
+type userPublic struct {
+	ID          int64  `json:"id"`
+	Username    string `json:"username"`
+	Role        string `json:"role"`
+	Status      string `json:"status"`
+	CreatedAt   int64  `json:"created_at"`
+	LastSeenAt  *int64 `json:"last_seen_at"`
+	LastVersion string `json:"last_version"`
+	LastOS      string `json:"last_os"`
+}
+
+func toPublic(u *store.User) userPublic {
+	p := userPublic{
+		ID: u.ID, Username: u.Username, Role: u.Role, Status: u.Status,
+		CreatedAt: u.CreatedAt, LastVersion: u.LastVersion, LastOS: u.LastOS,
+	}
+	if u.LastSeenAt.Valid {
+		p.LastSeenAt = &u.LastSeenAt.Int64
+	}
+	return p
+}
+
+type loginReq struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+func (a *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	req, ok := readJSON[loginReq](w, r)
+	if !ok {
+		return
+	}
+	if req.Username == "" || req.Password == "" {
+		fail(w, http.StatusBadRequest, "bad_request", "username and password are required")
+		return
+	}
+	// Keyed by ip+username so one source cannot brute force many accounts at once.
+	key := remoteHost(r) + "|" + strings.ToLower(req.Username)
+	if a.limiter.Blocked(key) {
+		fail(w, http.StatusTooManyRequests, "too_many_attempts", "too many failed attempts, try again later")
+		return
+	}
+	u, err := a.store.GetUserByUsername(req.Username)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	}
+	if u != nil {
+		valid, verr := auth.VerifyPassword(u.PasswordHash, req.Password)
+		if verr != nil || !valid {
+			u = nil
+		}
+	} else {
+		// Burn argon2 time for unknown users so response timing does not
+		// reveal whether the username exists.
+		auth.HashPassword(req.Password)
+	}
+	if u == nil {
+		a.limiter.RecordFail(key)
+		fail(w, http.StatusUnauthorized, "invalid_credentials", "invalid username or password")
+		return
+	}
+	if u.Status != "active" {
+		fail(w, http.StatusForbidden, "account_disabled", "account is disabled")
+		return
+	}
+	a.limiter.Reset(key)
+	if !a.issueSession(w, u) {
+		return
+	}
+}
+
+func (a *Server) issueSession(w http.ResponseWriter, u *store.User) bool {
+	access, err := auth.IssueAccessToken(a.secret, u.ID, u.Role, a.accessTTL)
+	if err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return false
+	}
+	refresh, err := auth.NewRefreshToken()
+	if err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return false
+	}
+	now := time.Now()
+	if err := a.store.CreateRefreshToken(u.ID, auth.HashToken(refresh), now.Add(a.refreshTTL).Unix(), now.Unix()); err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return false
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"access_token":  access,
+		"refresh_token": refresh,
+		"token_type":    "Bearer",
+		"expires_in":    int(a.accessTTL.Seconds()),
+		"user":          toPublic(u),
+	})
+	return true
+}
+
+type refreshReq struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
+func (a *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
+	req, ok := readJSON[refreshReq](w, r)
+	if !ok {
+		return
+	}
+	if req.RefreshToken == "" {
+		fail(w, http.StatusBadRequest, "bad_request", "refresh_token is required")
+		return
+	}
+	now := time.Now()
+	userID, tokenID, err := a.store.GetValidRefreshToken(auth.HashToken(req.RefreshToken), now.Unix())
+	if errors.Is(err, store.ErrNotFound) {
+		fail(w, http.StatusUnauthorized, "invalid_refresh_token", "refresh token expired or revoked")
+		return
+	}
+	if err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	}
+	u, err := a.store.GetUser(userID)
+	if err != nil || u.Status != "active" {
+		fail(w, http.StatusUnauthorized, "invalid_refresh_token", "refresh token expired or revoked")
+		return
+	}
+	if err := a.store.RevokeRefreshToken(tokenID, now.Unix()); err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	}
+	a.issueSession(w, u)
+}
+
+func (a *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	req, ok := readJSON[refreshReq](w, r)
+	if !ok {
+		return
+	}
+	if req.RefreshToken != "" {
+		if err := a.store.RevokeRefreshTokenByValue(auth.HashToken(req.RefreshToken), time.Now().Unix()); err != nil {
+			fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+			return
+		}
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type managedFlags struct {
+	AllowEditProfiles   bool `json:"allow_edit_profiles"`
+	AllowChangeSettings bool `json:"allow_change_settings"`
+}
+
+type announcement struct {
+	Title   string `json:"title"`
+	Content string `json:"content"`
+}
+
+type bootstrapResp struct {
+	SubscriptionURL string        `json:"subscription_url"`
+	Managed         managedFlags  `json:"managed"`
+	Announcement    *announcement `json:"announcement"`
+}
+
+func (a *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
+	resp := bootstrapResp{Managed: managedFlags{}}
+	subURL, found, err := a.store.GetSetting("subscription_url")
+	if err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	}
+	if found && subURL != "" {
+		resp.SubscriptionURL = subURL
+	}
+	if raw, found, err := a.store.GetSetting("managed_flags"); err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	} else if found && raw != "" {
+		if err := json.Unmarshal([]byte(raw), &resp.Managed); err != nil {
+			fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+			return
+		}
+	}
+	if raw, found, err := a.store.GetSetting("announcement"); err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	} else if found && raw != "" {
+		var ann announcement
+		if err := json.Unmarshal([]byte(raw), &ann); err == nil && ann.Title != "" {
+			resp.Announcement = &ann
+		}
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+type heartbeatReq struct {
+	Version string `json:"version"`
+	OS      string `json:"os"`
+	Arch    string `json:"arch"`
+}
+
+func (a *Server) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
+	req, ok := readJSON[heartbeatReq](w, r)
+	if !ok {
+		return
+	}
+	u := userFrom(r)
+	if err := a.store.TouchHeartbeat(u.ID, req.Version, req.OS, time.Now().Unix()); err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func validateSubscriptionURL(raw string) bool {
+	u, err := url.Parse(raw)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
+}

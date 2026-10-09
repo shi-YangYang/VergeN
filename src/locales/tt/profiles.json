@@ -37,7 +37,8 @@
         "readFailed": "Профильне укып булмады",
         "reorderFailed": "Профильләр тәртибен үзгәртеп булмады",
         "switchFailed": "Профильне алыштырып булмады",
-        "updateFailed": "Профильне яңартып булмады"
+        "updateFailed": "Профильне яңартып булмады",
+        "managedDeviceLocked": "Managed devices cannot add or modify profiles"
       },
       "notifications": {
         "importRetry": "Import failed, retrying with Clash proxy...",
@@ -63,7 +64,9 @@
   "components": {
     "card": {
       "labels": {
-        "clickToImport": "Click to import subscription"
+        "clickToImport": "Click to import subscription",
+        "waitingForManagedTitle": "Waiting for company configuration",
+        "waitingForManagedHint": "Configs are managed by your company and will be provisioned automatically"
       }
     },
     "fileInput": {

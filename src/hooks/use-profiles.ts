@@ -3,13 +3,10 @@ import { useCallback, useEffect, useRef } from 'react'
 import { getProfiles, patchProfile, patchProfilesConfig } from '@/services/cmds'
 import { mutate } from '@/services/mutate'
 import { migrateProfileTestUrls } from '@/services/proxy-test-url'
-import { fetchCacheData, setCacheData, useQuery } from '@/services/query-client'
+import { setCacheData, useQuery } from '@/services/query-client'
 import { debugLog } from '@/utils/debug'
 
 const profilesQueryKey = ['getProfiles'] as const
-
-export const fetchProfilesIntoCache = () =>
-  fetchCacheData(profilesQueryKey, getProfiles)
 
 export const useProfiles = () => {
   const {

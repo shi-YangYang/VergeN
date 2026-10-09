@@ -612,6 +612,13 @@ impl CoreManager {
             return Ok(());
         }
 
+        if !crate::feat::enterprise::core_start_allowed().await {
+            // Managed device without a logged-in employee: the core stays down
+            // until the login flow provisions the company subscription.
+            logging!(info, Type::Core, "enterprise gate: not authenticated, skip core start");
+            return Ok(());
+        }
+
         if !matches!(*self.get_running_mode(), RunningMode::NotRunning) {
             logging!(
                 debug,

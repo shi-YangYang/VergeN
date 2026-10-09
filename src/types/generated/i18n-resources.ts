@@ -254,6 +254,29 @@ export interface TranslationResources {
         }
       }
     }
+    login: {
+      announcement: {
+        title: string
+      }
+      banner: {
+        managed: string
+      }
+      feedback: {
+        logout: string
+        welcome: string
+      }
+      form: {
+        password: string
+        server: string
+        serverPlaceholder: string
+        submit: string
+        username: string
+      }
+      page: {
+        subtitle: string
+        title: string
+      }
+    }
     logs: {
       actions: {
         showAscending: string
@@ -268,6 +291,8 @@ export interface TranslationResources {
         card: {
           labels: {
             clickToImport: string
+            waitingForManagedHint: string
+            waitingForManagedTitle: string
           }
         }
         fileInput: {
@@ -449,6 +474,7 @@ export interface TranslationResources {
             enhanceFailed: string
             importFailed: string
             invalidUrl: string
+            managedDeviceLocked: string
             onlyYaml: string
             openFailed: string
             readFailed: string

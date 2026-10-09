@@ -244,9 +244,7 @@ const HomePage = () => {
 
   // 文档链接函数
   const toGithubDoc = useLockFn(() =>
-    openExternalUrl('#').catch(
-      showNotice.error,
-    ),
+    openExternalUrl('#').catch(showNotice.error),
   )
 
   // 新增：打开设置弹窗

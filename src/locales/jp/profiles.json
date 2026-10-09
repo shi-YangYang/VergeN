@@ -37,7 +37,8 @@
         "readFailed": "プロファイルの読み込みに失敗しました",
         "reorderFailed": "プロファイルの並べ替えに失敗しました",
         "switchFailed": "プロファイルの切り替えに失敗しました",
-        "updateFailed": "プロファイルの更新に失敗しました"
+        "updateFailed": "プロファイルの更新に失敗しました",
+        "managedDeviceLocked": "Managed devices cannot add or modify profiles"
       },
       "notifications": {
         "importRetry": "インポートに失敗しました。Clashプロキシを使用して再試行します...",
@@ -63,7 +64,9 @@
   "components": {
     "card": {
       "labels": {
-        "clickToImport": "クリックしてサブスクリプションをインポート"
+        "clickToImport": "クリックしてサブスクリプションをインポート",
+        "waitingForManagedTitle": "Waiting for company configuration",
+        "waitingForManagedHint": "Configs are managed by your company and will be provisioned automatically"
       }
     },
     "fileInput": {

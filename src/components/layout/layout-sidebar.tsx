@@ -3,9 +3,7 @@ import { Box, List, Menu, MenuItem, SvgIcon } from '@mui/material'
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import iconDark from '@/assets/image/icon_dark.svg?react'
-import iconLight from '@/assets/image/icon_light.svg?react'
-import LogoSvg from '@/assets/image/logo.svg?react'
+import VergenMark from '@/assets/image/vergen-mark.svg?react'
 import { useVerge } from '@/hooks/use-verge'
 import { useNavMenuOrder } from '@/pages/_layout/hooks'
 import { navItems } from '@/pages/_navigation'
@@ -128,23 +126,35 @@ export const LayoutSidebar = (props: LayoutSidebarProps) => {
         <div
           data-tauri-drag-region="true"
           style={{
-            height: '27px',
+            height: '36px',
             display: 'flex',
-            justifyContent: 'space-between',
+            alignItems: 'center',
+            justifyContent: 'flex-start',
           }}
         >
           <SvgIcon
-            component={isDark ? iconDark : iconLight}
-            style={{
-              height: '36px',
-              width: '36px',
-              marginTop: '-3px',
-              marginRight: '5px',
-              marginLeft: '-3px',
-            }}
+            component={VergenMark}
             inheritViewBox
+            style={{
+              height: '28px',
+              width: '28px',
+              marginLeft: '-3px',
+              color: isDark ? '#ffffff' : '#15181d',
+            }}
           />
-          <LogoSvg fill={isDark ? 'white' : 'black'} />
+          <Box
+            component="span"
+            sx={{
+              fontWeight: 700,
+              fontSize: '19px',
+              lineHeight: 1,
+              letterSpacing: 0.2,
+              ml: '7px',
+              color: 'text.primary',
+            }}
+          >
+            VergeN
+          </Box>
         </div>
         <UpdateButton className="the-newbtn" />
       </div>

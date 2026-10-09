@@ -207,6 +207,46 @@ pub struct IVerge {
     pub hover_jump_navigator_delay: Option<u64>,
 
     pub enable_external_controller: Option<bool>,
+
+    /// Enterprise managed deployment: empty server url means personal edition.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enterprise_server_url: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enterprise_username: Option<String>,
+
+    #[serde(
+        serialize_with = "serialize_encrypted",
+        deserialize_with = "deserialize_encrypted",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub enterprise_access_token: Option<String>,
+
+    #[serde(
+        serialize_with = "serialize_encrypted",
+        deserialize_with = "deserialize_encrypted",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub enterprise_refresh_token: Option<String>,
+
+    /// Unix seconds when the stored access token expires.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enterprise_access_expires_at: Option<i64>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enterprise_subscription_url: Option<String>,
+
+    /// Last bootstrap payload cached for offline UI rendering.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enterprise_managed_flags: Option<serde_json::Value>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enterprise_announcement: Option<serde_json::Value>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enterprise_profile_uid: Option<String>,
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
@@ -493,6 +533,16 @@ impl IVerge {
         patch!(enable_dns_settings);
         patch!(home_cards);
         patch!(enable_external_controller);
+
+        patch!(enterprise_server_url);
+        patch!(enterprise_username);
+        patch!(enterprise_access_token);
+        patch!(enterprise_refresh_token);
+        patch!(enterprise_access_expires_at);
+        patch!(enterprise_subscription_url);
+        patch!(enterprise_managed_flags);
+        patch!(enterprise_announcement);
+        patch!(enterprise_profile_uid);
     }
 
     pub fn get_log_level(&self) -> LevelFilter {

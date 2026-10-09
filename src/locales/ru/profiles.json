@@ -37,7 +37,8 @@
         "readFailed": "Не удалось прочитать профиль",
         "reorderFailed": "Не удалось изменить порядок профилей",
         "switchFailed": "Не удалось переключить профиль",
-        "updateFailed": "Не удалось обновить профиль"
+        "updateFailed": "Не удалось обновить профиль",
+        "managedDeviceLocked": "Managed devices cannot add or modify profiles"
       },
       "notifications": {
         "importRetry": "Не удалось импортировать, повторная попытка через Clash proxy...",
@@ -63,7 +64,9 @@
   "components": {
     "card": {
       "labels": {
-        "clickToImport": "Нажмите для импорта подписки"
+        "clickToImport": "Нажмите для импорта подписки",
+        "waitingForManagedTitle": "Waiting for company configuration",
+        "waitingForManagedHint": "Configs are managed by your company and will be provisioned automatically"
       }
     },
     "fileInput": {

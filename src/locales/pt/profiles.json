@@ -37,7 +37,8 @@
         "readFailed": "Falha ao ler o perfil",
         "reorderFailed": "Falha ao reordenar os perfis",
         "switchFailed": "Falha ao trocar de perfil",
-        "updateFailed": "Falha ao atualizar o perfil"
+        "updateFailed": "Falha ao atualizar o perfil",
+        "managedDeviceLocked": "Managed devices cannot add or modify profiles"
       },
       "notifications": {
         "importRetry": "Falha na importação, tentando novamente com o proxy Clash...",
@@ -63,7 +64,9 @@
   "components": {
     "card": {
       "labels": {
-        "clickToImport": "Clique para importar a assinatura"
+        "clickToImport": "Clique para importar a assinatura",
+        "waitingForManagedTitle": "Waiting for company configuration",
+        "waitingForManagedHint": "Configs are managed by your company and will be provisioned automatically"
       }
     },
     "fileInput": {

@@ -947,6 +947,8 @@ interface IVergeConfig {
   enable_hover_jump_navigator?: boolean
   hover_jump_navigator_delay?: number
   enable_external_controller?: boolean
+  enterprise_server_url?: string
+  enterprise_username?: string
 }
 
 interface IWebDavFile {

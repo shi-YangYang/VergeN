@@ -37,7 +37,8 @@
         "readFailed": "No se pudo leer la suscripción",
         "reorderFailed": "No se pudo reordenar las suscripciones",
         "switchFailed": "No se pudo cambiar de suscripción",
-        "updateFailed": "No se pudo actualizar la suscripción"
+        "updateFailed": "No se pudo actualizar la suscripción",
+        "managedDeviceLocked": "Managed devices cannot add or modify profiles"
       },
       "notifications": {
         "importRetry": "Error al importar la suscripción. Intentando con el proxy de Clash...",
@@ -63,7 +64,9 @@
   "components": {
     "card": {
       "labels": {
-        "clickToImport": "Haga clic para importar una suscripción"
+        "clickToImport": "Haga clic para importar una suscripción",
+        "waitingForManagedTitle": "Waiting for company configuration",
+        "waitingForManagedHint": "Configs are managed by your company and will be provisioned automatically"
       }
     },
     "fileInput": {

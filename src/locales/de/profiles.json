@@ -37,7 +37,8 @@
         "readFailed": "Abonnement konnte nicht gelesen werden",
         "reorderFailed": "Abonnements konnten nicht neu angeordnet werden",
         "switchFailed": "Abonnement konnte nicht gewechselt werden",
-        "updateFailed": "Abonnement konnte nicht aktualisiert werden"
+        "updateFailed": "Abonnement konnte nicht aktualisiert werden",
+        "managedDeviceLocked": "Managed devices cannot add or modify profiles"
       },
       "notifications": {
         "importRetry": "Import des Abonnements fehlgeschlagen. Versuche es mit dem Clash-Proxy erneut...",
@@ -63,7 +64,9 @@
   "components": {
     "card": {
       "labels": {
-        "clickToImport": "Klicken Sie hier, um ein Abonnement zu importieren."
+        "clickToImport": "Klicken Sie hier, um ein Abonnement zu importieren.",
+        "waitingForManagedTitle": "Waiting for company configuration",
+        "waitingForManagedHint": "Configs are managed by your company and will be provisioned automatically"
       }
     },
     "fileInput": {

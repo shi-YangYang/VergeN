@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { Outlet, useNavigate } from 'react-router'
 
 import { BaseErrorBoundary } from '@/components/base'
+import { EnterpriseLogin } from '@/components/layout/enterprise-login'
 import { LayoutSidebar } from '@/components/layout/layout-sidebar'
 import { NoticeManager } from '@/components/layout/notice-manager'
 import { ServiceMigrationDialog } from '@/components/layout/service-migration-dialog'
@@ -14,6 +15,7 @@ import {
   WindowControls,
   WindowResizeHandles,
 } from '@/components/layout/window-controller'
+import { useEnterpriseSession } from '@/hooks/use-enterprise'
 import { useI18n } from '@/hooks/use-i18n'
 import { useVerge } from '@/hooks/use-verge'
 import { useWindowDecorations } from '@/hooks/use-window'
@@ -44,6 +46,7 @@ const Layout = () => {
   const { language } = verge ?? {}
   const navCollapsed = verge?.collapse_navbar ?? false
   const { switchLanguage } = useI18n()
+  const enterpriseSession = useEnterpriseSession()
   const navigate = useNavigate()
   const themeReady = useMemo(() => Boolean(theme), [theme])
   const windowControlsRef = useRef<any>(null)
@@ -101,6 +104,14 @@ const Layout = () => {
           color: mode === 'light' ? '#333' : '#fff',
         }}
       ></div>
+    )
+  }
+
+  if (enterpriseSession?.enabled && !enterpriseSession.authenticated) {
+    return (
+      <ThemeProvider theme={theme}>
+        <EnterpriseLogin session={enterpriseSession} />
+      </ThemeProvider>
     )
   }
 

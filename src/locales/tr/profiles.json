@@ -37,7 +37,8 @@
         "readFailed": "Profil okunamadı",
         "reorderFailed": "Profiller yeniden sıralanamadı",
         "switchFailed": "Profil değiştirilemedi",
-        "updateFailed": "Profil güncellenemedi"
+        "updateFailed": "Profil güncellenemedi",
+        "managedDeviceLocked": "Managed devices cannot add or modify profiles"
       },
       "notifications": {
         "importRetry": "İçe aktarma başarısız oldu, Clash vekil ile yeniden deneniyor...",
@@ -63,7 +64,9 @@
   "components": {
     "card": {
       "labels": {
-        "clickToImport": "Abonelik içe aktarmak için tıklayın"
+        "clickToImport": "Abonelik içe aktarmak için tıklayın",
+        "waitingForManagedTitle": "Waiting for company configuration",
+        "waitingForManagedHint": "Configs are managed by your company and will be provisioned automatically"
       }
     },
     "fileInput": {

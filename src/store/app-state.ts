@@ -4,8 +4,7 @@ import type {
   SidecarFailureSnapshot,
 } from '@/services/cmds'
 
-/** Event-derived per-profile update tracking, shared by the profiles page and items. */
-export interface ProfileUpdatesState {
+interface ProfileUpdatesState {
   readonly loading: ReadonlySet<string>
   readonly updateRevisions: ReadonlyMap<string, number>
   readonly timerRevisions: ReadonlyMap<string, number>

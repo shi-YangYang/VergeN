@@ -25,52 +25,8 @@ export async function patchProfilesConfig(profiles: IProfilesConfig) {
   return invoke<ValidationOutcome>('patch_profiles_config', { profiles })
 }
 
-export async function createProfile(
-  item: Partial<IProfileItem>,
-  fileData?: string | null,
-) {
-  return invoke<void>('create_profile', { item, fileData })
-}
-
-export async function viewProfile(index: string) {
-  return invoke<void>('view_profile', { index })
-}
-
-export async function readProfileFile(index: string) {
-  return invoke<string>('read_profile_file', { index })
-}
-
-export async function saveProfileFile(index: string, fileData: string) {
-  return (
-    (
-      await invoke<ValidationOutcome>('save_profile_file', {
-        index,
-        fileData,
-      })
-    ).status === 'valid'
-  )
-}
-
-export async function importProfile(url: string, option?: IProfileOption) {
-  return invoke<void>('import_profile', {
-    url,
-    option: option || { with_proxy: true },
-  })
-}
-
-export async function reorderProfile(activeId: string, overId: string) {
-  return invoke<void>('reorder_profile', {
-    activeId,
-    overId,
-  })
-}
-
 export async function updateProfile(index: string, option?: IProfileOption) {
   return invoke<void>('update_profile', { index, option })
-}
-
-export async function deleteProfile(index: string) {
-  return invoke<void>('delete_profile', { index })
 }
 
 export async function patchProfile(
@@ -95,10 +51,6 @@ export async function getRuntimeConfig() {
 
 export async function getRuntimeYaml() {
   return invoke<string | null>('get_runtime_yaml')
-}
-
-export async function getRuntimeLogs() {
-  return invoke<Record<string, [string, string][]>>('get_runtime_logs')
 }
 
 export async function getRuntimeProxyChainConfig(proxyChainExitNode: string) {
@@ -171,6 +123,55 @@ export async function getVergeConfig() {
 
 export async function patchVergeConfig(payload: IVergeConfig) {
   return invoke<void>('patch_verge_config', { payload })
+}
+
+interface EnterpriseManagedFlags {
+  allow_edit_profiles: boolean
+  allow_change_settings: boolean
+}
+
+interface EnterpriseAnnouncement {
+  title: string
+  content?: string | null
+}
+
+/** Mirrors feat::enterprise::EnterpriseSession on the wire. */
+export interface EnterpriseSession {
+  enabled: boolean
+  authenticated: boolean
+  username: string | null
+  managed: EnterpriseManagedFlags
+  announcement: EnterpriseAnnouncement | null
+  subscription_url: string | null
+  profile_uid: string | null
+}
+
+export async function getEnterpriseSession() {
+  return invoke<EnterpriseSession>('get_enterprise_session')
+}
+
+export async function enterpriseLogin(
+  serverUrl: string,
+  username: string,
+  password: string,
+) {
+  return invoke<EnterpriseSession>('enterprise_login', {
+    serverUrl,
+    username,
+    password,
+  })
+}
+
+export async function enterpriseLogout() {
+  return invoke<EnterpriseSession>('enterprise_logout')
+}
+
+export async function enterpriseSync() {
+  return invoke<EnterpriseSession>('enterprise_sync')
+}
+
+export async function enterpriseHeartbeat() {
+  return invoke<boolean>('enterprise_heartbeat')
 }
 
 export async function setDnsOverride(
@@ -380,10 +381,6 @@ export async function downloadIconCache(url: string, name: string) {
   return invoke<string>('download_icon_cache', { url, name })
 }
 
-export async function getNetworkInterfaces() {
-  return invoke<string[]>('get_network_interfaces')
-}
-
 export async function getSystemHostname() {
   return invoke<string>('get_system_hostname')
 }
@@ -537,10 +534,6 @@ export const continueWithSidecar = async () => {
 
 export const entry_lightweight_mode = async () => {
   return invoke<void>('entry_lightweight_mode')
-}
-
-export async function getNextUpdateTime(uid: string) {
-  return invoke<number | null>('get_next_update_time', { uid })
 }
 
 interface ToggleableProxyPort {

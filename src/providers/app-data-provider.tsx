@@ -6,6 +6,7 @@ import {
 } from 'tauri-plugin-mihomo-api'
 
 import { useClashInfo, useRuntimeConfig } from '@/hooks/use-clash'
+import { useEnterpriseHeartbeat } from '@/hooks/use-enterprise'
 import { useVerge } from '@/hooks/use-verge'
 import { getProxyView, getSystemProxy } from '@/services/cmds'
 import { useQuery } from '@/services/query-client'
@@ -51,6 +52,7 @@ export const AppDataProvider = ({
   const { verge } = useVerge()
   const { data: runtimeConfig } = useRuntimeConfig()
   const { clashInfo } = useClashInfo()
+  useEnterpriseHeartbeat()
 
   const {
     data: proxyView,

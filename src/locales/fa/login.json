@@ -1,0 +1,23 @@
+{
+  "page": {
+    "title": "Company VPN",
+    "subtitle": "Sign in with your company account to continue"
+  },
+  "form": {
+    "server": "Server address",
+    "serverPlaceholder": "https://vpn.example.com",
+    "username": "Username",
+    "password": "Password",
+    "submit": "Sign in"
+  },
+  "banner": {
+    "managed": "Managed by your company"
+  },
+  "announcement": {
+    "title": "Notice"
+  },
+  "feedback": {
+    "welcome": "Welcome, {name}",
+    "logout": "Signed out"
+  }
+}
