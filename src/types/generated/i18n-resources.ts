@@ -261,6 +261,14 @@ export interface TranslationResources {
       banner: {
         managed: string
       }
+      dingtalk: {
+        expired: string
+        failed: string
+        hint: string
+        retry: string
+        starting: string
+        waiting: string
+      }
       feedback: {
         logout: string
         welcome: string
@@ -275,6 +283,10 @@ export interface TranslationResources {
       page: {
         subtitle: string
         title: string
+      }
+      tabs: {
+        dingtalk: string
+        password: string
       }
     }
     logs: {

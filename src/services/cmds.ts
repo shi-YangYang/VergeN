@@ -162,6 +162,48 @@ export async function enterpriseLogin(
   })
 }
 
+/** Mirrors feat::enterprise::DingtalkQrStart on the wire. */
+export interface DingtalkQrStart {
+  session_id: string
+  qr_url: string
+}
+
+/** Mirrors feat::enterprise::DingtalkQrPoll on the wire. */
+export interface DingtalkQrPoll {
+  status: 'pending' | 'ok' | 'fail' | 'expired'
+  username: string
+  access_token: string
+  refresh_token: string
+  expires_in: number
+  message: string
+}
+
+export async function enterpriseDingtalkQrStart(serverUrl: string) {
+  return invoke<DingtalkQrStart>('enterprise_dingtalk_qr_start', {
+    serverUrl,
+  })
+}
+
+export async function enterpriseDingtalkQrPoll(
+  serverUrl: string,
+  sessionId: string,
+) {
+  return invoke<DingtalkQrPoll>('enterprise_dingtalk_qr_poll', {
+    serverUrl,
+    sessionId,
+  })
+}
+
+export async function enterpriseDingtalkQrCancel(
+  serverUrl: string,
+  sessionId: string,
+) {
+  return invoke<void>('enterprise_dingtalk_qr_cancel', {
+    serverUrl,
+    sessionId,
+  })
+}
+
 export async function enterpriseLogout() {
   return invoke<EnterpriseSession>('enterprise_logout')
 }

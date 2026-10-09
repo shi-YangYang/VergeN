@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/shi-YangYang/VergeN/server/internal/auth"
@@ -133,6 +134,42 @@ func (a *Server) handleAdminSetUserPassword(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	found, err := a.store.SetUserPassword(id, hash, time.Now())
+	if err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	}
+	if !found {
+		fail(w, http.StatusNotFound, "user_not_found", "user does not exist")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type setDingtalkReq struct {
+	DingtalkUserID string `json:"dingtalk_userid"`
+}
+
+// Binding a DingTalk union id is what authorizes an employee to scan; an
+// empty string unbinds.
+func (a *Server) handleAdminSetUserDingtalk(w http.ResponseWriter, r *http.Request) {
+	req, ok := readJSON[setDingtalkReq](w, r)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		fail(w, http.StatusBadRequest, "bad_request", "invalid user id")
+		return
+	}
+	if req.DingtalkUserID != "" {
+		// Union ids are opaque tokens from DingTalk's side; only reject
+		// sketchy shapes (length, whitespace, separators, html).
+		if len(req.DingtalkUserID) > 128 || strings.ContainsAny(req.DingtalkUserID, " \t\r\n\"'") {
+			fail(w, http.StatusBadRequest, "bad_request", "dingtalk_userid looks invalid")
+			return
+		}
+	}
+	found, err := a.store.SetUserDingtalkID(id, req.DingtalkUserID, time.Now())
 	if err != nil {
 		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return

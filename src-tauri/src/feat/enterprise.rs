@@ -55,6 +55,30 @@ struct ServerError {
     error: ServerErrorInner,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DingtalkQrStart {
+    #[serde(default)]
+    session_id: std::string::String,
+    #[serde(default)]
+    qr_url: std::string::String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DingtalkQrPoll {
+    #[serde(default)]
+    status: std::string::String, // pending | ok | fail | expired
+    #[serde(default)]
+    username: std::string::String,
+    #[serde(default)]
+    access_token: std::string::String,
+    #[serde(default)]
+    refresh_token: std::string::String,
+    #[serde(default)]
+    expires_in: i64,
+    #[serde(default)]
+    message: std::string::String,
+}
+
 #[derive(Debug, Deserialize, Default)]
 struct ServerErrorInner {
     code: Option<std::string::String>,
@@ -363,10 +387,20 @@ pub async fn login(server_url: &str, username: &str, password: &str) -> Result<E
     if parsed.access_token.is_empty() || parsed.refresh_token.is_empty() {
         return Err(anyhow!("服务器响应无效"));
     }
-    let username = username.trim().to_string();
+    activate_session(&client, &server, parsed, username.trim()).await
+}
+
+/// Shared back half of every login path: persist tokens, pull the managed
+/// bootstrap and bring the core online.
+async fn activate_session(
+    client: &reqwest::Client,
+    server: &str,
+    parsed: LoginResponse,
+    username: &str,
+) -> Result<EnterpriseSession> {
     store_login(
-        &server,
-        &username,
+        server,
+        username,
         &parsed.access_token,
         &parsed.refresh_token,
         parsed.expires_in,
@@ -375,9 +409,9 @@ pub async fn login(server_url: &str, username: &str, password: &str) -> Result<E
     logging!(info, Type::Cmd, "enterprise login ok for {}", username);
 
     let mut provisioned = false;
-    match bootstrap_fetch(&client, &server, &parsed.access_token).await {
+    match bootstrap_fetch(client, server, &parsed.access_token).await {
         Ok(bootstrap) => {
-            store_bootstrap(&server, &bootstrap).await?;
+            store_bootstrap(server, &bootstrap).await?;
             if !bootstrap.subscription_url.trim().is_empty() {
                 match ensure_managed_profile(bootstrap.subscription_url.trim()).await {
                     Ok(_) => provisioned = true,
@@ -399,6 +433,68 @@ pub async fn login(server_url: &str, username: &str, password: &str) -> Result<E
 
     let data = Config::verge().await.data_arc();
     Ok(session_from(&data, true))
+}
+
+pub async fn dingtalk_qr_start(server_url: &str) -> Result<DingtalkQrStart> {
+    let server = normalize_server(server_url)?;
+    let client = http_client()?;
+    let response = client
+        .post(format!("{server}/api/v1/auth/dingtalk/qr/start"))
+        .send()
+        .await
+        .map_err(|e| anyhow!("无法连接服务器 {server}: {e}"))?;
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(anyhow!("{}", server_error_message(status, &body)));
+    }
+    let parsed: DingtalkQrStart = serde_json::from_str(&body)?;
+    if parsed.session_id.is_empty() || parsed.qr_url.is_empty() {
+        return Err(anyhow!("服务器响应无效"));
+    }
+    Ok(parsed)
+}
+
+pub async fn dingtalk_qr_poll(server_url: &str, session_id: &str) -> Result<DingtalkQrPoll> {
+    let server = normalize_server(server_url)?;
+    let client = http_client()?;
+    let response = client
+        .post(format!("{server}/api/v1/auth/dingtalk/qr/poll"))
+        .json(&serde_json::json!({ "session_id": session_id.trim() }))
+        .send()
+        .await
+        .map_err(|e| anyhow!("无法连接服务器 {server}: {e}"))?;
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(anyhow!("{}", server_error_message(status, &body)));
+    }
+    let mut parsed: DingtalkQrPoll = serde_json::from_str(&body)?;
+    if parsed.status == "ok" {
+        if parsed.access_token.is_empty() || parsed.refresh_token.is_empty() {
+            parsed.status = "expired".into();
+            return Ok(parsed);
+        }
+        let username = parsed.username.clone();
+        let token_login = LoginResponse {
+            access_token: std::mem::take(&mut parsed.access_token),
+            refresh_token: std::mem::take(&mut parsed.refresh_token),
+            expires_in: parsed.expires_in,
+        };
+        activate_session(&client, &server, token_login, username.trim()).await?;
+    }
+    Ok(parsed)
+}
+
+pub async fn dingtalk_qr_cancel(server_url: &str, session_id: &str) -> Result<()> {
+    let server = normalize_server(server_url)?;
+    let client = http_client()?;
+    let _ = client
+        .post(format!("{server}/api/v1/auth/dingtalk/qr/cancel"))
+        .json(&serde_json::json!({ "session_id": session_id.trim() }))
+        .send()
+        .await;
+    Ok(())
 }
 
 pub async fn logout() -> Result<EnterpriseSession> {

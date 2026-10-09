@@ -27,6 +27,10 @@ type Server struct {
 	limiter    *auth.Limiter
 	accessTTL  time.Duration
 	refreshTTL time.Duration
+	// The QR login map is in-memory state: live sessions vanish on restart
+	// and the client simply starts a new scan.
+	qrSessions  *dingtalkQrSessions
+	pollLimiter *auth.Limiter
 }
 
 func NewServer(s *store.Store) (*Server, error) {
@@ -35,11 +39,13 @@ func NewServer(s *store.Store) (*Server, error) {
 		return nil, err
 	}
 	return &Server{
-		store:      s,
-		secret:     secret,
-		limiter:    auth.NewLimiter(15*time.Minute, 5),
-		accessTTL:  accessTTLDefault,
-		refreshTTL: refreshTTLDefault,
+		store:       s,
+		secret:      secret,
+		limiter:     auth.NewLimiter(15*time.Minute, 5),
+		accessTTL:   accessTTLDefault,
+		refreshTTL:  refreshTTLDefault,
+		qrSessions:  newDingtalkQrSessions(),
+		pollLimiter: auth.NewLimiter(time.Minute, qrCallPerMinute),
 	}, nil
 }
 
@@ -58,12 +64,17 @@ func (a *Server) Handler() (http.Handler, error) {
 	mux.HandleFunc("POST /api/v1/auth/login", a.handleLogin)
 	mux.HandleFunc("POST /api/v1/auth/refresh", a.handleRefresh)
 	mux.HandleFunc("POST /api/v1/auth/logout", a.handleLogout)
+	mux.HandleFunc("POST /api/v1/auth/dingtalk/qr/start", a.handleDingtalkQrStart)
+	mux.HandleFunc("POST /api/v1/auth/dingtalk/qr/poll", a.handleDingtalkQrPoll)
+	mux.HandleFunc("POST /api/v1/auth/dingtalk/qr/cancel", a.handleDingtalkQrCancel)
+	mux.HandleFunc("GET /api/v1/auth/dingtalk/callback", a.handleDingtalkCallback)
 	mux.Handle("GET /api/v1/client/bootstrap", a.authed(a.handleBootstrap))
 	mux.Handle("POST /api/v1/client/heartbeat", a.authed(a.handleHeartbeat))
 	mux.Handle("POST /api/v1/admin/users", a.admin(a.handleAdminCreateUser))
 	mux.Handle("GET /api/v1/admin/users", a.admin(a.handleAdminListUsers))
 	mux.Handle("POST /api/v1/admin/users/{id}/status", a.admin(a.handleAdminSetUserStatus))
 	mux.Handle("POST /api/v1/admin/users/{id}/password", a.admin(a.handleAdminSetUserPassword))
+	mux.Handle("POST /api/v1/admin/users/{id}/dingtalk", a.admin(a.handleAdminSetUserDingtalk))
 	mux.Handle("GET /api/v1/admin/settings", a.admin(a.handleAdminGetSettings))
 	mux.Handle("POST /api/v1/admin/settings", a.admin(a.handleAdminSetSettings))
 	mux.Handle("GET /api/v1/admin/dashboard", a.admin(a.handleAdminDashboard))
@@ -163,19 +174,21 @@ func remoteHost(r *http.Request) string {
 }
 
 type userPublic struct {
-	ID          int64  `json:"id"`
-	Username    string `json:"username"`
-	Role        string `json:"role"`
-	Status      string `json:"status"`
-	CreatedAt   int64  `json:"created_at"`
-	LastSeenAt  *int64 `json:"last_seen_at"`
-	LastVersion string `json:"last_version"`
-	LastOS      string `json:"last_os"`
+	ID             int64  `json:"id"`
+	Username       string `json:"username"`
+	DingtalkUserID string `json:"dingtalk_userid"`
+	Role           string `json:"role"`
+	Status         string `json:"status"`
+	CreatedAt      int64  `json:"created_at"`
+	LastSeenAt     *int64 `json:"last_seen_at"`
+	LastVersion    string `json:"last_version"`
+	LastOS         string `json:"last_os"`
 }
 
 func toPublic(u *store.User) userPublic {
 	p := userPublic{
-		ID: u.ID, Username: u.Username, Role: u.Role, Status: u.Status,
+		ID: u.ID, Username: u.Username, DingtalkUserID: u.DingTalkUserID,
+		Role: u.Role, Status: u.Status,
 		CreatedAt: u.CreatedAt, LastVersion: u.LastVersion, LastOS: u.LastOS,
 	}
 	if u.LastSeenAt.Valid {
@@ -234,19 +247,27 @@ func (a *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (a *Server) issueSession(w http.ResponseWriter, u *store.User) bool {
-	access, err := auth.IssueAccessToken(a.secret, u.ID, u.Role, a.accessTTL)
+// issueSessionTokens mints a fresh access/refresh pair. Both password login
+// and the DingTalk QR path hand tokens to clients through this.
+func (a *Server) issueSessionTokens(u *store.User) (access, refresh string, expiresIn int, err error) {
+	access, err = auth.IssueAccessToken(a.secret, u.ID, u.Role, a.accessTTL)
 	if err != nil {
-		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
-		return false
+		return "", "", 0, err
 	}
-	refresh, err := auth.NewRefreshToken()
+	refresh, err = auth.NewRefreshToken()
 	if err != nil {
-		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
-		return false
+		return "", "", 0, err
 	}
 	now := time.Now()
 	if err := a.store.CreateRefreshToken(u.ID, auth.HashToken(refresh), now.Add(a.refreshTTL).Unix(), now.Unix()); err != nil {
+		return "", "", 0, err
+	}
+	return access, refresh, int(a.accessTTL.Seconds()), nil
+}
+
+func (a *Server) issueSession(w http.ResponseWriter, u *store.User) bool {
+	access, refresh, expiresIn, err := a.issueSessionTokens(u)
+	if err != nil {
 		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return false
 	}
@@ -254,7 +275,7 @@ func (a *Server) issueSession(w http.ResponseWriter, u *store.User) bool {
 		"access_token":  access,
 		"refresh_token": refresh,
 		"token_type":    "Bearer",
-		"expires_in":    int(a.accessTTL.Seconds()),
+		"expires_in":    expiresIn,
 		"user":          toPublic(u),
 	})
 	return true

@@ -10,6 +10,18 @@
     "password": "密码",
     "submit": "登录"
   },
+  "tabs": {
+    "password": "账号密码",
+    "dingtalk": "钉钉扫码"
+  },
+  "dingtalk": {
+    "hint": "使用钉钉 App 扫描二维码，并在手机上确认登录",
+    "waiting": "等待手机端确认…",
+    "starting": "正在获取二维码…",
+    "expired": "二维码已过期，请重新获取",
+    "failed": "扫码登录失败",
+    "retry": "重新获取二维码"
+  },
   "banner": {
     "managed": "此设备由公司统一管理"
   },

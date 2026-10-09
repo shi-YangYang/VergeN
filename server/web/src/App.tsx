@@ -10,6 +10,7 @@ import {
   listUsers,
   login as apiLogin,
   patchSettings,
+  setUserDingtalk,
   setUserPassword,
   setUserStatus,
   type AdminSettings,
@@ -148,6 +149,8 @@ function UsersPanel() {
   const [busy, setBusy] = useState(false)
   const [resetId, setResetId] = useState<number | null>(null)
   const [resetPassword, setResetPassword] = useState('')
+  const [bindId, setBindId] = useState<number | null>(null)
+  const [bindDingtalk, setBindDingtalk] = useState('')
 
   const reload = async () => {
     try {
@@ -209,6 +212,18 @@ function UsersPanel() {
     }
   }
 
+  const bind = async (id: number) => {
+    try {
+      await setUserDingtalk(id, bindDingtalk.trim())
+      setBindId(null)
+      setBindDingtalk('')
+      setError('')
+      await reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
   return (
     <section className="panel">
       <form className="row-form" onSubmit={create}>
@@ -240,6 +255,7 @@ function UsersPanel() {
           <tr>
             <th>ID</th>
             <th>用户名</th>
+            <th>钉钉</th>
             <th>角色</th>
             <th>状态</th>
             <th>最近在线</th>
@@ -255,6 +271,19 @@ function UsersPanel() {
             >
               <td>{user.id}</td>
               <td>{user.username}</td>
+              <td>
+                {user.dingtalk_userid ? (
+                  <span
+                    className="muted"
+                    title={user.dingtalk_userid}
+                    style={{ display: 'inline-flex', gap: 6 }}
+                  >
+                    {user.dingtalk_userid.slice(0, 10)}…
+                  </span>
+                ) : (
+                  <span className="muted">未绑定</span>
+                )}
+              </td>
               <td>{user.role === 'admin' ? '管理员' : '员工'}</td>
               <td>{user.status === 'active' ? '启用' : '已停用'}</td>
               <td title={user.last_os || ''}>
@@ -277,6 +306,15 @@ function UsersPanel() {
                   }
                 >
                   重置密码
+                </button>
+                <button
+                  className="ghost"
+                  onClick={() => {
+                    setBindId(bindId === user.id ? null : user.id)
+                    setBindDingtalk(user.dingtalk_userid)
+                  }}
+                >
+                  {user.dingtalk_userid ? '重新绑定' : '绑定钉钉'}
                 </button>
               </td>
             </tr>
@@ -303,6 +341,31 @@ function UsersPanel() {
             type="button"
             className="ghost"
             onClick={() => setResetId(null)}
+          >
+            取消
+          </button>
+        </form>
+      )}
+      {bindId !== null && (
+        <form
+          className="row-form"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void bind(bindId)
+          }}
+        >
+          <span>为 #{bindId} 绑定钉钉 UnionID</span>
+          <input
+            placeholder="钉钉 UnionID(留空解除绑定)"
+            value={bindDingtalk}
+            onChange={(e) => setBindDingtalk(e.target.value)}
+            style={{ flex: 1, minWidth: 240 }}
+          />
+          <button type="submit">确认</button>
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => setBindId(null)}
           >
             取消
           </button>
@@ -402,6 +465,12 @@ function SettingsPanel() {
               onChange={(e) => setAgentId(e.target.value)}
             />
           </label>
+          <div className="muted" style={{ fontSize: 12, lineHeight: 1.6 }}>
+            回调地址(填入钉钉开放平台"登录与分享"Redirect URI):
+            <code>{`${location.origin}/api/v1/auth/dingtalk/callback`}</code>
+            <br />
+            员工首次使用需在"员工账号"页为其绑定钉钉 UnionID。
+          </div>
         </fieldset>
         <fieldset>
           <legend>受管策略</legend>

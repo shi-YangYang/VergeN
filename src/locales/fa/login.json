@@ -10,6 +10,18 @@
     "password": "Password",
     "submit": "Sign in"
   },
+  "tabs": {
+    "password": "Account",
+    "dingtalk": "DingTalk QR"
+  },
+  "dingtalk": {
+    "hint": "Scan the QR code with the DingTalk app and confirm on your phone",
+    "waiting": "Waiting for confirmation on your phone…",
+    "starting": "Fetching QR code…",
+    "expired": "The QR code expired, request a new one",
+    "failed": "QR sign-in failed",
+    "retry": "Request a new QR code"
+  },
   "banner": {
     "managed": "Managed by your company"
   },

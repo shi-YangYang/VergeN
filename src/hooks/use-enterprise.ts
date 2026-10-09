@@ -1,6 +1,9 @@
 import { useEffect, useRef } from 'react'
 
 import {
+  enterpriseDingtalkQrCancel,
+  enterpriseDingtalkQrPoll,
+  enterpriseDingtalkQrStart,
   enterpriseHeartbeat,
   enterpriseLogin,
   enterpriseLogout,
@@ -46,6 +49,21 @@ export const enterpriseActions = {
       id: 'enterprise-sync',
       onFulfilled: cacheSession,
     }),
+  dingtalkQrStart: (serverUrl: string) =>
+    mutate(() => enterpriseDingtalkQrStart(serverUrl), {
+      id: 'enterprise-qr-start',
+    }),
+  dingtalkQrPoll: (serverUrl: string, sessionId: string) =>
+    mutate(() => enterpriseDingtalkQrPoll(serverUrl, sessionId), {
+      id: 'enterprise-qr-poll',
+    }),
+  completeQrLogin: () =>
+    mutate(() => getEnterpriseSession(), {
+      id: 'enterprise-qr-complete',
+      onFulfilled: cacheSession,
+    }),
+  cancelQr: (serverUrl: string, sessionId: string) =>
+    enterpriseDingtalkQrCancel(serverUrl, sessionId),
 }
 
 const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000

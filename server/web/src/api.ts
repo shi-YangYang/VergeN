@@ -12,6 +12,7 @@ export const clearToken = () => {
 export interface AdminUser {
   id: number
   username: string
+  dingtalk_userid: string
   role: string
   status: string
   created_at: number
@@ -94,6 +95,12 @@ export const setUserPassword = (id: number, password: string) =>
   request<null>(`/admin/users/${id}/password`, {
     method: 'POST',
     body: { password },
+  })
+
+export const setUserDingtalk = (id: number, dingtalkUserid: string) =>
+  request<null>(`/admin/users/${id}/dingtalk`, {
+    method: 'POST',
+    body: { dingtalk_userid: dingtalkUserid },
   })
 
 export const getSettings = () => request<AdminSettings>('/admin/settings')

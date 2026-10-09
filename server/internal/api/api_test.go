@@ -307,3 +307,90 @@ func TestAdminSettingsDingtalk(t *testing.T) {
 		t.Fatalf("clear secret = %v", body)
 	}
 }
+
+func TestDingtalkQrLoginFlow(t *testing.T) {
+	h, s := newTestBackend(t)
+	adminToken := adminLoginToken(t, h, s)
+
+	// Starting before the panel is configured is a clean 400.
+	code, _ := doJSON(t, h, "POST", "/api/v1/auth/dingtalk/qr/start", "", nil)
+	if code != http.StatusBadRequest {
+		t.Fatalf("start unconfigured: status=%d", code)
+	}
+
+	code, body := doJSON(t, h, "POST", "/api/v1/admin/settings", adminToken,
+		map[string]any{
+			"dingtalk_app_key":    "app-key",
+			"dingtalk_app_secret": "super-secret-value",
+		})
+	if code != http.StatusOK {
+		t.Fatalf("set dingtalk settings: status=%d body=%v", code, body)
+	}
+
+	code, body = doJSON(t, h, "POST", "/api/v1/auth/dingtalk/qr/start", "", nil)
+	if code != http.StatusOK {
+		t.Fatalf("qr start: status=%d body=%v", code, body)
+	}
+	sessionID, _ := body["session_id"].(string)
+	qrURL, _ := body["qr_url"].(string)
+	if sessionID == "" || qrURL == "" {
+		t.Fatalf("qr start incomplete: %v", body)
+	}
+	if !bytes.Contains([]byte(qrURL), []byte("login.dingtalk.com/oauth/qrcode/app-key")) ||
+		!bytes.Contains([]byte(qrURL), []byte("redirect_uri=")) {
+		t.Fatalf("qr url unexpected: %q", qrURL)
+	}
+
+	// Unknown poll is expired, known poll is pending.
+	code, body = doJSON(t, h, "POST", "/api/v1/auth/dingtalk/qr/poll", "",
+		map[string]string{"session_id": "deadbeef"})
+	if code != http.StatusOK || body["status"] != "expired" {
+		t.Fatalf("unknown poll: status=%d body=%v", code, body)
+	}
+	code, body = doJSON(t, h, "POST", "/api/v1/auth/dingtalk/qr/poll", "",
+		map[string]string{"session_id": sessionID})
+	if code != http.StatusOK || body["status"] != "pending" {
+		t.Fatalf("pending poll: status=%d body=%v", code, body)
+	}
+
+	// Cancel stops the session for good.
+	code, body = doJSON(t, h, "POST", "/api/v1/auth/dingtalk/qr/cancel", "",
+		map[string]string{"session_id": sessionID})
+	if code != http.StatusNoContent {
+		t.Fatalf("cancel: status=%d body=%v", code, body)
+	}
+	code, body = doJSON(t, h, "POST", "/api/v1/auth/dingtalk/qr/poll", "",
+		map[string]string{"session_id": sessionID})
+	if code != http.StatusOK || body["status"] != "expired" {
+		t.Fatalf("poll after cancel: status=%d body=%v", code, body)
+	}
+
+	// Admin binds a union id, the store matches by it, unbinding clears it.
+	code, body = doJSON(t, h, "POST", "/api/v1/admin/users", adminToken,
+		map[string]any{"username": "emp2", "password": "emp-password-2"})
+	if code != http.StatusCreated {
+		t.Fatalf("create user: status=%d body=%v", code, body)
+	}
+	userObj, _ := body["user"].(map[string]any)
+	empID := int64(userObj["id"].(float64))
+	code, body = doJSON(t, h, "POST", "/api/v1/admin/users/"+itoa(empID)+"/dingtalk", adminToken,
+		map[string]string{"dingtalk_userid": "union-1"})
+	if code != http.StatusNoContent {
+		t.Fatalf("bind dingtalk: status=%d body=%v", code, body)
+	}
+	u, err := s.GetUserByDingtalkID("union-1")
+	if err != nil || u.Username != "emp2" {
+		t.Fatalf("lookup by union id: %+v err=%v", u, err)
+	}
+	if u.DingTalkUserID != "union-1" {
+		t.Fatalf("user dingtalk id: %q", u.DingTalkUserID)
+	}
+	code, body = doJSON(t, h, "POST", "/api/v1/admin/users/"+itoa(empID)+"/dingtalk", adminToken,
+		map[string]string{"dingtalk_userid": ""})
+	if code != http.StatusNoContent {
+		t.Fatalf("unbind dingtalk: status=%d body=%v", code, body)
+	}
+	if _, err := s.GetUserByDingtalkID("union-1"); err != store.ErrNotFound {
+		t.Fatalf("lookup after unbind: err=%v", err)
+	}
+}

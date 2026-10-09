@@ -175,6 +175,20 @@ func (s *Store) SetUserPassword(id int64, passwordHash string, now time.Time) (b
 	return n > 0, err
 }
 
+func (s *Store) GetUserByDingtalkID(dingtalkUserID string) (*User, error) {
+	return scanUser(s.db.QueryRow(`SELECT `+userCols+` FROM users WHERE dingtalk_userid = ?`, dingtalkUserID))
+}
+
+func (s *Store) SetUserDingtalkID(id int64, dingtalkUserID string, now time.Time) (bool, error) {
+	res, err := s.db.Exec(`UPDATE users SET dingtalk_userid = ?, updated_at = ? WHERE id = ?`,
+		dingtalkUserID, now.Unix(), id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
 func (s *Store) TouchHeartbeat(id int64, version, os string, now int64) error {
 	_, err := s.db.Exec(`UPDATE users SET last_seen_at = ?, last_version = ?, last_os = ? WHERE id = ?`,
 		now, version, os, id)

@@ -74,6 +74,7 @@
     "monaco-editor": "^0.57.0",
     "monaco-yaml": "^5.5.1",
     "nanoid": "^6.0.1",
+    "qrcode.react": "^4.2.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-error-boundary": "6.1.6",
