@@ -3,6 +3,7 @@ import {
   Box,
   Button,
   Paper,
+  SvgIcon,
   Tab,
   Tabs,
   TextField,
@@ -13,6 +14,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import VergenMark from '@/assets/image/vergen-mark.svg?react'
 import { NoticeManager } from '@/components/layout/notice-manager'
 import { enterpriseActions } from '@/hooks/use-enterprise'
 import { useVerge } from '@/hooks/use-verge'
@@ -298,10 +300,12 @@ export const EnterpriseLogin = ({
   const [tab, setTab] = useState(0)
 
   return (
-    <Paper
-      square
-      elevation={0}
-      sx={[({ palette }) => ({ bgcolor: palette.background.paper })]}
+    <Box
+      sx={[
+        ({ palette: { mode } }) => ({
+          bgcolor: mode === 'light' ? '#ECECEC' : '#2E303D',
+        }),
+      ]}
       style={{
         width: '100vw',
         height: '100vh',
@@ -325,15 +329,54 @@ export const EnterpriseLogin = ({
         }}
       >
         <Paper
-          elevation={4}
-          sx={{ width: 380, maxWidth: '90vw', p: 4, borderRadius: 2 }}
+          square
+          elevation={0}
+          sx={[
+            ({ palette: { mode } }) => ({
+              width: 380,
+              maxWidth: '90vw',
+              p: 4,
+              borderRadius: '8px',
+              bgcolor: mode === 'light' ? '#ffffff' : '#1e1f27',
+              border: '1px solid',
+              borderColor: 'var(--divider-color, rgba(0, 0, 0, 0.06))',
+              overflow: 'auto',
+            }),
+          ]}
         >
-          <Typography
-            variant="h5"
-            sx={{ fontWeight: 700, textAlign: 'center', mb: 1 }}
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '7px',
+              mb: 3,
+              mt: 1,
+            }}
           >
-            {t('login.page.title')}
-          </Typography>
+            <SvgIcon
+              component={VergenMark}
+              inheritViewBox
+              style={{
+                height: '28px',
+                width: '28px',
+                marginLeft: '-3px',
+                color: 'text.primary',
+              }}
+            />
+            <Typography
+              component="span"
+              sx={{
+                fontWeight: 700,
+                fontSize: '19px',
+                lineHeight: 1,
+                letterSpacing: 0.2,
+                color: 'text.primary',
+              }}
+            >
+              VergeN
+            </Typography>
+          </Box>
           <Typography
             variant="body2"
             sx={{ color: 'text.secondary', textAlign: 'center', mb: 3 }}
@@ -381,7 +424,15 @@ export const EnterpriseLogin = ({
                 {t('login.banner.managed')}
               </Typography>
               {session.announcement && (
-                <Alert severity="info" icon={false} sx={{ mt: 2 }}>
+                <Box
+                  sx={{
+                    mt: 2,
+                    p: 1.5,
+                    borderRadius: '8px',
+                    bgcolor:
+                      'var(--background-color-alpha, rgba(0, 122, 255, 0.1))',
+                  }}
+                >
                   <Typography variant="body2" sx={{ fontWeight: 700 }}>
                     {session.announcement.title}
                   </Typography>
@@ -393,7 +444,7 @@ export const EnterpriseLogin = ({
                       {session.announcement.content}
                     </Typography>
                   )}
-                </Alert>
+                </Box>
               )}
             </>
           ) : (
@@ -401,6 +452,6 @@ export const EnterpriseLogin = ({
           )}
         </Paper>
       </Box>
-    </Paper>
+    </Box>
   )
 }

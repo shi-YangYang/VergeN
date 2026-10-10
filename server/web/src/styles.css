@@ -1,38 +1,80 @@
+/* VergeN ops panel — mirrors the client's Clash Verge theme tokens. */
+
 :root {
-  color-scheme: dark;
-  font-family: -apple-system, "PingFang SC", "Segoe UI", sans-serif;
+  --primary: #007aff;
+  --primary-hover: #1976e8;
+  --error: #ff3b30;
+  --bg: #ececec;
+  --card: #ffffff;
+  --card-sub: #f5f5f5;
+  --divider: rgba(0, 0, 0, 0.06);
+  --divider-strong: rgba(0, 0, 0, 0.1);
+  --text: #1f1f1f;
+  --text-secondary: #3c3c4399;
+  --text-muted: #3c3c4399;
+  --field-bg: #ffffff;
+}
+
+:root {
+  color-scheme: light dark;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei",
+    sans-serif, "Apple Color Emoji";
 }
 
 * {
   box-sizing: border-box;
 }
 
+@media (prefers-color-scheme: dark) {
+  :root {
+    --primary: #0a84ff;
+    --primary-hover: #2e90ff;
+    --error: #ff453a;
+    --bg: #2e303d;
+    --card: #1e1f27;
+    --card-sub: #26272f;
+    --divider: rgba(255, 255, 255, 0.06);
+    --divider-strong: rgba(255, 255, 255, 0.12);
+    --text: #ffffff;
+    --text-secondary: #ebebf599;
+    --text-muted: #ebebf599;
+    --field-bg: #26272f;
+  }
+}
+
 body {
   margin: 0;
-  background: #16181d;
-  color: #e8eaf0;
+  background: var(--bg);
+  color: var(--text);
 }
 
 button {
   font: inherit;
-  background: #2f6fed;
-  color: #fff;
+  background: var(--primary);
+  color: #ffffff;
   border: 0;
   border-radius: 8px;
   padding: 8px 14px;
   cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+button:hover {
+  background: var(--primary-hover);
 }
 
 button.ghost {
   background: transparent;
-  color: #9aa3b2;
-  border: 1px solid #333944;
+  color: var(--primary);
+  border: 1px solid var(--divider-strong);
   padding: 4px 10px;
   border-radius: 6px;
 }
 
 button.ghost:hover {
-  color: #e8eaf0;
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
 }
 
 button:disabled {
@@ -44,9 +86,9 @@ input,
 select,
 textarea {
   font: inherit;
-  background: #1e2127;
-  border: 1px solid #333944;
-  color: #e8eaf0;
+  background: var(--field-bg);
+  border: 1px solid var(--divider-strong);
+  color: var(--text);
   border-radius: 8px;
   padding: 8px 10px;
   min-width: 0;
@@ -56,7 +98,7 @@ input:focus,
 select:focus,
 textarea:focus {
   outline: none;
-  border-color: #2f6fed;
+  border-color: var(--primary);
 }
 
 .shell header {
@@ -64,7 +106,8 @@ textarea:focus {
   align-items: center;
   gap: 24px;
   padding: 14px 24px;
-  border-bottom: 1px solid #262a32;
+  background: var(--card);
+  border-bottom: 1px solid var(--divider);
 }
 
 .brand {
@@ -72,7 +115,8 @@ textarea:focus {
   align-items: center;
   gap: 8px;
   font-weight: 700;
-  font-size: 16px;
+  font-size: 19px;
+  letter-spacing: 0.2px;
 }
 
 .brand-mark {
@@ -82,7 +126,7 @@ textarea:focus {
   width: 26px;
   height: 26px;
   border-radius: 7px;
-  background: #2f6fed;
+  background: var(--primary);
   color: #fff;
   font-weight: 800;
   font-size: 15px;
@@ -96,15 +140,21 @@ textarea:focus {
 
 .tab {
   background: transparent;
-  color: #9aa3b2;
+  color: var(--text-secondary);
   border: 0;
   padding: 6px 12px;
   border-radius: 8px;
 }
 
+.tab:hover {
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+  color: var(--primary);
+}
+
 .tab.active {
-  background: #262b35;
-  color: #e8eaf0;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+  font-weight: 600;
 }
 
 .header-right {
@@ -114,7 +164,7 @@ textarea:focus {
 }
 
 .who {
-  color: #9aa3b2;
+  color: var(--text-secondary);
   font-size: 13px;
 }
 
@@ -125,9 +175,9 @@ main {
 }
 
 .panel {
-  background: #1b1e24;
-  border: 1px solid #262a32;
-  border-radius: 12px;
+  background: var(--card);
+  border: 1px solid var(--divider);
+  border-radius: 8px;
   padding: 20px;
 }
 
@@ -147,12 +197,12 @@ main {
   flex-direction: column;
   gap: 6px;
   font-size: 13px;
-  color: #9aa3b2;
+  color: var(--text-secondary);
 }
 
 fieldset {
-  border: 1px solid #262a32;
-  border-radius: 10px;
+  border: 1px solid var(--divider);
+  border-radius: 8px;
   padding: 14px;
   display: flex;
   flex-direction: column;
@@ -160,7 +210,7 @@ fieldset {
 }
 
 legend {
-  color: #9aa3b2;
+  color: var(--text-secondary);
   font-size: 13px;
   padding: 0 6px;
 }
@@ -169,7 +219,7 @@ legend {
   flex-direction: row !important;
   align-items: center;
   gap: 8px !important;
-  color: #e8eaf0 !important;
+  color: var(--text) !important;
   font-size: 14px !important;
 }
 
@@ -181,14 +231,23 @@ legend {
 }
 
 .error {
-  color: #ff6b6b;
+  color: var(--error);
   margin: 10px 0;
   font-size: 13px;
 }
 
 .muted {
-  color: #6d7480;
+  color: var(--text-muted);
   font-size: 13px;
+}
+
+code {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 table {
@@ -202,17 +261,29 @@ th,
 td {
   text-align: left;
   padding: 10px 12px;
-  border-bottom: 1px solid #262a32;
+  border-bottom: 1px solid var(--divider);
 }
 
 th {
-  color: #6d7480;
+  color: var(--text-muted);
   font-weight: 500;
   font-size: 13px;
 }
 
+tbody tr:hover td {
+  background: color-mix(in srgb, var(--primary) 4%, transparent);
+}
+
 tr.off td {
-  color: #6d7480;
+  color: var(--text-muted);
+}
+
+.card,
+.panel .card {
+  background: var(--card);
+  border: 1px solid var(--divider);
+  border-radius: 8px;
+  padding: 18px;
 }
 
 .actions {
@@ -226,20 +297,13 @@ tr.off td {
   gap: 14px;
 }
 
-.card {
-  background: #1e2127;
-  border: 1px solid #262a32;
-  border-radius: 12px;
-  padding: 18px;
-}
-
 .card-value {
   font-size: 28px;
   font-weight: 700;
 }
 
 .card-label {
-  color: #9aa3b2;
+  color: var(--text-secondary);
   font-size: 13px;
   margin-top: 4px;
 }
@@ -253,7 +317,7 @@ tr.off td {
 
 .two-col h3 {
   font-size: 14px;
-  color: #9aa3b2;
+  color: var(--text-secondary);
   font-weight: 500;
 }
 
@@ -269,9 +333,9 @@ tr.off td {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  background: #1b1e24;
-  border: 1px solid #262a32;
-  border-radius: 14px;
+  background: var(--card);
+  border: 1px solid var(--divider);
+  border-radius: 8px;
   padding: 28px;
 }
 
@@ -280,5 +344,5 @@ tr.off td {
   flex-direction: column;
   gap: 6px;
   font-size: 13px;
-  color: #9aa3b2;
+  color: var(--text-secondary);
 }
