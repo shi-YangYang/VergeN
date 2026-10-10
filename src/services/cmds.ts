@@ -220,6 +220,14 @@ export async function enterpriseReleaseCurrent() {
   return invoke<CompanyRelease | null>('enterprise_release_current')
 }
 
+export async function enterpriseUpdaterInstall(
+  onEvent: (event: DownloadEvent) => void,
+) {
+  const channel = new Channel<DownloadEvent>()
+  channel.onmessage = onEvent
+  return invoke<boolean>('enterprise_updater_install', { onEvent: channel })
+}
+
 export async function enterpriseSync() {
   return invoke<EnterpriseSession>('enterprise_sync')
 }

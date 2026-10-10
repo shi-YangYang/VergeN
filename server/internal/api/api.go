@@ -71,6 +71,7 @@ func (a *Server) Handler() (http.Handler, error) {
 	mux.Handle("GET /api/v1/client/bootstrap", a.authed(a.handleBootstrap))
 	mux.Handle("POST /api/v1/client/heartbeat", a.authed(a.handleHeartbeat))
 	mux.Handle("GET /api/v1/client/update", a.authed(a.handleClientUpdate))
+	mux.Handle("GET /api/v1/client/updater", a.authed(a.handleClientUpdater))
 	mux.Handle("POST /api/v1/admin/users", a.admin(a.handleAdminCreateUser))
 	mux.Handle("GET /api/v1/admin/users", a.admin(a.handleAdminListUsers))
 	mux.Handle("POST /api/v1/admin/users/{id}/status", a.admin(a.handleAdminSetUserStatus))
@@ -391,6 +392,23 @@ func (a *Server) handleClientUpdate(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, r)
+}
+
+// handleClientUpdater hands the raw tauri-format manifest to the updater
+// plugin; the manifest must point its platform artifacts at signed packages.
+func (a *Server) handleClientUpdater(w http.ResponseWriter, _ *http.Request) {
+	raw, err := a.store.UpdaterManifest()
+	if err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	}
+	if strings.TrimSpace(raw) == "" {
+		fail(w, http.StatusNotFound, "no_release", "no updater manifest published")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(raw))
 }
 
 type heartbeatReq struct {

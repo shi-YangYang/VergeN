@@ -282,6 +282,23 @@ func (s *Store) SetRelease(r *Release) error {
 	return s.SetSetting("release_manifest", string(raw))
 }
 
+// UpdaterManifest is the raw tauri-format update.json fed to the updater
+// plugin verbatim; empty means only the simplified manifest is published.
+func (s *Store) UpdaterManifest() (string, error) {
+	raw, found, err := s.GetSetting("updater_manifest")
+	if err != nil {
+		return "", err
+	}
+	if !found {
+		return "", nil
+	}
+	return raw, nil
+}
+
+func (s *Store) SetUpdaterManifest(manifest string) error {
+	return s.SetSetting("updater_manifest", manifest)
+}
+
 type DashboardStats struct {
 	TotalUsers    int64
 	DisabledUsers int64

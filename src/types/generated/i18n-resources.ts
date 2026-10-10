@@ -1013,6 +1013,8 @@ export interface TranslationResources {
         }
         companyUpdate: {
           download: string
+          installNow: string
+          updating: string
         }
         dns: {
           dialog: {

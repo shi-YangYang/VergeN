@@ -1,10 +1,13 @@
 import { Box, LinearProgress, Typography } from '@mui/material'
+import type { DownloadEvent } from '@tauri-apps/plugin-updater'
 import type { Ref } from 'react'
 import { lazy, Suspense, useImperativeHandle, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { BaseDialog, DialogRef } from '@/components/base'
 import { isCompanyUpdate, useUpdate } from '@/hooks/use-update'
+import { enterpriseUpdaterInstall } from '@/services/cmds'
+import { mutate } from '@/services/mutate'
 import { showNotice } from '@/services/notice-service'
 import { openExternalUrl } from '@/utils/open-external-url'
 
@@ -28,6 +31,9 @@ export const CompanyUpdateViewer = ({ ref }: Props) => {
   const { t } = useTranslation()
   const { updateInfo } = useUpdate()
   const [open, setOpen] = useState(false)
+  const [installing, setInstalling] = useState(false)
+  const [downloaded, setDownloaded] = useState(0)
+  const [total, setTotal] = useState(0)
 
   useImperativeHandle(ref, () => ({
     open: () => setOpen(true),
@@ -40,6 +46,33 @@ export const CompanyUpdateViewer = ({ ref }: Props) => {
     if (!url) return
     void openExternalUrl(url).catch(showNotice.error)
   }
+
+  const onInstall = async () => {
+    if (!release || installing) return
+    setInstalling(true)
+    setDownloaded(0)
+    setTotal(0)
+    const onDownloadEvent = (event: DownloadEvent) => {
+      if (event.event === 'Started') {
+        setTotal(event.data.contentLength ?? 0)
+        setDownloaded(0)
+        return
+      }
+      if (event.event === 'Progress') {
+        setDownloaded((prev) => prev + event.data.chunkLength)
+        return
+      }
+      if (event.event === 'Finished') {
+        setDownloaded((prev) => prev)
+      }
+    }
+    await mutate(() => enterpriseUpdaterInstall(onDownloadEvent), {
+      id: 'enterprise-updater-install',
+      errorNotice: false,
+    }).finally(() => setInstalling(false))
+  }
+
+  const progress = total <= 0 ? 0 : Math.min((downloaded / total) * 100, 100)
 
   return (
     <BaseDialog
@@ -66,6 +99,19 @@ export const CompanyUpdateViewer = ({ ref }: Props) => {
               ? t('settings.modals.update.title', { version: release.version })
               : t('shared.statuses.loading')}
           </Box>
+          {release?.url && (
+            <Typography
+              component="a"
+              href="#"
+              onClick={(event) => {
+                event.preventDefault()
+                openUrlWithNotice(release.url)
+              }}
+              sx={{ fontSize: 13, whiteSpace: 'nowrap' }}
+            >
+              {t('settings.modals.companyUpdate.download')}
+            </Typography>
+          )}
         </Box>
       }
       contentSx={{
@@ -76,64 +122,76 @@ export const CompanyUpdateViewer = ({ ref }: Props) => {
         flexDirection: 'column',
         pb: 1,
       }}
-      disableOk={!release?.url}
-      okBtn={release?.url ? t('settings.modals.companyUpdate.download') : ''}
+      loading={installing}
+      disableOk={!release || installing}
+      okBtn={release ? t('settings.modals.companyUpdate.installNow') : ''}
       onOk={() => {
-        if (release?.url) openUrlWithNotice(release.url)
+        void onInstall()
       }}
-      cancelBtn={t('shared.actions.cancel')}
-      onClose={() => setOpen(false)}
+      cancelBtn={
+        installing
+          ? t('settings.modals.companyUpdate.updating')
+          : t('shared.actions.cancel')
+      }
+      disableCancel={installing}
+      onClose={() => {
+        if (!installing) setOpen(false)
+      }}
     >
-      {release?.notes?.trim() ? (
-        <Suspense fallback={<LinearProgress />}>
-          <Box
-            sx={{
-              flex: 1,
-              minHeight: 0,
-              overflow: 'auto',
-              pr: 1.5,
-              mr: -1,
-              fontSize: 14,
-              lineHeight: 1.65,
-              color: 'text.primary',
-              overflowWrap: 'break-word',
-              '& a': {
-                color: 'primary.main',
-                overflowWrap: 'anywhere',
-              },
-              '& p': {
-                my: 1,
-              },
-              '& ul, & ol': {
-                my: 1,
-                pl: 2.75,
-              },
-              '& code': {
-                px: 0.5,
-                py: 0.125,
-                borderRadius: 0.5,
-                bgcolor: 'action.hover',
-                fontSize: '0.92em',
-              },
-              '& pre': {
-                my: 1.5,
-                p: 1.5,
-                overflow: 'auto',
-                borderRadius: 1,
-                bgcolor: 'action.hover',
-              },
-            }}
-          >
+      <Box
+        sx={{
+          flex: 1,
+          minHeight: 0,
+          overflow: 'auto',
+          pr: 1.5,
+          mr: -1,
+          fontSize: 14,
+          lineHeight: 1.65,
+          color: 'text.primary',
+          overflowWrap: 'break-word',
+          '& a': {
+            color: 'primary.main',
+            overflowWrap: 'anywhere',
+          },
+          '& p': {
+            my: 1,
+          },
+          '& ul, & ol': {
+            my: 1,
+            pl: 2.75,
+          },
+          '& code': {
+            px: 0.5,
+            py: 0.125,
+            borderRadius: 0.5,
+            bgcolor: 'action.hover',
+            fontSize: '0.92em',
+          },
+          '& pre': {
+            my: 1.5,
+            p: 1.5,
+            overflow: 'auto',
+            borderRadius: 1,
+            bgcolor: 'action.hover',
+          },
+        }}
+      >
+        {release?.notes?.trim() ? (
+          <Suspense fallback={<LinearProgress />}>
             <LazyReactMarkdown>{release.notes}</LazyReactMarkdown>
-          </Box>
-        </Suspense>
-      ) : (
-        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-          {release
-            ? t('settings.modals.update.messages.available')
-            : t('shared.statuses.loading')}
-        </Typography>
+          </Suspense>
+        ) : (
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+            {release
+              ? t('settings.modals.update.messages.available')
+              : t('shared.statuses.loading')}
+          </Typography>
+        )}
+      </Box>
+      {installing && total > 0 && (
+        <LinearProgress variant="determinate" value={progress} sx={{ mt: 1 }} />
       )}
+      {installing && total === 0 && <LinearProgress sx={{ mt: 1 }} />}
     </BaseDialog>
   )
 }

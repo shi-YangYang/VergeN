@@ -205,6 +205,9 @@ type settingsPatch struct {
 	DingtalkAppKey    *string `json:"dingtalk_app_key"`
 	DingtalkAppSecret *string `json:"dingtalk_app_secret"`
 	DingtalkAgentID   *string `json:"dingtalk_agent_id"`
+	// UpdaterManifest must be a valid tauri-format update.json body; an
+	// empty string clears it.
+	UpdaterManifest *string `json:"updater_manifest"`
 }
 
 func (a *Server) handleAdminGetSettings(w http.ResponseWriter, _ *http.Request) {
@@ -327,6 +330,25 @@ func (a *Server) handleAdminSetSettings(w http.ResponseWriter, r *http.Request) 
 				pub.PubDate = time.Now().Unix()
 			}
 			if err := a.store.SetRelease(&pub); err != nil {
+				fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+				return
+			}
+		}
+	}
+	if req.UpdaterManifest != nil {
+		trimmed := strings.TrimSpace(*req.UpdaterManifest)
+		if trimmed == "" {
+			if err := a.store.SetUpdaterManifest(""); err != nil {
+				fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+				return
+			}
+		} else {
+			var probe map[string]any
+			if err := json.Unmarshal([]byte(trimmed), &probe); err != nil {
+				fail(w, http.StatusBadRequest, "bad_request", "updater_manifest must be a valid JSON document")
+				return
+			}
+			if err := a.store.SetUpdaterManifest(trimmed); err != nil {
 				fail(w, http.StatusInternalServerError, "internal_error", "internal error")
 				return
 			}

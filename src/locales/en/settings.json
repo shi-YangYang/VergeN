@@ -653,7 +653,9 @@
       }
     },
     "companyUpdate": {
-      "download": "Download"
+      "installNow": "Update now",
+      "updating": "Updating, the app will restart…",
+      "download": "Open download page"
     }
   },
   "feedback": {

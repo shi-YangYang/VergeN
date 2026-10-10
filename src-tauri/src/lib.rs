@@ -189,6 +189,7 @@ mod app_init {
             cmd::get_enterprise_session,
             cmd::enterprise_login,
             cmd::enterprise_release_current,
+            cmd::enterprise_updater_install,
             cmd::enterprise_dingtalk_qr_start,
             cmd::enterprise_dingtalk_qr_poll,
             cmd::enterprise_dingtalk_qr_cancel,

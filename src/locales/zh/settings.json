@@ -653,6 +653,8 @@
       }
     },
     "companyUpdate": {
+      "installNow": "立即更新",
+      "updating": "正在更新，应用将自动重启…",
       "download": "前往下载"
     }
   },

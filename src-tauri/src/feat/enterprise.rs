@@ -610,6 +610,51 @@ pub async fn release_check() -> Result<Option<CompanyRelease>> {
     Ok(Some(parsed))
 }
 
+/// Full auto-update through the company channel: the updater plugin fetches
+/// the tauri-format manifest from the company server, downloads and
+/// signature-verifies the artifact, replaces the bundle and restarts.
+/// Returns Ok(false) when server has no newer release.
+pub async fn updater_autoinstall(
+    app: tauri::AppHandle,
+    on_progress: impl FnMut(usize, Option<u64>) + Send + 'static,
+) -> Result<bool> {
+    use tauri_plugin_updater::UpdaterExt;
+    let server = {
+        let data = Config::verge().await.data_arc();
+        data.enterprise_server_url
+            .clone()
+            .filter(|u| !u.trim().is_empty())
+            .ok_or_else(|| anyhow!("enterprise 未配置"))?
+    };
+    let client = http_client()?;
+    let access = match ensure_access(&client, &server).await? {
+        AccessOutcome::Access(access) => access,
+        AccessOutcome::NeedsLogin => return Ok(false),
+    };
+    let manifest_url =
+        reqwest::Url::parse(&format!("{server}/api/v1/client/updater")).map_err(|e| anyhow!("更新地址无效: {e}"))?;
+    let updater = app
+        .updater_builder()
+        .endpoints(vec![manifest_url])
+        .map_err(|e| anyhow!("更新端点无效: {e}"))?
+        .header("Authorization", format!("Bearer {access}"))
+        .map_err(|e| anyhow!("更新头无效: {e}"))?
+        .build()?;
+    let Some(update) = updater.check().await.map_err(|e| anyhow!("检查更新失败: {e}"))? else {
+        logging!(info, Type::Cmd, "company update: already latest");
+        return Ok(false);
+    };
+    let version = update.version.clone();
+    logging!(info, Type::Cmd, "company update: downloading {}", version);
+    let mut on_progress = on_progress;
+    update
+        .download_and_install(move |chunk, total| on_progress(chunk, total), || {})
+        .await
+        .map_err(|e| anyhow!("下载或安装更新失败: {e}"))?;
+    logging!(info, Type::Cmd, "company update {} installed; restarting", version);
+    app.restart();
+}
+
 async fn heartbeat_once() -> Result<bool> {
     let data = Config::verge().await.data_arc();
     let Some(server) = data.enterprise_server_url.clone().filter(|u| !u.trim().is_empty()) else {
