@@ -574,6 +574,7 @@ function DingtalkPage() {
   const [appKey, setAppKey] = useState('')
   const [appSecret, setAppSecret] = useState('')
   const [agentId, setAgentId] = useState('')
+  const [corpId, setCorpId] = useState('')
   const [message, setMessage] = useState('')
 
   useEffect(() => {
@@ -581,6 +582,7 @@ function DingtalkPage() {
       setSettings(data)
       setAppKey(data.dingtalk_app_key ?? '')
       setAgentId(data.dingtalk_agent_id ?? '')
+      setCorpId(data.dingtalk_corp_id ?? '')
     })
   }, [])
 
@@ -603,6 +605,7 @@ function DingtalkPage() {
     const patch: SettingsPatch = {
       dingtalk_app_key: appKey,
       dingtalk_agent_id: agentId,
+      dingtalk_corp_id: corpId.trim(),
     }
     if (appSecret.trim() !== '') {
       patch.dingtalk_app_secret = appSecret
@@ -639,6 +642,18 @@ function DingtalkPage() {
               onChange={(e) => setAgentId(e.target.value)}
             />
           </label>
+          <label>
+            企业 CorpId(可选)
+            <input
+              placeholder="留空则不校验扫码组织"
+              value={corpId}
+              onChange={(e) => setCorpId(e.target.value)}
+            />
+          </label>
+          <div className="muted" style={{ fontSize: 12, lineHeight: 1.6 }}>
+            配置 CorpId 后，员工必须使用公司组织成员的钉钉账号扫码才能登录；
+            CorpId 可在钉钉管理后台"企业信息"页查看。
+          </div>
           <div className="muted" style={{ fontSize: 12, lineHeight: 1.6 }}>
             回调地址(填入钉钉开放平台"登录与分享"Redirect URI):
             <code>{`${location.origin}/api/v1/auth/dingtalk/callback`}</code>

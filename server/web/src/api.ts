@@ -72,6 +72,7 @@ export interface AdminSettings {
   dingtalk_app_key: string
   dingtalk_app_secret_set: boolean
   dingtalk_agent_id: string
+  dingtalk_corp_id: string
 }
 
 export interface AdminAnnouncement {
@@ -254,6 +255,7 @@ export type SettingsPatch = Partial<{
   dingtalk_app_key: string
   dingtalk_app_secret: string
   dingtalk_agent_id: string
+  dingtalk_corp_id: string
 }>
 
 export const patchSettings = (patch: SettingsPatch) =>

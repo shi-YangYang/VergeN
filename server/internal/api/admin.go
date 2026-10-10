@@ -21,6 +21,7 @@ const (
 	settingDingtalkKey    = "dingtalk_app_key"
 	settingDingtalkSecret = "dingtalk_app_secret"
 	settingDingtalkAgent  = "dingtalk_agent_id"
+	settingDingtalkCorp   = "dingtalk_corp_id"
 )
 
 type createUserReq struct {
@@ -187,7 +188,10 @@ type settingsView struct {
 	// The secret never round-trips to the panel; only its presence is shown.
 	DingtalkAppSecretSet bool   `json:"dingtalk_app_secret_set"`
 	DingtalkAgentID      string `json:"dingtalk_agent_id"`
-	UpdaterManifest      string `json:"updater_manifest"`
+	// Optional: when set, the dingtalk callback verifies the scanned
+	// organization equals this corp id.
+	DingtalkCorpID  string `json:"dingtalk_corp_id"`
+	UpdaterManifest string `json:"updater_manifest"`
 }
 
 type settingsPatch struct {
@@ -200,6 +204,7 @@ type settingsPatch struct {
 	DingtalkAppKey    *string `json:"dingtalk_app_key"`
 	DingtalkAppSecret *string `json:"dingtalk_app_secret"`
 	DingtalkAgentID   *string `json:"dingtalk_agent_id"`
+	DingtalkCorpID    *string `json:"dingtalk_corp_id"`
 	// UpdaterManifest must be a valid tauri-format update.json body; an
 	// empty string clears it.
 	UpdaterManifest *string `json:"updater_manifest"`
@@ -239,6 +244,12 @@ func (a *Server) handleAdminGetSettings(w http.ResponseWriter, _ *http.Request) 
 		return
 	} else if found {
 		view.DingtalkAgentID = agentID
+	}
+	if corpID, found, err := a.store.GetSetting(settingDingtalkCorp); err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	} else if found {
+		view.DingtalkCorpID = corpID
 	}
 	if secret, found, err := a.store.GetSetting(settingDingtalkSecret); err != nil {
 		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
@@ -320,6 +331,12 @@ func (a *Server) handleAdminSetSettings(w http.ResponseWriter, r *http.Request) 
 	}
 	if req.DingtalkAgentID != nil {
 		if err := a.store.SetSetting(settingDingtalkAgent, *req.DingtalkAgentID); err != nil {
+			fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+			return
+		}
+	}
+	if req.DingtalkCorpID != nil {
+		if err := a.store.SetSetting(settingDingtalkCorp, *req.DingtalkCorpID); err != nil {
 			fail(w, http.StatusInternalServerError, "internal_error", "internal error")
 			return
 		}

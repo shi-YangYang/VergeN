@@ -262,10 +262,18 @@ func (a *Server) dingtalkFinishCallback(sessionID, code string) (title, detail s
 		a.qrSessions.complete(sessionID, "", "服务器钉钉登录未配置")
 		return "登录失败", "服务器钉钉登录未配置，请联系管理员"
 	}
-	unionID, err := dingtalkExchangeUnionID(appKey, appSecret, code)
+	unionID, userCorpID, err := dingtalkExchangeUnionID(appKey, appSecret, code)
 	if err != nil {
 		a.qrSessions.complete(sessionID, "", "钉钉验证失败")
 		return "登录失败", fmt.Sprintf("钉钉验证失败：%v", err)
+	}
+	if configuredCorp, found, _ := a.store.GetSetting(settingDingtalkCorp); found && configuredCorp != "" {
+		// Optional organization guard: the scanned account must belong to
+		// the configured corp.
+		if userCorpID != configuredCorp {
+			a.qrSessions.complete(sessionID, "", "组织不符")
+			return "登录失败", "请使用公司组织的钉钉账号扫码"
+		}
 	}
 	u, err := a.store.GetUserByDingtalkID(unionID)
 	if errors.Is(err, store.ErrNotFound) {
@@ -287,10 +295,11 @@ func (a *Server) dingtalkFinishCallback(sessionID, code string) (title, detail s
 type dingtalkUserAccess struct {
 	AccessToken string `json:"accessToken"`
 	UnionID     string `json:"unionId"`
+	CorpID      string `json:"corpId"`
 	Message     string `json:"message"`
 }
 
-func dingtalkExchangeUnionID(appKey, appSecret, code string) (string, error) {
+func dingtalkExchangeUnionID(appKey, appSecret, code string) (string, string, error) {
 	payload, err := json.Marshal(map[string]string{
 		"clientId":     appKey,
 		"clientSecret": appSecret,
@@ -298,30 +307,30 @@ func dingtalkExchangeUnionID(appKey, appSecret, code string) (string, error) {
 		"code":         code,
 	})
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	client := &http.Client{Timeout: dingtalkTimeout}
 	resp, err := client.Post("https://api.dingtalk.com/v1.0/oauth2/userAccessToken",
 		"application/json", bytes.NewReader(payload))
 	if err != nil {
-		return "", errors.New("无法连接钉钉服务")
+		return "", "", errors.New("无法连接钉钉服务")
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 	if err != nil {
-		return "", errors.New("钉钉响应读取失败")
+		return "", "", errors.New("钉钉响应读取失败")
 	}
 	var parsed dingtalkUserAccess
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return "", fmt.Errorf("钉钉响应解析失败 (HTTP %d)", resp.StatusCode)
+		return "", "", fmt.Errorf("钉钉响应解析失败 (HTTP %d)", resp.StatusCode)
 	}
 	if parsed.UnionID == "" {
 		if parsed.Message != "" {
-			return "", fmt.Errorf("%s", parsed.Message)
+			return "", "", fmt.Errorf("%s", parsed.Message)
 		}
-		return "", errors.New("钉钉未返回用户标识")
+		return "", "", errors.New("钉钉未返回用户标识")
 	}
-	return parsed.UnionID, nil
+	return parsed.UnionID, parsed.CorpID, nil
 }
 
 func qrCallbackPage(w http.ResponseWriter, title, detail string) {
