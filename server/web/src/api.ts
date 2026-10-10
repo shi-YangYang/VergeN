@@ -1,12 +1,48 @@
 const TOKEN_KEY = 'vergen_admin_token'
+const REFRESH_KEY = 'vergen_admin_refresh'
 
 let token = sessionStorage.getItem(TOKEN_KEY) ?? ''
+let refreshToken = sessionStorage.getItem(REFRESH_KEY) ?? ''
 
 export const hasToken = () => token !== ''
 
 export const clearToken = () => {
   token = ''
+  refreshToken = ''
   sessionStorage.removeItem(TOKEN_KEY)
+  sessionStorage.removeItem(REFRESH_KEY)
+}
+
+// Access tokens live 30 minutes; a single in-flight refresh shared by all
+// concurrent 401s keeps the operator signed in instead of forcing a
+// re-login whenever the page lingers.
+let refreshing: Promise<boolean> | null = null
+
+async function refreshAccessToken(): Promise<boolean> {
+  if (!refreshToken) return false
+  if (!refreshing) {
+    refreshing = (async () => {
+      try {
+        const response = await fetch('/api/v1/auth/refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        })
+        if (!response.ok) return false
+        const data = await response.json()
+        token = data.access_token
+        if (data.refresh_token) refreshToken = data.refresh_token
+        sessionStorage.setItem(TOKEN_KEY, token)
+        sessionStorage.setItem(REFRESH_KEY, refreshToken)
+        return true
+      } catch {
+        return false
+      } finally {
+        refreshing = null
+      }
+    })()
+  }
+  return refreshing
 }
 
 export interface AdminUser {
@@ -51,7 +87,7 @@ export interface DashboardStats {
 
 async function request<T>(
   path: string,
-  options: { method?: string; body?: unknown } = {},
+  options: { method?: string; body?: unknown; retried?: boolean } = {},
 ): Promise<T> {
   const response = await fetch(`/api/v1${path}`, {
     method: options.method ?? 'GET',
@@ -64,6 +100,19 @@ async function request<T>(
   const text = await response.text()
   const data = text ? JSON.parse(text) : null
   if (!response.ok) {
+    if (
+      response.status === 401 &&
+      !options.retried &&
+      data?.error?.code === 'invalid_access_token'
+    ) {
+      if (await refreshAccessToken()) {
+        return request<T>(path, { ...options, retried: true })
+      }
+      // The refresh token died too: drop the stale identity so the next
+      // view lands on the login card instead of failing forever.
+      clearToken()
+      location.reload()
+    }
     const message = data?.error?.message ?? `请求失败 (${response.status})`
     throw new Error(message)
   }
@@ -73,6 +122,7 @@ async function request<T>(
 export async function login(username: string, password: string) {
   const data = await request<{
     access_token: string
+    refresh_token?: string
     user: { username: string; role: string }
   }>('/auth/login', { method: 'POST', body: { username, password } })
   if (data.user.role !== 'admin') {
@@ -80,6 +130,10 @@ export async function login(username: string, password: string) {
   }
   token = data.access_token
   sessionStorage.setItem(TOKEN_KEY, token)
+  if (data.refresh_token) {
+    refreshToken = data.refresh_token
+    sessionStorage.setItem(REFRESH_KEY, refreshToken)
+  }
   return data.user
 }
 
