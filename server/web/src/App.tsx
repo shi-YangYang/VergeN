@@ -2,30 +2,45 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 
 import {
+  activateSubscription,
   clearToken,
+  createSubscription,
   createUser,
+  deleteSubscription,
   getDashboard,
   getSettings,
   hasToken,
+  listSubscriptions,
   listUsers,
   login as apiLogin,
   patchSettings,
   setUserDingtalk,
   setUserPassword,
   setUserStatus,
+  updateSubscription,
   type AdminSettings,
+  type AdminSubscription,
   type AdminUser,
   type DashboardStats,
   type SettingsPatch,
 } from './api'
 
-type Tab = 'users' | 'subscription' | 'release' | 'dingtalk' | 'dashboard'
+type Tab =
+  | 'users'
+  | 'subscription'
+  | 'release'
+  | 'dingtalk'
+  | 'policy'
+  | 'announcement'
+  | 'dashboard'
 
 const TABS: [Tab, string][] = [
   ['users', '员工账号'],
-  ['subscription', '配置订阅'],
+  ['subscription', '订阅管理'],
   ['release', '客户端发布'],
   ['dingtalk', '钉钉接入'],
+  ['policy', '策略管控'],
+  ['announcement', '公告'],
   ['dashboard', '在线看板'],
 ]
 
@@ -33,26 +48,198 @@ function alertContext(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
-function ConfigPage() {
+function SubscriptionsPage() {
+  const [subs, setSubs] = useState<AdminSubscription[]>([])
+  const [name, setName] = useState('')
+  const [url, setUrl] = useState('')
+  const [editId, setEditId] = useState<number | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editUrl, setEditUrl] = useState('')
+  const [error, setError] = useState('')
+
+  const reload = async () => {
+    try {
+      const data = await listSubscriptions()
+      setSubs(data.subscriptions)
+      setError('')
+    } catch (err) {
+      setError(alertContext(err))
+    }
+  }
+
+  useEffect(() => {
+    void reload()
+  }, [])
+
+  const create = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!url.trim()) return
+    try {
+      await createSubscription(name.trim(), url.trim())
+      setName('')
+      setUrl('')
+      await reload()
+    } catch (err) {
+      setError(alertContext(err))
+    }
+  }
+
+  const saveEdit = async () => {
+    if (editId === null || !editUrl.trim()) return
+    try {
+      await updateSubscription(editId, editName.trim(), editUrl.trim())
+      setEditId(null)
+      await reload()
+    } catch (err) {
+      setError(alertContext(err))
+    }
+  }
+
+  const activate = async (id: number) => {
+    try {
+      await activateSubscription(id)
+      await reload()
+    } catch (err) {
+      setError(alertContext(err))
+    }
+  }
+
+  const remove = async (sub: AdminSubscription) => {
+    if (
+      sub.active &&
+      !window.confirm(
+        '该订阅为当前员工启用中，确认删除？删除后员工端将不再获取订阅。',
+      )
+    ) {
+      return
+    }
+    try {
+      await deleteSubscription(sub.id)
+      await reload()
+    } catch (err) {
+      setError(alertContext(err))
+    }
+  }
+
+  return (
+    <section className="panel">
+      <form className="row-form" onSubmit={create}>
+        <input
+          placeholder="名称(可选)"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <input
+          placeholder="订阅 URL"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          style={{ flex: 1, minWidth: 260 }}
+        />
+        <button type="submit">添加订阅</button>
+      </form>
+      {error && <div className="error">{error}</div>}
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>名称</th>
+            <th>URL</th>
+            <th>状态</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {subs.map((sub) => (
+            <tr key={sub.id} className={sub.active ? '' : 'off'}>
+              <td>{sub.id}</td>
+              <td>{sub.name || '-'}</td>
+              <td className="url-cell" title={sub.url}>
+                {sub.url}
+              </td>
+              <td>{sub.active ? '启用中' : '草稿'}</td>
+              <td className="actions">
+                {!sub.active && (
+                  <button
+                    className="ghost"
+                    onClick={() => void activate(sub.id)}
+                  >
+                    启用
+                  </button>
+                )}
+                <button
+                  className="ghost"
+                  onClick={() => {
+                    setEditId(editId === sub.id ? null : sub.id)
+                    setEditName(sub.name)
+                    setEditUrl(sub.url)
+                  }}
+                >
+                  编辑
+                </button>
+                <button className="ghost" onClick={() => void remove(sub)}>
+                  删除
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {editId !== null && (
+        <form
+          className="row-form"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void saveEdit()
+          }}
+        >
+          <span>编辑 #{editId}</span>
+          <input
+            placeholder="名称"
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+          />
+          <input
+            placeholder="URL"
+            value={editUrl}
+            onChange={(e) => setEditUrl(e.target.value)}
+            style={{ flex: 1, minWidth: 240 }}
+          />
+          <button type="submit">确认</button>
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => setEditId(null)}
+          >
+            取消
+          </button>
+        </form>
+      )}
+    </section>
+  )
+}
+
+function PolicyPage() {
   const [settings, setSettings] = useState<AdminSettings | null>(null)
-  const [subscriptionUrl, setSubscriptionUrl] = useState('')
-  const [announcementTitle, setAnnouncementTitle] = useState('')
-  const [announcementContent, setAnnouncementContent] = useState('')
+  const [allowChange, setAllowChange] = useState(false)
   const [message, setMessage] = useState('')
 
   useEffect(() => {
     void getSettings().then((data) => {
       setSettings(data)
-      setSubscriptionUrl(data.subscription_url ?? '')
-      setAnnouncementTitle(data.announcement?.title ?? '')
-      setAnnouncementContent(data.announcement?.content ?? '')
+      setAllowChange(data.managed_flags.allow_change_settings)
     })
   }, [])
 
-  const save = async (patch: SettingsPatch) => {
+  const save = async (event: FormEvent) => {
+    event.preventDefault()
     try {
-      const data = await patchSettings(patch)
-      setSettings(data)
+      await patchSettings({
+        managed_flags: {
+          allow_edit_profiles:
+            settings?.managed_flags.allow_edit_profiles ?? false,
+          allow_change_settings: allowChange,
+        },
+      })
       setMessage('已保存')
       setTimeout(() => setMessage(''), 2000)
     } catch (err) {
@@ -60,65 +247,72 @@ function ConfigPage() {
     }
   }
 
-  if (!settings) return <div className="muted">加载中…</div>
-
-  const submit = (event: FormEvent) => {
-    event.preventDefault()
-    void save({
-      subscription_url: subscriptionUrl,
-      managed_flags: settings.managed_flags,
-      announcement:
-        announcementTitle.trim() === ''
-          ? null
-          : { title: announcementTitle, content: announcementContent },
-    })
-  }
-
   return (
     <section className="panel narrow">
-      <form onSubmit={submit} className="stack">
-        <label>
-          公司订阅地址(员工端自动导入)
-          <input
-            placeholder="https://…"
-            value={subscriptionUrl}
-            onChange={(e) => setSubscriptionUrl(e.target.value)}
-          />
-        </label>
+      <form className="stack" onSubmit={save}>
         <fieldset>
-          <legend>受管策略</legend>
+          <legend>员工端限制</legend>
           <label className="check">
             <input
               type="checkbox"
-              checked={settings.managed_flags.allow_change_settings}
-              onChange={(e) =>
-                setSettings({
-                  ...settings,
-                  managed_flags: {
-                    ...settings.managed_flags,
-                    allow_change_settings: e.target.checked,
-                  },
-                })
-              }
+              checked={allowChange}
+              onChange={(e) => setAllowChange(e.target.checked)}
             />
             允许员工修改客户端设置
           </label>
         </fieldset>
+        <div className="row-form">
+          <button type="submit">保存</button>
+          {message && <span className="muted">{message}</span>}
+        </div>
+      </form>
+    </section>
+  )
+}
+
+function AnnouncementPage() {
+  const [title, setTitle] = useState('')
+  const [content, setContent] = useState('')
+  const [message, setMessage] = useState('')
+
+  useEffect(() => {
+    void getSettings().then((data) => {
+      setTitle(data.announcement?.title ?? '')
+      setContent(data.announcement?.content ?? '')
+    })
+  }, [])
+
+  const save = async (event: FormEvent) => {
+    event.preventDefault()
+    try {
+      await patchSettings({
+        announcement:
+          title.trim() === ''
+            ? null
+            : { title: title.trim(), content: content },
+      })
+      setMessage('已保存')
+      setTimeout(() => setMessage(''), 2000)
+    } catch (err) {
+      setMessage(alertContext(err))
+    }
+  }
+
+  return (
+    <section className="panel narrow">
+      <form className="stack" onSubmit={save}>
         <fieldset>
-          <legend>登录页公告</legend>
+          <legend>登录页公告(留空标题即清除)</legend>
           <label>
-            标题(留空清除)
-            <input
-              value={announcementTitle}
-              onChange={(e) => setAnnouncementTitle(e.target.value)}
-            />
+            标题
+            <input value={title} onChange={(e) => setTitle(e.target.value)} />
           </label>
           <label>
             内容
             <textarea
               rows={3}
-              value={announcementContent}
-              onChange={(e) => setAnnouncementContent(e.target.value)}
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
             />
           </label>
         </fieldset>
@@ -376,9 +570,11 @@ export function App() {
       </header>
       <main>
         {tab === 'users' && <UsersPanel />}
-        {tab === 'subscription' && <ConfigPage />}
+        {tab === 'subscription' && <SubscriptionsPage />}
         {tab === 'release' && <ReleasePage />}
         {tab === 'dingtalk' && <DingtalkPage />}
+        {tab === 'policy' && <PolicyPage />}
+        {tab === 'announcement' && <AnnouncementPage />}
         {tab === 'dashboard' && <DashboardPanel />}
       </main>
     </div>

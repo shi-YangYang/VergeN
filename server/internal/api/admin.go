@@ -182,11 +182,10 @@ func (a *Server) handleAdminSetUserDingtalk(w http.ResponseWriter, r *http.Reque
 }
 
 type settingsView struct {
-	SubscriptionURL string         `json:"subscription_url"`
-	ManagedFlags    managedFlags   `json:"managed_flags"`
-	Announcement    *announcement  `json:"announcement"`
-	Release         *store.Release `json:"release"`
-	DingtalkAppKey  string         `json:"dingtalk_app_key"`
+	ManagedFlags   managedFlags   `json:"managed_flags"`
+	Announcement   *announcement  `json:"announcement"`
+	Release        *store.Release `json:"release"`
+	DingtalkAppKey string         `json:"dingtalk_app_key"`
 	// The secret never round-trips to the panel; only its presence is shown.
 	DingtalkAppSecretSet bool   `json:"dingtalk_app_secret_set"`
 	DingtalkAgentID      string `json:"dingtalk_agent_id"`
@@ -194,8 +193,7 @@ type settingsView struct {
 }
 
 type settingsPatch struct {
-	SubscriptionURL *string       `json:"subscription_url"`
-	ManagedFlags    *managedFlags `json:"managed_flags"`
+	ManagedFlags *managedFlags `json:"managed_flags"`
 	// Announcement with empty title and content clears the current one.
 	Announcement *announcement `json:"announcement"`
 	// Release with an empty version clears the published manifest.
@@ -213,14 +211,6 @@ type settingsPatch struct {
 
 func (a *Server) handleAdminGetSettings(w http.ResponseWriter, _ *http.Request) {
 	view := settingsView{ManagedFlags: managedFlags{}}
-	subURL, found, err := a.store.GetSetting(settingSubscription)
-	if err != nil {
-		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
-		return
-	}
-	if found {
-		view.SubscriptionURL = subURL
-	}
 	if raw, found, err := a.store.GetSetting(settingManagedFlags); err != nil {
 		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
@@ -276,16 +266,6 @@ func (a *Server) handleAdminSetSettings(w http.ResponseWriter, r *http.Request) 
 	req, ok := readJSON[settingsPatch](w, r)
 	if !ok {
 		return
-	}
-	if req.SubscriptionURL != nil {
-		if *req.SubscriptionURL != "" && !validateSubscriptionURL(*req.SubscriptionURL) {
-			fail(w, http.StatusBadRequest, "bad_request", "subscription_url must be a valid http(s) URL")
-			return
-		}
-		if err := a.store.SetSetting(settingSubscription, *req.SubscriptionURL); err != nil {
-			fail(w, http.StatusInternalServerError, "internal_error", "internal error")
-			return
-		}
 	}
 	if req.ManagedFlags != nil {
 		raw, err := json.Marshal(req.ManagedFlags)
@@ -407,4 +387,97 @@ func (a *Server) handleAdminDashboard(w http.ResponseWriter, _ *http.Request) {
 		VersionDist:         stats.VersionDist,
 		OSDist:              stats.OSDist,
 	})
+}
+
+// --- Subscription management ---
+
+type subscriptionPayload struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
+}
+
+func (a *Server) handleAdminListSubscriptions(w http.ResponseWriter, _ *http.Request) {
+	subs, err := a.store.ListSubscriptions()
+	if err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	}
+	out := make([]*store.Subscription, 0, len(subs))
+	out = append(out, subs...)
+	writeJSON(w, http.StatusOK, map[string]any{"subscriptions": out})
+}
+
+func (a *Server) handleAdminCreateSubscription(w http.ResponseWriter, r *http.Request) {
+	req, ok := readJSON[subscriptionPayload](w, r)
+	if !ok {
+		return
+	}
+	if !validateSubscriptionURL(req.URL) {
+		fail(w, http.StatusBadRequest, "bad_request", "url must be a valid http(s) URL")
+		return
+	}
+	sub, err := a.store.CreateSubscription(req.Name, req.URL, time.Now())
+	if err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"subscription": sub})
+}
+
+func (a *Server) handleAdminUpdateSubscription(w http.ResponseWriter, r *http.Request) {
+	req, ok := readJSON[subscriptionPayload](w, r)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		fail(w, http.StatusBadRequest, "bad_request", "invalid subscription id")
+		return
+	}
+	found, err := a.store.UpdateSubscription(id, req.Name, req.URL)
+	if err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	}
+	if !found {
+		fail(w, http.StatusNotFound, "subscription_not_found", "subscription does not exist")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *Server) handleAdminActivateSubscription(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		fail(w, http.StatusBadRequest, "bad_request", "invalid subscription id")
+		return
+	}
+	found, err := a.store.ActivateSubscription(id)
+	if err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	}
+	if !found {
+		fail(w, http.StatusNotFound, "subscription_not_found", "subscription does not exist")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *Server) handleAdminDeleteSubscription(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		fail(w, http.StatusBadRequest, "bad_request", "invalid subscription id")
+		return
+	}
+	found, err := a.store.DeleteSubscription(id)
+	if err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	}
+	if !found {
+		fail(w, http.StatusNotFound, "subscription_not_found", "subscription does not exist")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

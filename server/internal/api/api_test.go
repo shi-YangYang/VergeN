@@ -85,11 +85,11 @@ func TestEnterpriseFlow(t *testing.T) {
 		t.Fatal("admin login returned no access_token")
 	}
 
-	// Ops sets the company subscription URL.
-	code, body = doJSON(t, h, "POST", "/api/v1/admin/settings", adminToken,
-		map[string]any{"subscription_url": "https://ops.example.com/sub/company"})
-	if code != http.StatusOK {
-		t.Fatalf("set settings: status=%d body=%v", code, body)
+	// Ops publishes a company subscription.
+	code, body = doJSON(t, h, "POST", "/api/v1/admin/subscriptions", adminToken,
+		map[string]any{"name": "公司订阅", "url": "https://ops.example.com/sub/company"})
+	if code != http.StatusCreated {
+		t.Fatalf("create subscription: status=%d body=%v", code, body)
 	}
 
 	// Admin creates an employee account.
@@ -208,8 +208,8 @@ func TestAdminSettingsValidation(t *testing.T) {
 	_, body := login(t, h, "admin", "admin-password-1")
 	adminToken := body["access_token"].(string)
 
-	code, _ := doJSON(t, h, "POST", "/api/v1/admin/settings", adminToken,
-		map[string]any{"subscription_url": "not-a-url"})
+	code, _ := doJSON(t, h, "POST", "/api/v1/admin/subscriptions", adminToken,
+		map[string]any{"url": "not-a-url"})
 	if code != http.StatusBadRequest {
 		t.Fatalf("invalid subscription url: status=%d", code)
 	}
@@ -456,4 +456,89 @@ func TestClientReleaseManifest(t *testing.T) {
 	if code != http.StatusNotFound {
 		t.Fatalf("update after clear: status=%d body=%v", code, body)
 	}
+}
+
+func TestSubscriptionManagement(t *testing.T) {
+	h, s := newTestBackend(t)
+	adminToken := adminLoginToken(t, h, s)
+
+	// Empty list.
+	code, body := doJSON(t, h, "GET", "/api/v1/admin/subscriptions", adminToken, nil)
+	if code != http.StatusOK {
+		t.Fatalf("list: status=%d", code)
+	}
+	if subs, _ := body["subscriptions"].([]any); len(subs) != 0 {
+		t.Fatalf("expected empty list, got %v", body)
+	}
+
+	// First subscription goes live immediately.
+	code, body = doJSON(t, h, "POST", "/api/v1/admin/subscriptions", adminToken,
+		map[string]any{"name": "A", "url": "https://sub.example.com/a"})
+	if code != http.StatusCreated {
+		t.Fatalf("create A: status=%d body=%v", code, body)
+	}
+	sub, _ := body["subscription"].(map[string]any)
+	idA := int64(sub["id"].(float64))
+	if sub["active"] != true {
+		t.Fatalf("first subscription should be active: %v", sub)
+	}
+
+	// Newer one stays a draft until activated.
+	code, body = doJSON(t, h, "POST", "/api/v1/admin/subscriptions", adminToken,
+		map[string]any{"name": "B", "url": "https://sub.example.com/b"})
+	if code != http.StatusCreated {
+		t.Fatalf("create B: status=%d body=%v", code, body)
+	}
+	sub, _ = body["subscription"].(map[string]any)
+	idB := int64(sub["id"].(float64))
+	if sub["active"] != false {
+		t.Fatalf("later subscription should stay draft: %v", sub)
+	}
+
+	// Editing an absent id 404s.
+	code, _ = doJSON(t, h, "POST", "/api/v1/admin/subscriptions/999", adminToken,
+		map[string]any{"name": "x", "url": "https://sub.example.com/x"})
+	if code != http.StatusNotFound {
+		t.Fatalf("update missing: status=%d", code)
+	}
+
+	// Update B in place.
+	code, _ = doJSON(t, h, "POST", "/api/v1/admin/subscriptions/"+itoa(idB), adminToken,
+		map[string]any{"name": "B2", "url": "https://sub.example.com/b2"})
+	if code != http.StatusNoContent {
+		t.Fatalf("update B: status=%d", code)
+	}
+
+	// Activate B and bootstrap serves it for the employee.
+	code, _ = doJSON(t, h, "POST", "/api/v1/admin/subscriptions/"+itoa(idB)+"/activate", adminToken, nil)
+	if code != http.StatusNoContent {
+		t.Fatalf("activate B: status=%d", code)
+	}
+	hash, err := auth.HashPassword("emp-password-9")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateUser("emp9", hash, "user", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	code, body = login(t, h, "emp9", "emp-password-9")
+	if code != http.StatusOK {
+		t.Fatalf("emp login: status=%d", code)
+	}
+	empAccess, _ := body["access_token"].(string)
+	code, body = doJSON(t, h, "GET", "/api/v1/client/bootstrap", empAccess, nil)
+	if code != http.StatusOK || body["subscription_url"] != "https://sub.example.com/b2" {
+		t.Fatalf("bootstrap after activate: status=%d body=%v", code, body["subscription_url"])
+	}
+
+	// Delete the active one; bootstrap falls back to empty.
+	code, _ = doJSON(t, h, "DELETE", "/api/v1/admin/subscriptions/"+itoa(idB), adminToken, nil)
+	if code != http.StatusNoContent {
+		t.Fatalf("delete B: status=%d", code)
+	}
+	code, body = doJSON(t, h, "GET", "/api/v1/client/bootstrap", empAccess, nil)
+	if code != http.StatusOK || body["subscription_url"] != "" {
+		t.Fatalf("bootstrap after delete: status=%d body=%v", code, body["subscription_url"])
+	}
+	_ = idA
 }

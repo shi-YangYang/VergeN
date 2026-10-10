@@ -22,7 +22,6 @@ export interface AdminUser {
 }
 
 export interface AdminSettings {
-  subscription_url: string
   managed_flags: {
     allow_edit_profiles: boolean
     allow_change_settings: boolean
@@ -110,10 +109,49 @@ export const setUserDingtalk = (id: number, dingtalkUserid: string) =>
     body: { dingtalk_userid: dingtalkUserid },
   })
 
+export interface AdminSubscription {
+  id: number
+  name: string
+  url: string
+  active: boolean
+  created_at: number
+}
+
+export async function listSubscriptions() {
+  return request<{ subscriptions: AdminSubscription[] }>('/admin/subscriptions')
+}
+
+export async function createSubscription(name: string, url: string) {
+  return request<{ subscription: AdminSubscription }>('/admin/subscriptions', {
+    method: 'POST',
+    body: { name, url },
+  })
+}
+
+export async function updateSubscription(
+  id: number,
+  name: string,
+  url: string,
+) {
+  return request<null>(`/admin/subscriptions/${id}`, {
+    method: 'POST',
+    body: { name, url },
+  })
+}
+
+export async function activateSubscription(id: number) {
+  return request<null>(`/admin/subscriptions/${id}/activate`, {
+    method: 'POST',
+  })
+}
+
+export async function deleteSubscription(id: number) {
+  return request<null>(`/admin/subscriptions/${id}`, { method: 'DELETE' })
+}
+
 export const getSettings = () => request<AdminSettings>('/admin/settings')
 
 export type SettingsPatch = Partial<{
-  subscription_url: string
   managed_flags: AdminSettings['managed_flags']
   announcement: { title: string; content: string } | null
   release: AdminSettings['release']

@@ -62,6 +62,13 @@ CREATE TABLE IF NOT EXISTS settings (
 	key   TEXT PRIMARY KEY,
 	value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS subscriptions (
+	id        INTEGER PRIMARY KEY AUTOINCREMENT,
+	name      TEXT NOT NULL DEFAULT '',
+	url       TEXT NOT NULL,
+	active    INTEGER NOT NULL DEFAULT 0,
+	created_at INTEGER NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_refresh_user ON refresh_tokens(user_id);
 `
 
@@ -76,7 +83,37 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	return &Store{db: db}, nil
+	store := &Store{db: db}
+	if err := store.migrateSubscription(); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return store, nil
+}
+
+// migrateSubscription lifts the legacy single-subscription setting into the
+// subscriptions table so upgrades keep serving the same url.
+func (s *Store) migrateSubscription() error {
+	var count int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM subscriptions`).Scan(&count); err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+	legacy, found, err := s.GetSetting("subscription_url")
+	if err != nil {
+		return err
+	}
+	if found && legacy != "" {
+		if _, err := s.db.Exec(
+			`INSERT INTO subscriptions (name, url, active, created_at) VALUES ('公司订阅', ?, 1, ?)`,
+			legacy, time.Now().Unix()); err != nil {
+			return err
+		}
+		_ = s.SetSetting("subscription_url", "")
+	}
+	return nil
 }
 
 func (s *Store) Close() error { return s.db.Close() }
@@ -297,6 +334,119 @@ func (s *Store) UpdaterManifest() (string, error) {
 
 func (s *Store) SetUpdaterManifest(manifest string) error {
 	return s.SetSetting("updater_manifest", manifest)
+}
+
+// --- Subscriptions ---
+
+type Subscription struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	URL       string `json:"url"`
+	Active    bool   `json:"active"`
+	CreatedAt int64  `json:"created_at"`
+}
+
+const subscriptionCols = `id, name, url, active, created_at`
+
+func scanSubscription(row interface{ Scan(dest ...any) error }) (*Subscription, error) {
+	var sub Subscription
+	var active int
+	err := row.Scan(&sub.ID, &sub.Name, &sub.URL, &active, &sub.CreatedAt)
+	sub.Active = active == 1
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &sub, nil
+}
+
+func (s *Store) ListSubscriptions() ([]*Subscription, error) {
+	rows, err := s.db.Query(`SELECT ` + subscriptionCols + ` FROM subscriptions ORDER BY active DESC, id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []*Subscription
+	for rows.Next() {
+		sub, err := scanSubscription(rows)
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, sub)
+	}
+	return list, rows.Err()
+}
+
+// ActiveSubscription resolves the url bootstrap serves to employees.
+func (s *Store) ActiveSubscription() (string, error) {
+	row := s.db.QueryRow(`SELECT url FROM subscriptions WHERE active = 1 ORDER BY id LIMIT 1`)
+	var url string
+	err := row.Scan(&url)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return url, nil
+}
+
+func (s *Store) CreateSubscription(name, url string, now time.Time) (*Subscription, error) {
+	// The very first subscription goes live immediately; later ones stay
+	// drafts until the admin activates them.
+	var count int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM subscriptions`).Scan(&count); err != nil {
+		return nil, err
+	}
+	active := 0
+	if count == 0 {
+		active = 1
+	}
+	res, err := s.db.Exec(
+		`INSERT INTO subscriptions (name, url, active, created_at) VALUES (?, ?, ?, ?)`,
+		name, url, active, now.Unix())
+	if err != nil {
+		return nil, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+	return scanSubscription(s.db.QueryRow(`SELECT `+subscriptionCols+` FROM subscriptions WHERE id = ?`, id))
+}
+
+func (s *Store) UpdateSubscription(id int64, name, url string) (bool, error) {
+	res, err := s.db.Exec(`UPDATE subscriptions SET name = ?, url = ? WHERE id = ?`, name, url, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+func (s *Store) DeleteSubscription(id int64) (bool, error) {
+	res, err := s.db.Exec(`DELETE FROM subscriptions WHERE id = ?`, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+// ActivateSubscription marks one subscription as the one served to clients;
+// a deleted active row leaves the feed empty by design.
+func (s *Store) ActivateSubscription(id int64) (bool, error) {
+	if _, err := s.db.Exec(`UPDATE subscriptions SET active = 0 WHERE active = 1 AND id != ?`, id); err != nil {
+		return false, err
+	}
+	res, err := s.db.Exec(`UPDATE subscriptions SET active = 1 WHERE id = ?`, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
 }
 
 type DashboardStats struct {

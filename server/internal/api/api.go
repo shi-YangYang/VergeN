@@ -77,6 +77,11 @@ func (a *Server) Handler() (http.Handler, error) {
 	mux.Handle("POST /api/v1/admin/users/{id}/status", a.admin(a.handleAdminSetUserStatus))
 	mux.Handle("POST /api/v1/admin/users/{id}/password", a.admin(a.handleAdminSetUserPassword))
 	mux.Handle("POST /api/v1/admin/users/{id}/dingtalk", a.admin(a.handleAdminSetUserDingtalk))
+	mux.Handle("GET /api/v1/admin/subscriptions", a.admin(a.handleAdminListSubscriptions))
+	mux.Handle("POST /api/v1/admin/subscriptions", a.admin(a.handleAdminCreateSubscription))
+	mux.Handle("POST /api/v1/admin/subscriptions/{id}", a.admin(a.handleAdminUpdateSubscription))
+	mux.Handle("POST /api/v1/admin/subscriptions/{id}/activate", a.admin(a.handleAdminActivateSubscription))
+	mux.Handle("DELETE /api/v1/admin/subscriptions/{id}", a.admin(a.handleAdminDeleteSubscription))
 	mux.Handle("GET /api/v1/admin/settings", a.admin(a.handleAdminGetSettings))
 	mux.Handle("POST /api/v1/admin/settings", a.admin(a.handleAdminSetSettings))
 	mux.Handle("GET /api/v1/admin/dashboard", a.admin(a.handleAdminDashboard))
@@ -350,12 +355,10 @@ type bootstrapResp struct {
 
 func (a *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 	resp := bootstrapResp{Managed: managedFlags{}}
-	subURL, found, err := a.store.GetSetting("subscription_url")
-	if err != nil {
+	if subURL, err := a.store.ActiveSubscription(); err != nil {
 		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
-	}
-	if found && subURL != "" {
+	} else {
 		resp.SubscriptionURL = subURL
 	}
 	if raw, found, err := a.store.GetSetting("managed_flags"); err != nil {
