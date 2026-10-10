@@ -7,6 +7,8 @@ import svgr from 'vite-plugin-svgr'
 
 export default defineConfig({
   root: 'src',
+  // Env files live beside the repo root even though vite serves from src/.
+  envDir: path.resolve('.'),
   server: { port: 3000 },
   plugins: [
     svgr(),
