@@ -34,6 +34,7 @@
     "includes": [
       "**",
       "!dist",
+      "!server/internal/web/dist",
       "!node_modules",
       "!src-tauri/target",
       "!src-tauri/gen",

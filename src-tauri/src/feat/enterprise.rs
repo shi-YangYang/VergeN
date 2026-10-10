@@ -618,7 +618,7 @@ pub async fn updater_autoinstall(
     app: tauri::AppHandle,
     on_progress: impl FnMut(usize, Option<u64>) + Send + 'static,
 ) -> Result<bool> {
-    use tauri_plugin_updater::UpdaterExt;
+    use tauri_plugin_updater::UpdaterExt as _;
     let server = {
         let data = Config::verge().await.data_arc();
         data.enterprise_server_url
@@ -646,9 +646,8 @@ pub async fn updater_autoinstall(
     };
     let version = update.version.clone();
     logging!(info, Type::Cmd, "company update: downloading {}", version);
-    let mut on_progress = on_progress;
     update
-        .download_and_install(move |chunk, total| on_progress(chunk, total), || {})
+        .download_and_install(on_progress, || {})
         .await
         .map_err(|e| anyhow!("下载或安装更新失败: {e}"))?;
     logging!(info, Type::Cmd, "company update {} installed; restarting", version);

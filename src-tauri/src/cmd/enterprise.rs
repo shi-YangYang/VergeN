@@ -28,9 +28,7 @@ pub async fn enterprise_updater_install(
             first_chunk = false;
             let _ = on_event.send(DownloadEvent::Started { content_length: total });
         }
-        let _ = on_event.send(DownloadEvent::Progress {
-            chunk_length: chunk as usize,
-        });
+        let _ = on_event.send(DownloadEvent::Progress { chunk_length: chunk });
     })
     .await
     .map_err(|error| super::coded_error("ENTERPRISE_UPDATER_FAILED", error))
