@@ -19,7 +19,7 @@
         "traffic": "Trafik İstatistikleri Kartı",
         "tests": "Web Sitesi Testleri Kartı",
         "ip": "IP Bilgi Kartı",
-        "clashInfo": "Clash Bilgi Kartları",
+        "clashInfo": "VergeN Bilgi Kartları",
         "systemInfo": "Sistem Bilgi Kartları"
       },
       "title": "Ana Sayfa Ayarları"
@@ -41,7 +41,7 @@
       }
     },
     "clashInfo": {
-      "title": "Clash Bilgisi",
+      "title": "VergeN Bilgisi",
       "fields": {
         "coreVersion": "Çekirdek Sürümü",
         "systemProxyAddress": "Sistem Vekil Adresi",

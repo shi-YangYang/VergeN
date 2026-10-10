@@ -97,7 +97,7 @@
       "system": "System"
     },
     "clash": {
-      "title": "Clash Setting",
+      "title": "VergeN Setting",
       "form": {
         "fields": {
           "allowLan": "Allow LAN",
@@ -108,7 +108,7 @@
           "portConfig": "Port Config",
           "external": "External",
           "webUI": "Web UI",
-          "clashCore": "Clash Core",
+          "clashCore": "VergeN Core",
           "openUwpTool": "Open UWP tool",
           "updateGeoData": "Update GeoData",
           "tunnels": {
@@ -687,7 +687,7 @@
     },
     "notifications": {
       "clash": {
-        "restartSuccess": "Clash Core Restarted",
+        "restartSuccess": "VergeN Core Restarted",
         "versionUpdated": "Core Version Updated",
         "alreadyLatestVersion": "Already Using Latest Core Version",
         "changeSuccess": "Core changed successfully",
@@ -705,8 +705,8 @@
         "uninstallSuccess": "Service Uninstalled Successfully"
       },
       "updater": {
-        "withClashProxySuccess": "Update with Clash proxy successfully",
-        "withClashProxyFailed": "Update failed even with Clash proxy"
+        "withClashProxySuccess": "Update with VergeN proxy successfully",
+        "withClashProxyFailed": "Update failed even with VergeN proxy"
       }
     }
   },

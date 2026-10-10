@@ -97,7 +97,7 @@
       "system": "系統"
     },
     "clash": {
-      "title": "Clash 設定",
+      "title": "VergeN 設定",
       "form": {
         "fields": {
           "allowLan": "區域網路連線",
@@ -108,7 +108,7 @@
           "portConfig": "連接埠設定",
           "external": "外部控制",
           "webUI": "網頁介面",
-          "clashCore": "Clash 內核",
+          "clashCore": "VergeN 內核",
           "openUwpTool": "UWP 工具",
           "updateGeoData": "更新 GeoData",
           "tunnels": {
@@ -687,7 +687,7 @@
     },
     "notifications": {
       "clash": {
-        "restartSuccess": "已重啟 Clash 內核",
+        "restartSuccess": "已重啟 VergeN 內核",
         "versionUpdated": "內核版本已更新",
         "alreadyLatestVersion": "已經是最新內核版本",
         "changeSuccess": "內核切換成功",
@@ -705,8 +705,8 @@
         "uninstallSuccess": "已成功解除安裝服務"
       },
       "updater": {
-        "withClashProxySuccess": "使用 Clash 代理更新成功",
-        "withClashProxyFailed": "使用 Clash 代理更新也失敗"
+        "withClashProxySuccess": "使用内核代理更新成功",
+        "withClashProxyFailed": "使用内核代理更新也失敗"
       }
     }
   },

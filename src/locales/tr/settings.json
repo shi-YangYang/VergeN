@@ -97,7 +97,7 @@
       "system": "Sistem"
     },
     "clash": {
-      "title": "Clash Ayarı",
+      "title": "VergeN Ayarı",
       "form": {
         "fields": {
           "allowLan": "LAN'a İzin Ver",
@@ -108,7 +108,7 @@
           "portConfig": "Port Yapılandırması",
           "external": "Harici",
           "webUI": "Web Arayüzü",
-          "clashCore": "Clash Çekirdeği",
+          "clashCore": "VergeN Çekirdeği",
           "openUwpTool": "UWP Aracını Aç",
           "updateGeoData": "GeoData'yı Güncelle",
           "tunnels": {
@@ -687,7 +687,7 @@
     },
     "notifications": {
       "clash": {
-        "restartSuccess": "Clash Çekirdeği Yeniden Başlatıldı",
+        "restartSuccess": "VergeN Çekirdeği Yeniden Başlatıldı",
         "versionUpdated": "Çekirdek Sürümü Güncellendi",
         "alreadyLatestVersion": "Zaten en yeni çekirdek sürümünü kullanıyorsunuz",
         "changeSuccess": "Çekirdek başarıyla değiştirildi",
@@ -705,8 +705,8 @@
         "uninstallSuccess": "Hizmet Başarıyla Kaldırıldı"
       },
       "updater": {
-        "withClashProxySuccess": "Clash vekil ile güncelleme başarılı",
-        "withClashProxyFailed": "Clash vekil ile bile güncelleme başarısız oldu"
+        "withClashProxySuccess": "VergeN vekil ile güncelleme başarılı",
+        "withClashProxyFailed": "VergeN vekil ile bile güncelleme başarısız oldu"
       }
     }
   },

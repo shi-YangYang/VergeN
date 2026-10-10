@@ -38,6 +38,7 @@ import { useNavigate } from 'react-router'
 import { EnhancedCard } from '@/components/home/enhanced-card'
 import type { ProxySortType } from '@/components/proxy/use-filter-sort'
 import { useGroupDelays } from '@/hooks/use-group-delays'
+import { useManagedSubscriptionLabel } from '@/hooks/use-managed-subscription'
 import { useProfiles } from '@/hooks/use-profiles'
 import { useProxySelection } from '@/hooks/use-proxy-selection'
 import { useVerge } from '@/hooks/use-verge'
@@ -192,6 +193,11 @@ function getSignalIcon(
     color: 'success.main',
   }
 }
+
+// 订阅商会把"剩余流量/套餐到期"这类信息伪装成节点;员工端一律隐藏
+const INFO_NODE_PATTERN =
+  /^(剩余流量|距离下次重置|套餐到期|到期时间|到期|剩余天数|剩余|官网|流量[:：]|官网地址)/
+const isInfoNode = (name: string) => INFO_NODE_PATTERN.test(name.trim())
 
 const optionValue = (memberIndex: number, member: ResolvedProxyMember) =>
   `${memberIndex}:${
@@ -647,6 +653,17 @@ export const CurrentProxyCard = () => {
     )
   }, [proxyView])
 
+  // 面板业务名展示在首组(与代理页主组规则一致)
+  const managedLabel = useManagedSubscriptionLabel()
+  const primaryGroupIndex = useMemo(
+    () => selectableGroups.findIndex((group) => group.name !== 'GLOBAL'),
+    [selectableGroups],
+  )
+  const primaryGroupName =
+    primaryGroupIndex >= 0
+      ? selectableGroups[primaryGroupIndex]?.name
+      : undefined
+
   const selectedGroup = useMemo<ProxyGroupView | null>(() => {
     if (!proxyView || isDirectMode) return null
     if (isGlobalMode) return proxyView.global
@@ -664,16 +681,18 @@ export const CurrentProxyCard = () => {
   const optionsForGroup = useCallback(
     (group: ProxyGroupView | null): ProxyOption[] =>
       proxyView && group
-        ? group.members.map((memberRef, memberIndex) => {
-            const member = resolveMember(proxyView, memberRef)
-            return {
-              memberIndex,
-              member,
-              value: optionValue(memberIndex, member),
-              name: member.ref.name,
-              disabled: !isInteractableMember(member),
-            }
-          })
+        ? group.members
+            .map((memberRef, memberIndex) => {
+              const member = resolveMember(proxyView, memberRef)
+              return {
+                memberIndex,
+                member,
+                value: optionValue(memberIndex, member),
+                name: member.ref.name,
+                disabled: !isInteractableMember(member),
+              }
+            })
+            .filter((option) => !isInfoNode(option.name))
         : [],
     [proxyView],
   )
@@ -1111,13 +1130,19 @@ export const CurrentProxyCard = () => {
           <Box sx={{ mb: 1.5 }}>
             <PersistentSelect
               label={t('home.components.currentProxy.labels.group')}
-              displayValue={<Typography noWrap>{selectedGroupName}</Typography>}
+              displayValue={
+                <Typography noWrap>
+                  {selectedGroupName === primaryGroupName && managedLabel
+                    ? managedLabel
+                    : selectedGroupName}
+                </Typography>
+              }
               open={openSelect === 'group'}
               disabled={isGlobalMode || isDirectMode}
               keepOpenRef={delayButtonRef}
               onOpenChange={(open) => setOpenSelect(open ? 'group' : null)}
               renderOptions={() =>
-                selectableGroups.map((group) => (
+                selectableGroups.map((group, index) => (
                   <MenuItem
                     key={group.name}
                     role="option"
@@ -1125,7 +1150,11 @@ export const CurrentProxyCard = () => {
                     selected={group.name === selectedGroupName}
                     onClick={() => handleGroupChange(group.name)}
                   >
-                    <Typography noWrap>{group.name}</Typography>
+                    <Typography noWrap>
+                      {index === primaryGroupIndex && managedLabel
+                        ? managedLabel
+                        : group.name}
+                    </Typography>
                   </MenuItem>
                 ))
               }

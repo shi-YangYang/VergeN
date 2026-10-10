@@ -103,7 +103,7 @@
     "notifications": {
       "importSuccess": "Profil Başarıyla İçe Aktarıldı",
       "importSubscriptionSuccess": "Abonelik içe aktarımı başarılı",
-      "importWithClashProxy": "Profil Clash vekil ile içe aktarıldı",
+      "importWithClashProxy": "Profil VergeN vekil ile içe aktarıldı",
       "updateAvailable": "Güncelleme Mevcut",
       "saved": "Başarıyla kaydedildi",
       "common": {

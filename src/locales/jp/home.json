@@ -19,7 +19,7 @@
         "traffic": "トラフィック統計カード",
         "tests": "ウェブサイトテストカード",
         "ip": "IP情報カード",
-        "clashInfo": "Clash情報カード",
+        "clashInfo": "VergeN情報カード",
         "systemInfo": "システム情報カード"
       },
       "title": "ホーム設定"
@@ -41,7 +41,7 @@
       }
     },
     "clashInfo": {
-      "title": "Clash情報",
+      "title": "VergeN情報",
       "fields": {
         "coreVersion": "コアバージョン",
         "systemProxyAddress": "システムプロキシアドレス",

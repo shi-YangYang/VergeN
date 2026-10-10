@@ -83,7 +83,7 @@ tray:
   openDir: Open Directory
   appLog: Application Log
   coreLog: Core Log
-  restartClash: Restart Clash Core
+  restartClash: Restart core
   restartApp: Restart Application
   vergeVersion: Verge Version
   more: More

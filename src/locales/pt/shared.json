@@ -103,7 +103,7 @@
     "notifications": {
       "importSuccess": "Perfil importado com sucesso",
       "importSubscriptionSuccess": "Assinatura importada com sucesso",
-      "importWithClashProxy": "Perfil importado com o proxy do Clash",
+      "importWithClashProxy": "Perfil importado com o proxy do VergeN",
       "updateAvailable": "Atualização disponível",
       "saved": "Salvo com sucesso",
       "common": {

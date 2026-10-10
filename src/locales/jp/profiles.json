@@ -41,8 +41,8 @@
         "managedDeviceLocked": "Managed devices cannot add or modify profiles"
       },
       "notifications": {
-        "importRetry": "インポートに失敗しました。Clashプロキシを使用して再試行します...",
-        "importFail": "Clashプロキシを使用してもインポートに失敗しました。",
+        "importRetry": "インポートに失敗しました。VergeNプロキシを使用して再試行します...",
+        "importFail": "VergeNプロキシを使用してもインポートに失敗しました。",
         "importNeedsRefresh": "Profile imported but may need manual refresh",
         "importSuccess": "Profile imported successfully, please restart if not visible",
         "profileSwitched": "プロファイルが切り替えられました。",
@@ -144,8 +144,8 @@
       },
       "feedback": {
         "notifications": {
-          "creationRetry": "プロファイルの作成に失敗しました。Clashプロキシを使用して再試行します...",
-          "creationSuccess": "Clashプロキシを使用してプロファイルの作成に成功しました。"
+          "creationRetry": "プロファイルの作成に失敗しました。VergeNプロキシを使用して再試行します...",
+          "creationSuccess": "VergeNプロキシを使用してプロファイルの作成に成功しました。"
         }
       }
     },

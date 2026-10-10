@@ -97,7 +97,7 @@
       "system": "System"
     },
     "clash": {
-      "title": "Clash設定",
+      "title": "VergeN設定",
       "form": {
         "fields": {
           "allowLan": "LAN接続を許可",
@@ -108,7 +108,7 @@
           "portConfig": "ポート設定",
           "external": "外部制御",
           "webUI": "Webインターフェース",
-          "clashCore": "Clashコア",
+          "clashCore": "VergeNコア",
           "openUwpTool": "UWPツールを開く",
           "updateGeoData": "GeoDataを更新",
           "tunnels": {
@@ -687,7 +687,7 @@
     },
     "notifications": {
       "clash": {
-        "restartSuccess": "Clashコアが再起動されました。",
+        "restartSuccess": "VergeNコアが再起動されました。",
         "versionUpdated": "コアバージョンが更新されました。",
         "alreadyLatestVersion": "すでに最新のコアバージョンを使用しています。",
         "changeSuccess": "コアの切り替えに成功しました。",
@@ -705,8 +705,8 @@
         "uninstallSuccess": "サービスのアンインストールに成功しました。"
       },
       "updater": {
-        "withClashProxySuccess": "Clashプロキシを使用して更新に成功しました。",
-        "withClashProxyFailed": "Clashプロキシを使用しても更新に失敗しました。"
+        "withClashProxySuccess": "VergeNプロキシを使用して更新に成功しました。",
+        "withClashProxyFailed": "VergeNプロキシを使用しても更新に失敗しました。"
       }
     }
   },

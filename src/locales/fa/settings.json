@@ -97,7 +97,7 @@
       "system": "System"
     },
     "clash": {
-      "title": "تنظیمات Clash",
+      "title": "تنظیمات VergeN",
       "form": {
         "fields": {
           "allowLan": "اجازه LAN",
@@ -108,7 +108,7 @@
           "portConfig": "پیکربندی پورت",
           "external": "خارجی",
           "webUI": "رابط وب",
-          "clashCore": "هسته Clash",
+          "clashCore": "هسته VergeN",
           "openUwpTool": "باز کردن ابزار UWP",
           "updateGeoData": "به‌روزرسانی GeoData",
           "tunnels": {
@@ -687,7 +687,7 @@
     },
     "notifications": {
       "clash": {
-        "restartSuccess": "هسته Clash مجدداً راه‌اندازی شد",
+        "restartSuccess": "هسته VergeN مجدداً راه‌اندازی شد",
         "versionUpdated": "نسخه هسته به‌روزرسانی شد",
         "alreadyLatestVersion": "در حال حاضر از آخرین نسخه هسته استفاده می‌کنید",
         "changeSuccess": "هسته با موفقیت تغییر کرد",

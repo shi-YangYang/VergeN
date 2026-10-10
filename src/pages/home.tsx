@@ -388,7 +388,7 @@ const NetworkSettingsCard = () => {
   )
 }
 
-// 增强版 Clash 模式卡片组件
+// 增强版代理模式卡片组件
 const ClashModeEnhancedCard = () => {
   const { t } = useTranslation()
   return (

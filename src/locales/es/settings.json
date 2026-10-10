@@ -97,7 +97,7 @@
       "system": "System"
     },
     "clash": {
-      "title": "Ajustes de Clash",
+      "title": "Ajustes de VergeN",
       "form": {
         "fields": {
           "allowLan": "Conexión a la red local",
@@ -108,7 +108,7 @@
           "portConfig": "Configuración de puerto",
           "external": "Control externo",
           "webUI": "Interfaz web",
-          "clashCore": "Núcleo de Clash",
+          "clashCore": "Núcleo de VergeN",
           "openUwpTool": "Abrir herramienta UWP",
           "updateGeoData": "Actualizar GeoData",
           "tunnels": {
@@ -687,7 +687,7 @@
     },
     "notifications": {
       "clash": {
-        "restartSuccess": "Núcleo de Clash reiniciado",
+        "restartSuccess": "Núcleo de VergeN reiniciado",
         "versionUpdated": "Versión del núcleo actualizada",
         "alreadyLatestVersion": "Ya estás utilizando la versión más reciente del núcleo",
         "changeSuccess": "Núcleo cambiado con éxito",
@@ -705,8 +705,8 @@
         "uninstallSuccess": "Servicio desinstalado con éxito"
       },
       "updater": {
-        "withClashProxySuccess": "Actualización con el proxy de Clash exitosa",
-        "withClashProxyFailed": "Error al actualizar incluso con el proxy de Clash"
+        "withClashProxySuccess": "Actualización con el proxy de VergeN exitosa",
+        "withClashProxyFailed": "Error al actualizar incluso con el proxy de VergeN"
       }
     }
   },

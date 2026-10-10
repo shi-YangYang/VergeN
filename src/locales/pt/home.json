@@ -19,7 +19,7 @@
         "traffic": "Cartão de estatísticas de tráfego",
         "tests": "Cartão de testes de sites",
         "ip": "Cartão de informações de IP",
-        "clashInfo": "Cartões de informações do Clash",
+        "clashInfo": "Cartões de informações do VergeN",
         "systemInfo": "Cartões de informações do sistema"
       },
       "title": "Configurações do início"
@@ -41,7 +41,7 @@
       }
     },
     "clashInfo": {
-      "title": "Informações do Clash",
+      "title": "Informações do VergeN",
       "fields": {
         "coreVersion": "Versão do núcleo",
         "systemProxyAddress": "Endereço do proxy do sistema",

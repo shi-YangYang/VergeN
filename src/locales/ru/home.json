@@ -19,7 +19,7 @@
         "traffic": "Карточка трафика",
         "tests": "Карточка проверки доступности сайтов",
         "ip": "Информация об IP",
-        "clashInfo": "Информация о Clash",
+        "clashInfo": "Информация о VergeN",
         "systemInfo": "Информация о системе"
       },
       "title": "Настройки главной страницы"
@@ -41,7 +41,7 @@
       }
     },
     "clashInfo": {
-      "title": "Информация о Clash",
+      "title": "Информация о VergeN",
       "fields": {
         "coreVersion": "Версия ядра",
         "systemProxyAddress": "Адрес системного прокси",

@@ -97,7 +97,7 @@
       "system": "System"
     },
     "clash": {
-      "title": "Clash-Einstellungen",
+      "title": "VergeN-Einstellungen",
       "form": {
         "fields": {
           "allowLan": "Netzwerkverbindung im lokalen Netzwerk zulassen",
@@ -108,7 +108,7 @@
           "portConfig": "Port-Konfiguration",
           "external": "Externe Steuerung",
           "webUI": "Web-Oberfläche",
-          "clashCore": "Clash-Kern",
+          "clashCore": "VergeN-Kern",
           "openUwpTool": "UWP-Tool öffnen",
           "updateGeoData": "Geo-Daten aktualisieren",
           "tunnels": {
@@ -677,17 +677,17 @@
         "coreAlreadyRunning": "Der Kern kann nicht gestartet werden: Ein Kernprozess läuft bereits. Beenden Sie die zugehörige App oder den verbliebenen Prozess und versuchen Sie es erneut. Wenn das Problem weiterhin besteht, starten Sie den Computer neu."
       },
       "sysproxy": {
-        "privilegeRequired": "Systemproxy kann nicht gesetzt werden: macOS hat die Änderung mangels Berechtigung abgelehnt. Installieren Sie den Clash-Verge-Dienst; als Administrator können Sie in den erweiterten Optionen unter Systemeinstellungen → Datenschutz & Sicherheit auch die Passwortpflicht für systemweite Einstellungen deaktivieren.",
+        "privilegeRequired": "Systemproxy kann nicht gesetzt werden: macOS hat die Änderung mangels Berechtigung abgelehnt. Installieren Sie den VergeN-Verge-Dienst; als Administrator können Sie in den erweiterten Optionen unter Systemeinstellungen → Datenschutz & Sicherheit auch die Passwortpflicht für systemweite Einstellungen deaktivieren.",
         "directFallback": "Systemproxy konnte nicht gesetzt werden; der Datenverkehr wurde auf eine direkte Verbindung zurückgesetzt.",
         "guardStopped": "Der Systemproxy-Wächter wurde nach mehreren Fehlversuchen in Folge gestoppt. Der Systemproxy wird nicht mehr automatisch aufrechterhalten.",
-        "sidecarWhileServiceReady": "Der Systemproxy konnte nicht gesetzt werden: Der Clash-Verge-Dienst ist bereit, der Kern läuft aber noch als Sidecar. Starten Sie den Kern neu, um in den Dienstmodus zu wechseln.",
-        "coreNotReady": "Der Systemproxy konnte nicht aktiviert werden, da der Kern nicht läuft. Starten Sie den Kern (oder installieren/reparieren Sie den Clash-Verge-Dienst) und versuchen Sie es erneut.",
+        "sidecarWhileServiceReady": "Der Systemproxy konnte nicht gesetzt werden: Der VergeN-Verge-Dienst ist bereit, der Kern läuft aber noch als Sidecar. Starten Sie den Kern neu, um in den Dienstmodus zu wechseln.",
+        "coreNotReady": "Der Systemproxy konnte nicht aktiviert werden, da der Kern nicht läuft. Starten Sie den Kern (oder installieren/reparieren Sie den VergeN-Verge-Dienst) und versuchen Sie es erneut.",
         "systemCallFailed": "Der Systemproxy konnte nicht geschrieben werden, da ein Windows-Systemaufruf fehlschlug. Das ist meist vorübergehend, versuchen Sie es erneut."
       }
     },
     "notifications": {
       "clash": {
-        "restartSuccess": "Clash-Kern wurde neu gestartet",
+        "restartSuccess": "VergeN-Kern wurde neu gestartet",
         "versionUpdated": "Kernversion wurde aktualisiert",
         "alreadyLatestVersion": "Bereits die neueste Kernversion in Verwendung",
         "changeSuccess": "Kern erfolgreich gewechselt",
@@ -705,8 +705,8 @@
         "uninstallSuccess": "Service erfolgreich deinstalliert"
       },
       "updater": {
-        "withClashProxySuccess": "Aktualisierung mit Clash-Proxy erfolgreich",
-        "withClashProxyFailed": "Aktualisierung auch mit Clash-Proxy fehlgeschlagen"
+        "withClashProxySuccess": "Aktualisierung mit VergeN-Proxy erfolgreich",
+        "withClashProxyFailed": "Aktualisierung auch mit VergeN-Proxy fehlgeschlagen"
       }
     }
   },

@@ -97,7 +97,7 @@
       "system": "System"
     },
     "clash": {
-      "title": "Pengaturan Clash",
+      "title": "Pengaturan VergeN",
       "form": {
         "fields": {
           "allowLan": "Izinkan LAN",
@@ -108,7 +108,7 @@
           "portConfig": "Konfigurasi Port",
           "external": "Eksternal",
           "webUI": "Antarmuka Web",
-          "clashCore": "Inti Clash",
+          "clashCore": "Inti VergeN",
           "openUwpTool": "Buka alat UWP",
           "updateGeoData": "Perbarui GeoData",
           "tunnels": {
@@ -687,7 +687,7 @@
     },
     "notifications": {
       "clash": {
-        "restartSuccess": "Core Clash Dimulai Ulang",
+        "restartSuccess": "Core VergeN Dimulai Ulang",
         "versionUpdated": "Versi Core Diperbarui",
         "alreadyLatestVersion": "Sudah menggunakan versi inti terbaru",
         "changeSuccess": "Inti berhasil diubah",
@@ -705,8 +705,8 @@
         "uninstallSuccess": "Layanan Berhasil Dicopot"
       },
       "updater": {
-        "withClashProxySuccess": "Update with Clash proxy successfully",
-        "withClashProxyFailed": "Update failed even with Clash proxy"
+        "withClashProxySuccess": "Update with VergeN proxy successfully",
+        "withClashProxyFailed": "Update failed even with VergeN proxy"
       }
     }
   },

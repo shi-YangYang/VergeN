@@ -41,8 +41,8 @@
         "managedDeviceLocked": "Managed devices cannot add or modify profiles"
       },
       "notifications": {
-        "importRetry": "İçe aktarma başarısız oldu, Clash vekil ile yeniden deneniyor...",
-        "importFail": "Clash vekil ile bile içe aktarma başarısız oldu",
+        "importRetry": "İçe aktarma başarısız oldu, VergeN vekil ile yeniden deneniyor...",
+        "importFail": "VergeN vekil ile bile içe aktarma başarısız oldu",
         "importNeedsRefresh": "Profil içe aktarıldı ancak elle yenilemek gerekebilir",
         "importSuccess": "Profil başarıyla içe aktarıldı, görünmüyorsa lütfen yeniden başlatın",
         "profileSwitched": "Profil Değiştirildi",
@@ -125,7 +125,7 @@
         "httpTimeout": "HTTP İsteği Zaman Aşımı",
         "updateInterval": "Güncelleme Aralığı",
         "useSystemProxy": "Sistem Vekil'ini Kullan",
-        "useClashProxy": "Clash Vekil'ini Kullan",
+        "useClashProxy": "VergeN Vekil'ini Kullan",
         "acceptInvalidCerts": "Geçersiz Sertifikalara İzin Ver (Tehlikeli)",
         "allowAutoUpdate": "Otomatik Güncellemeye İzin Ver"
       },
@@ -144,8 +144,8 @@
       },
       "feedback": {
         "notifications": {
-          "creationRetry": "Profil oluşturma başarısız oldu, Clash vekil ile yeniden deneniyor...",
-          "creationSuccess": "Clash vekil ile profil oluşturma başarılı oldu"
+          "creationRetry": "Profil oluşturma başarısız oldu, VergeN vekil ile yeniden deneniyor...",
+          "creationSuccess": "VergeN vekil ile profil oluşturma başarılı oldu"
         }
       }
     },

@@ -41,8 +41,8 @@
         "managedDeviceLocked": "Managed devices cannot add or modify profiles"
       },
       "notifications": {
-        "importRetry": "Falha na importação, tentando novamente com o proxy Clash...",
-        "importFail": "Falha na importação mesmo com o proxy Clash",
+        "importRetry": "Falha na importação, tentando novamente com o proxy VergeN...",
+        "importFail": "Falha na importação mesmo com o proxy VergeN",
         "importNeedsRefresh": "Perfil importado, mas pode precisar de atualização manual",
         "importSuccess": "Perfil importado com sucesso, reinicie se não aparecer",
         "profileSwitched": "Perfil trocado",
@@ -125,7 +125,7 @@
         "httpTimeout": "Tempo limite HTTP",
         "updateInterval": "Intervalo de atualização",
         "useSystemProxy": "Usar proxy do sistema",
-        "useClashProxy": "Usar proxy Clash",
+        "useClashProxy": "Usar proxy VergeN",
         "acceptInvalidCerts": "Permitir certificados inválidos (perigoso)",
         "allowAutoUpdate": "Permitir atualização automática"
       },
@@ -144,8 +144,8 @@
       },
       "feedback": {
         "notifications": {
-          "creationRetry": "Falha ao criar o perfil, tentando novamente com o proxy Clash...",
-          "creationSuccess": "Perfil criado com sucesso com o proxy Clash"
+          "creationRetry": "Falha ao criar o perfil, tentando novamente com o proxy VergeN...",
+          "creationSuccess": "Perfil criado com sucesso com o proxy VergeN"
         }
       }
     },

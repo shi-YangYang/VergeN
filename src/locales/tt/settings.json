@@ -97,7 +97,7 @@
       "system": "System"
     },
     "clash": {
-      "title": "Clash көйләүләре",
+      "title": "VergeN көйләүләре",
       "form": {
         "fields": {
           "allowLan": "Локаль челтәргә рөхсәт",
@@ -108,7 +108,7 @@
           "portConfig": "Порт көйләүләре",
           "external": "Тышкы",
           "webUI": "Веб-интерфейс",
-          "clashCore": "Clash ядросы",
+          "clashCore": "VergeN ядросы",
           "openUwpTool": "UWP инструментын ачу",
           "updateGeoData": "GeoData яңарту",
           "tunnels": {
@@ -687,7 +687,7 @@
     },
     "notifications": {
       "clash": {
-        "restartSuccess": "Clash ядросы яңадан башланды",
+        "restartSuccess": "VergeN ядросы яңадан башланды",
         "versionUpdated": "Ядро версиясе яңартылды",
         "alreadyLatestVersion": "Сез инде ядроның соңгы версиясен кулланасыз",
         "changeSuccess": "Ядро уңышлы алыштырылды",
@@ -705,8 +705,8 @@
         "uninstallSuccess": "Сервис уңышлы салдырылды"
       },
       "updater": {
-        "withClashProxySuccess": "Update with Clash proxy successfully",
-        "withClashProxyFailed": "Update failed even with Clash proxy"
+        "withClashProxySuccess": "Update with VergeN proxy successfully",
+        "withClashProxyFailed": "Update failed even with VergeN proxy"
       }
     }
   },

@@ -97,7 +97,7 @@
       "system": "Системная"
     },
     "clash": {
-      "title": "Настройки Clash",
+      "title": "Настройки VergeN",
       "form": {
         "fields": {
           "allowLan": "Разрешить доступ из локальной сети",
@@ -108,7 +108,7 @@
           "portConfig": "Настройка порта",
           "external": "Внешний контроллер",
           "webUI": "Веб-интерфейс",
-          "clashCore": "Ядро Clash",
+          "clashCore": "Ядро VergeN",
           "openUwpTool": "Открыть инструмент UWP",
           "updateGeoData": "Обновить GeoData",
           "tunnels": {
@@ -184,7 +184,7 @@
         "tooltips": {
           "backupInfo": "Поддерживается резервное копирование файлов конфигурации через WebDAV",
           "openConfDir": "Если программа работает неправильно, сделайте резервную копию и удалите все файлы в этой папке, затем перезапустите приложение",
-          "liteMode": "Режим, в котором работает только ядро Clash, а графический интерфейс закрыт"
+          "liteMode": "Режим, в котором работает только ядро VergeN, а графический интерфейс закрыт"
         },
         "actions": {
           "copyVersion": "Копировать версию"
@@ -705,8 +705,8 @@
         "uninstallSuccess": "Служба успешно удалена"
       },
       "updater": {
-        "withClashProxySuccess": "Обновление через Clash proxy выполнено успешно",
-        "withClashProxyFailed": "Обновление не удалось даже через Clash proxy"
+        "withClashProxySuccess": "Обновление через VergeN proxy выполнено успешно",
+        "withClashProxyFailed": "Обновление не удалось даже через VergeN proxy"
       }
     }
   },

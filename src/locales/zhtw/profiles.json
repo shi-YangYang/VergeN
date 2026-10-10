@@ -41,8 +41,8 @@
         "managedDeviceLocked": "Managed devices cannot add or modify profiles"
       },
       "notifications": {
-        "importRetry": "訂閱匯入失敗，嘗試使用 Clash 代理匯入",
-        "importFail": "使用 Clash 代理匯入訂閱也失敗",
+        "importRetry": "訂閱匯入失敗，嘗試使用内核代理匯入",
+        "importFail": "使用内核代理匯入訂閱也失敗",
         "importNeedsRefresh": "Profile imported but may need manual refresh",
         "importSuccess": "Profile imported successfully, please restart if not visible",
         "profileSwitched": "訂閱已切換",
@@ -144,8 +144,8 @@
       },
       "feedback": {
         "notifications": {
-          "creationRetry": "訂閱建立失敗，嘗試使用 Clash 代理建立",
-          "creationSuccess": "使用 Clash 代理建立訂閱成功"
+          "creationRetry": "訂閱建立失敗，嘗試使用内核代理建立",
+          "creationSuccess": "使用内核代理建立訂閱成功"
         }
       }
     },

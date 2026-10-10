@@ -103,7 +103,7 @@
     "notifications": {
       "importSuccess": "Abonnement erfolgreich importiert",
       "importSubscriptionSuccess": "Abonnement erfolgreich importiert",
-      "importWithClashProxy": "Abonnement mit Clash-Proxy importiert",
+      "importWithClashProxy": "Abonnement mit VergeN-Proxy importiert",
       "updateAvailable": "Update verfügbar",
       "saved": "Erfolgreich gespeichert",
       "common": {
