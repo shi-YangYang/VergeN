@@ -180,6 +180,26 @@ func (s *Store) Secret() ([]byte, error) {
 	return []byte(v), nil
 }
 
+// ConfigVersion stamps the delivered bootstrap payload; clients compare
+// against their stored value via heartbeat and sync on drift.
+func (s *Store) ConfigVersion() (int64, error) {
+	var raw int64
+	err := s.db.QueryRow(
+		`SELECT COALESCE(CAST(value AS INTEGER), 0) FROM meta WHERE key = 'config_version'`).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	return raw, err
+}
+
+// BumpConfigVersion invalidates every client's cached bootstrap view.
+func (s *Store) BumpConfigVersion() error {
+	_, err := s.db.Exec(
+		`INSERT INTO meta (key, value) VALUES ('config_version', '1')
+		 ON CONFLICT(key) DO UPDATE SET value = CAST(CAST(value AS INTEGER) + 1 AS TEXT)`)
+	return err
+}
+
 const userCols = `id, username, password_hash, dingtalk_userid, role, status,
 	created_at, updated_at, last_seen_at, last_version, last_os`
 

@@ -459,7 +459,12 @@ func (a *Server) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	version, err := a.store.ConfigVersion()
+	if err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "config_version": version})
 }
 
 func validateSubscriptionURL(raw string) bool {

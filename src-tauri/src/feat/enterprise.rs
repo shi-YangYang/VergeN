@@ -766,11 +766,20 @@ pub async fn updater_autoinstall(
     app.restart();
 }
 
+#[derive(Debug, Deserialize, Default)]
+struct HeartbeatResponse {
+    #[serde(default)]
+    ok: bool,
+    #[serde(default)]
+    config_version: Option<i64>,
+}
+
 async fn heartbeat_once() -> Result<bool> {
     let data = Config::verge().await.data_arc();
     let Some(server) = data.enterprise_server_url.clone().filter(|u| !u.trim().is_empty()) else {
         return Ok(false);
     };
+    let stored_version = data.enterprise_config_version;
     let server = server.to_string();
     let client = http_client()?;
     let access = match ensure_access(&client, &server).await? {
@@ -779,7 +788,7 @@ async fn heartbeat_once() -> Result<bool> {
     };
     let response = client
         .post(format!("{server}/api/v1/client/heartbeat"))
-        .bearer_auth(access)
+        .bearer_auth(&access)
         .json(&serde_json::json!({
             "version": APP_VERSION,
             "os": std::env::consts::OS,
@@ -787,5 +796,32 @@ async fn heartbeat_once() -> Result<bool> {
         }))
         .send()
         .await?;
-    Ok(response.status().is_success())
+    let status = response.status();
+    if !status.is_success() {
+        // A definitive rejection means a login redo; keep tokens otherwise.
+        if status == reqwest::StatusCode::UNAUTHORIZED {
+            clear_tokens().await?;
+        }
+        return Ok(false);
+    }
+    let body: HeartbeatResponse = serde_json::from_str(&response.text().await.unwrap_or_default()).unwrap_or_default();
+    if !(body.ok) {
+        return Ok(false);
+    }
+    match body.config_version {
+        Some(remote) if Some(remote) != stored_version => {
+            logging!(
+                info,
+                Type::Cmd,
+                "heartbeat saw bootstrap revision {remote} (stored {}); syncing managed profile",
+                stored_version.unwrap_or_default()
+            );
+            // Re-run the managed provisioning so added subscriptions,
+            // policy flips and announcements land without manual action.
+            sync().await?;
+            persist_verge_edit(|d| d.enterprise_config_version = Some(remote)).await?;
+        }
+        _ => {}
+    }
+    Ok(true)
 }

@@ -266,6 +266,7 @@ func (a *Server) handleAdminSetSettings(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if req.ManagedFlags != nil {
+		defer func() { _ = a.store.BumpConfigVersion() }()
 		raw, err := json.Marshal(req.ManagedFlags)
 		if err != nil {
 			fail(w, http.StatusInternalServerError, "internal_error", "internal error")
@@ -404,6 +405,7 @@ func (a *Server) handleAdminCreateSubscription(w http.ResponseWriter, r *http.Re
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"subscription": sub})
+	_ = a.store.BumpConfigVersion()
 }
 
 func (a *Server) handleAdminUpdateSubscription(w http.ResponseWriter, r *http.Request) {
@@ -425,6 +427,7 @@ func (a *Server) handleAdminUpdateSubscription(w http.ResponseWriter, r *http.Re
 		fail(w, http.StatusNotFound, "subscription_not_found", "subscription does not exist")
 		return
 	}
+	_ = a.store.BumpConfigVersion()
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -451,6 +454,7 @@ func (a *Server) handleAdminSetSubscriptionEnabled(w http.ResponseWriter, r *htt
 		fail(w, http.StatusNotFound, "subscription_not_found", "subscription does not exist")
 		return
 	}
+	_ = a.store.BumpConfigVersion()
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -469,6 +473,7 @@ func (a *Server) handleAdminDeleteSubscription(w http.ResponseWriter, r *http.Re
 		fail(w, http.StatusNotFound, "subscription_not_found", "subscription does not exist")
 		return
 	}
+	_ = a.store.BumpConfigVersion()
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -505,6 +510,7 @@ func (a *Server) handleAdminCreateAnnouncement(w http.ResponseWriter, r *http.Re
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"announcement": created})
+	_ = a.store.BumpConfigVersion()
 }
 
 func (a *Server) handleAdminUpdateAnnouncement(w http.ResponseWriter, r *http.Request) {
@@ -530,6 +536,7 @@ func (a *Server) handleAdminUpdateAnnouncement(w http.ResponseWriter, r *http.Re
 		fail(w, http.StatusNotFound, "announcement_not_found", "announcement does not exist")
 		return
 	}
+	_ = a.store.BumpConfigVersion()
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -552,6 +559,7 @@ func (a *Server) handleAdminEnableAnnouncement(w http.ResponseWriter, r *http.Re
 		fail(w, http.StatusNotFound, "announcement_not_found", "announcement does not exist")
 		return
 	}
+	_ = a.store.BumpConfigVersion()
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -570,5 +578,6 @@ func (a *Server) handleAdminDeleteAnnouncement(w http.ResponseWriter, r *http.Re
 		fail(w, http.StatusNotFound, "announcement_not_found", "announcement does not exist")
 		return
 	}
+	_ = a.store.BumpConfigVersion()
 	w.WriteHeader(http.StatusNoContent)
 }

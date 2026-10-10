@@ -249,6 +249,11 @@ pub struct IVerge {
     )]
     pub enterprise_subscriptions: Option<String>,
 
+    /// Server-side bootstrap revision observed on the last heartbeat; a
+    /// mismatch triggers an automatic managed sync.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enterprise_config_version: Option<i64>,
+
     /// Last bootstrap payload cached for offline UI rendering.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enterprise_managed_flags: Option<serde_json::Value>,
@@ -552,6 +557,7 @@ impl IVerge {
         patch!(enterprise_access_expires_at);
         patch!(enterprise_subscription_url);
         patch!(enterprise_subscriptions);
+        patch!(enterprise_config_version);
         patch!(enterprise_managed_flags);
         patch!(enterprise_announcement);
         patch!(enterprise_profile_uid);
