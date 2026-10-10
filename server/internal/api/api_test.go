@@ -479,7 +479,7 @@ func TestSubscriptionManagement(t *testing.T) {
 	}
 	sub, _ := body["subscription"].(map[string]any)
 	idA := int64(sub["id"].(float64))
-	if sub["active"] != true {
+	if sub["enabled"] != true {
 		t.Fatalf("first subscription should be active: %v", sub)
 	}
 
@@ -491,7 +491,7 @@ func TestSubscriptionManagement(t *testing.T) {
 	}
 	sub, _ = body["subscription"].(map[string]any)
 	idB := int64(sub["id"].(float64))
-	if sub["active"] != false {
+	if sub["enabled"] != false {
 		t.Fatalf("later subscription should stay draft: %v", sub)
 	}
 
@@ -509,10 +509,12 @@ func TestSubscriptionManagement(t *testing.T) {
 		t.Fatalf("update B: status=%d", code)
 	}
 
-	// Activate B and bootstrap serves it for the employee.
-	code, _ = doJSON(t, h, "POST", "/api/v1/admin/subscriptions/"+itoa(idB)+"/activate", adminToken, nil)
+	// Enable B; both A and B are now pickable and bootstrap defaults to the
+	// first enabled entry.
+	code, _ = doJSON(t, h, "POST", "/api/v1/admin/subscriptions/"+itoa(idB)+"/enable", adminToken,
+		map[string]any{"enabled": true})
 	if code != http.StatusNoContent {
-		t.Fatalf("activate B: status=%d", code)
+		t.Fatalf("enable B: status=%d", code)
 	}
 	hash, err := auth.HashPassword("emp-password-9")
 	if err != nil {
@@ -527,8 +529,27 @@ func TestSubscriptionManagement(t *testing.T) {
 	}
 	empAccess, _ := body["access_token"].(string)
 	code, body = doJSON(t, h, "GET", "/api/v1/client/bootstrap", empAccess, nil)
+	if code != http.StatusOK || body["subscription_url"] != "https://sub.example.com/a" {
+		t.Fatalf("bootstrap after enable: status=%d body=%v", code, body["subscription_url"])
+	}
+	subs, _ := body["subscriptions"].([]any)
+	if len(subs) != 2 {
+		t.Fatalf("bootstrap subscriptions = %v", subs)
+	}
+
+	// Disabling A leaves B as the remaining pick.
+	code, _ = doJSON(t, h, "POST", "/api/v1/admin/subscriptions/"+itoa(idA)+"/enable", adminToken,
+		map[string]any{"enabled": false})
+	if code != http.StatusNoContent {
+		t.Fatalf("disable A: status=%d", code)
+	}
+	code, body = doJSON(t, h, "GET", "/api/v1/client/bootstrap", empAccess, nil)
 	if code != http.StatusOK || body["subscription_url"] != "https://sub.example.com/b2" {
-		t.Fatalf("bootstrap after activate: status=%d body=%v", code, body["subscription_url"])
+		t.Fatalf("bootstrap after disable: status=%d body=%v", code, body["subscription_url"])
+	}
+	subs, _ = body["subscriptions"].([]any)
+	if len(subs) != 1 {
+		t.Fatalf("bootstrap subscriptions after disable = %v", subs)
 	}
 
 	// Delete the active one; bootstrap falls back to empty.
@@ -540,5 +561,4 @@ func TestSubscriptionManagement(t *testing.T) {
 	if code != http.StatusOK || body["subscription_url"] != "" {
 		t.Fatalf("bootstrap after delete: status=%d body=%v", code, body["subscription_url"])
 	}
-	_ = idA
 }

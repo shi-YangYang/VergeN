@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 
 import {
-  activateSubscription,
+  setSubscriptionEnabled,
   clearToken,
   createSubscription,
   createUser,
@@ -95,9 +95,9 @@ function SubscriptionsPage() {
     }
   }
 
-  const activate = async (id: number) => {
+  const toggleEnabled = async (id: number, enabled: boolean) => {
     try {
-      await activateSubscription(id)
+      await setSubscriptionEnabled(id, enabled)
       await reload()
     } catch (err) {
       setError(alertContext(err))
@@ -106,10 +106,8 @@ function SubscriptionsPage() {
 
   const remove = async (sub: AdminSubscription) => {
     if (
-      sub.active &&
-      !window.confirm(
-        '该订阅为当前员工启用中，确认删除？删除后员工端将不再获取订阅。',
-      )
+      sub.enabled &&
+      !window.confirm('该订阅对员工可选，确认删除？员工端将立即失去该选项。')
     ) {
       return
     }
@@ -150,22 +148,25 @@ function SubscriptionsPage() {
         </thead>
         <tbody>
           {subs.map((sub) => (
-            <tr key={sub.id} className={sub.active ? '' : 'off'}>
+            <tr key={sub.id} className={sub.enabled ? '' : 'off'}>
               <td>{sub.id}</td>
               <td>{sub.name || '-'}</td>
               <td className="url-cell" title={sub.url}>
                 {sub.url}
               </td>
-              <td>{sub.active ? '启用中' : '草稿'}</td>
+              <td>
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={sub.enabled}
+                    onChange={(e) =>
+                      void toggleEnabled(sub.id, e.target.checked)
+                    }
+                  />
+                  员工可选
+                </label>
+              </td>
               <td className="actions">
-                {!sub.active && (
-                  <button
-                    className="ghost"
-                    onClick={() => void activate(sub.id)}
-                  >
-                    启用
-                  </button>
-                )}
                 <button
                   className="ghost"
                   onClick={() => {

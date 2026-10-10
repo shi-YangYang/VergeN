@@ -342,7 +342,7 @@ type Subscription struct {
 	ID        int64  `json:"id"`
 	Name      string `json:"name"`
 	URL       string `json:"url"`
-	Active    bool   `json:"active"`
+	Enabled   bool   `json:"enabled"`
 	CreatedAt int64  `json:"created_at"`
 }
 
@@ -350,9 +350,9 @@ const subscriptionCols = `id, name, url, active, created_at`
 
 func scanSubscription(row interface{ Scan(dest ...any) error }) (*Subscription, error) {
 	var sub Subscription
-	var active int
-	err := row.Scan(&sub.ID, &sub.Name, &sub.URL, &active, &sub.CreatedAt)
-	sub.Active = active == 1
+	var enabled int
+	err := row.Scan(&sub.ID, &sub.Name, &sub.URL, &enabled, &sub.CreatedAt)
+	sub.Enabled = enabled == 1
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -379,18 +379,23 @@ func (s *Store) ListSubscriptions() ([]*Subscription, error) {
 	return list, rows.Err()
 }
 
-// ActiveSubscription resolves the url bootstrap serves to employees.
-func (s *Store) ActiveSubscription() (string, error) {
-	row := s.db.QueryRow(`SELECT url FROM subscriptions WHERE active = 1 ORDER BY id LIMIT 1`)
-	var url string
-	err := row.Scan(&url)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", nil
-	}
+// EnabledSubscriptions lists every subscription employees may pick; the
+// first entry is the fallback for devices that never chose one.
+func (s *Store) EnabledSubscriptions() ([]*Subscription, error) {
+	rows, err := s.db.Query(`SELECT ` + subscriptionCols + ` FROM subscriptions WHERE active = 1 ORDER BY id`)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return url, nil
+	defer rows.Close()
+	var list []*Subscription
+	for rows.Next() {
+		sub, err := scanSubscription(rows)
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, sub)
+	}
+	return list, rows.Err()
 }
 
 func (s *Store) CreateSubscription(name, url string, now time.Time) (*Subscription, error) {
@@ -435,13 +440,14 @@ func (s *Store) DeleteSubscription(id int64) (bool, error) {
 	return n > 0, err
 }
 
-// ActivateSubscription marks one subscription as the one served to clients;
-// a deleted active row leaves the feed empty by design.
-func (s *Store) ActivateSubscription(id int64) (bool, error) {
-	if _, err := s.db.Exec(`UPDATE subscriptions SET active = 0 WHERE active = 1 AND id != ?`, id); err != nil {
-		return false, err
+// SetSubscriptionEnabled toggles one subscription as pickable by clients;
+// enabling is additive, several stay eligible at once.
+func (s *Store) SetSubscriptionEnabled(id int64, enabled bool) (bool, error) {
+	value := 0
+	if enabled {
+		value = 1
 	}
-	res, err := s.db.Exec(`UPDATE subscriptions SET active = 1 WHERE id = ?`, id)
+	res, err := s.db.Exec(`UPDATE subscriptions SET active = ? WHERE id = ?`, value, id)
 	if err != nil {
 		return false, err
 	}

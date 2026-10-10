@@ -151,6 +151,14 @@
         "global": "모든 네트워크 요청을 선택한 프록시를 통해 전달합니다.",
         "direct": "프록시를 우회하여 직접 인터넷에 연결합니다."
       }
+    },
+    "subscriptionSource": {
+      "title": "Company subscription",
+      "pickerLabel": "Pick the subscription to use",
+      "hint": "Switching re-pulls the company configuration",
+      "feedback": {
+        "switched": "Subscription switched: {subscription}"
+      }
     }
   }
 }

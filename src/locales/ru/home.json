@@ -151,6 +151,14 @@
         "global": "Весь трафик проходит через выбранный прокси",
         "direct": "Подключение напрямую без прокси"
       }
+    },
+    "subscriptionSource": {
+      "title": "Company subscription",
+      "pickerLabel": "Pick the subscription to use",
+      "hint": "Switching re-pulls the company configuration",
+      "feedback": {
+        "switched": "Subscription switched: {subscription}"
+      }
     }
   }
 }

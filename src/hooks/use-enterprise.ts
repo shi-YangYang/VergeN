@@ -7,6 +7,7 @@ import {
   enterpriseHeartbeat,
   enterpriseLogin,
   enterpriseLogout,
+  enterpriseSelectSubscription,
   enterpriseSync,
   getEnterpriseSession,
   type EnterpriseSession,
@@ -42,6 +43,11 @@ export const enterpriseActions = {
   logout: () =>
     mutate(() => enterpriseLogout(), {
       id: 'enterprise-logout',
+      onFulfilled: cacheSession,
+    }),
+  selectSubscription: (url: string) =>
+    mutate(() => enterpriseSelectSubscription(url), {
+      id: 'enterprise-select-subscription',
       onFulfilled: cacheSession,
     }),
   sync: () =>

@@ -194,6 +194,7 @@ mod app_init {
             cmd::enterprise_dingtalk_qr_poll,
             cmd::enterprise_dingtalk_qr_cancel,
             cmd::enterprise_logout,
+            cmd::enterprise_select_subscription,
             cmd::enterprise_sync,
             cmd::enterprise_heartbeat,
             cmd::test_delay,

@@ -32,6 +32,7 @@ import { EnhancedCard } from '@/components/home/enhanced-card'
 import { EnhancedTrafficStats } from '@/components/home/enhanced-traffic-stats'
 import { HomeProfileCard } from '@/components/home/home-profile-card'
 import { ProxyTunCard } from '@/components/home/proxy-tun-card'
+import { SubscriptionSourceCard } from '@/components/home/subscription-source-card'
 import { useProfiles } from '@/hooks/use-profiles'
 import { useVerge } from '@/hooks/use-verge'
 import { entry_lightweight_mode } from '@/services/cmds'
@@ -271,6 +272,11 @@ const HomePage = () => {
         'profile',
         <HomeProfileCard current={current} onProfileUpdated={mutateProfiles} />,
       ),
+      // Company employees pick their source here; hidden for single-option
+      // or unprovisioned devices, and free from the home-cards settings.
+      <Grid size={6} key="subscription">
+        <SubscriptionSourceCard />
+      </Grid>,
       renderCard('proxy', <CurrentProxyCard />),
       renderCard('network', <NetworkSettingsCard />),
       renderCard('mode', <ClashModeEnhancedCard />),

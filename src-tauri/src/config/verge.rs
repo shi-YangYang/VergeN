@@ -238,6 +238,17 @@ pub struct IVerge {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enterprise_subscription_url: Option<String>,
 
+    /// Bootstrap-provided subscription picks (name+url), serialized JSON.
+    /// Subscription urls embed access tokens, so the list rides the same
+    /// encrypted-at-rest path as the credentials.
+    #[serde(
+        serialize_with = "serialize_encrypted",
+        deserialize_with = "deserialize_encrypted",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub enterprise_subscriptions: Option<String>,
+
     /// Last bootstrap payload cached for offline UI rendering.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enterprise_managed_flags: Option<serde_json::Value>,
@@ -540,6 +551,7 @@ impl IVerge {
         patch!(enterprise_refresh_token);
         patch!(enterprise_access_expires_at);
         patch!(enterprise_subscription_url);
+        patch!(enterprise_subscriptions);
         patch!(enterprise_managed_flags);
         patch!(enterprise_announcement);
         patch!(enterprise_profile_uid);

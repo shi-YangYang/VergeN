@@ -142,8 +142,15 @@ export interface EnterpriseSession {
   username: string | null
   managed: EnterpriseManagedFlags
   announcement: EnterpriseAnnouncement | null
+  subscriptions: CompanySubscription[]
   subscription_url: string | null
   profile_uid: string | null
+}
+
+/** Mirrors feat::enterprise::SubscriptionOption on the wire. */
+export interface CompanySubscription {
+  name: string
+  url: string
 }
 
 export async function getEnterpriseSession() {
@@ -230,6 +237,10 @@ export async function enterpriseUpdaterInstall(
 
 export async function enterpriseSync() {
   return invoke<EnterpriseSession>('enterprise_sync')
+}
+
+export async function enterpriseSelectSubscription(url: string) {
+  return invoke<EnterpriseSession>('enterprise_select_subscription', { url })
 }
 
 export async function enterpriseHeartbeat() {

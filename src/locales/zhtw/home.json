@@ -151,6 +151,14 @@
         "global": "將所有網路請求轉送至所選代理。",
         "direct": "略過代理，直接連線至網際網路。"
       }
+    },
+    "subscriptionSource": {
+      "title": "Company subscription",
+      "pickerLabel": "Pick the subscription to use",
+      "hint": "Switching re-pulls the company configuration",
+      "feedback": {
+        "switched": "Subscription switched: {subscription}"
+      }
     }
   }
 }

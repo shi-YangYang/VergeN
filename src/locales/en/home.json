@@ -151,6 +151,14 @@
         "global": "Forward all network requests through the selected proxy.",
         "direct": "Bypass the proxy and connect to the internet directly."
       }
+    },
+    "subscriptionSource": {
+      "title": "Company subscription",
+      "pickerLabel": "Pick the subscription to use",
+      "hint": "Switching re-pulls the company configuration",
+      "feedback": {
+        "switched": "Subscription switched: {subscription}"
+      }
     }
   }
 }

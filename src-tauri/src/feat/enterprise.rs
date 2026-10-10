@@ -28,6 +28,15 @@ pub struct Announcement {
     pub content: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SubscriptionOption {
+    #[serde(default)]
+    pub name: std::string::String,
+    #[serde(default)]
+    pub url: std::string::String,
+}
+
+/// Mirrors EnterpriseSession; options lists every enabled subscription.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct EnterpriseSession {
     pub enabled: bool,
@@ -35,6 +44,8 @@ pub struct EnterpriseSession {
     pub username: Option<std::string::String>,
     pub managed: ManagedFlags,
     pub announcement: Option<Announcement>,
+    #[serde(default)]
+    pub subscriptions: Vec<SubscriptionOption>,
     pub subscription_url: Option<std::string::String>,
     pub profile_uid: Option<std::string::String>,
 }
@@ -103,6 +114,8 @@ struct BootstrapResponse {
     #[serde(default)]
     subscription_url: std::string::String,
     #[serde(default)]
+    subscriptions: Vec<SubscriptionOption>,
+    #[serde(default)]
     managed: ManagedFlags,
     announcement: Option<Announcement>,
 }
@@ -121,13 +134,17 @@ fn unix_now() -> i64 {
 
 fn normalize_server(server_url: &str) -> Result<std::string::String> {
     let server = server_url.trim().trim_end_matches('/').to_string();
-    if !(server.starts_with("http://") || server.starts_with("https://")) {
+    if !is_http_url(server.trim()) {
         return Err(anyhow!("服务器地址需为 http(s) 链接"));
     }
     if server == "http://" || server == "https://" {
         return Err(anyhow!("服务器地址无效"));
     }
     Ok(server)
+}
+
+fn is_http_url(url: &str) -> bool {
+    url.starts_with("http://") || url.starts_with("https://")
 }
 
 fn http_client() -> Result<reqwest::Client> {
@@ -165,6 +182,11 @@ fn session_from(data: &IVerge, authenticated: bool) -> EnterpriseSession {
         .enterprise_announcement
         .as_ref()
         .and_then(|v| serde_json::from_value(v.clone()).ok());
+    let subscriptions = data
+        .enterprise_subscriptions
+        .as_ref()
+        .and_then(|v| serde_json::from_str::<Vec<SubscriptionOption>>(v).ok())
+        .unwrap_or_default();
     EnterpriseSession {
         enabled: enabled_field(&data.enterprise_server_url),
         authenticated,
@@ -175,6 +197,7 @@ fn session_from(data: &IVerge, authenticated: bool) -> EnterpriseSession {
             .map(|u| u.to_string()),
         managed,
         announcement,
+        subscriptions,
         subscription_url: data
             .enterprise_subscription_url
             .clone()
@@ -253,8 +276,29 @@ async fn store_bootstrap(server: &str, bootstrap: &BootstrapResponse) -> Result<
         Some(a) => serde_json::to_value(a)?,
         None => serde_json::Value::Null,
     };
-    let subscription = (!bootstrap.subscription_url.trim().is_empty()).then(|| {
-        let url: SmartString = bootstrap.subscription_url.trim().into();
+    // Only http(s) candidates reach employee hands; enabled entries act as
+    // choices, first serves as the fallback.
+    let mut options: Vec<SubscriptionOption> = bootstrap
+        .subscriptions
+        .iter()
+        .filter(|s| is_http_url(&s.url))
+        .cloned()
+        .collect();
+    if options.is_empty() {
+        let url = bootstrap.subscription_url.trim();
+        if is_http_url(url) {
+            options.push(SubscriptionOption {
+                name: std::string::String::new(),
+                url: url.to_string(),
+            });
+        }
+    }
+    for option in &mut options {
+        option.url = option.url.trim().to_string();
+    }
+    let list = serde_json::to_string(&options)?;
+    let subscription = (!options.is_empty()).then(|| {
+        let url: SmartString = options[0].url.trim().into();
         url
     });
     persist_verge_edit(|d| {
@@ -263,7 +307,15 @@ async fn store_bootstrap(server: &str, bootstrap: &BootstrapResponse) -> Result<
         }
         d.enterprise_managed_flags = Some(flags);
         d.enterprise_announcement = Some(announcement);
-        d.enterprise_subscription_url = subscription;
+        d.enterprise_subscriptions = Some(list.into());
+        // Never clobber the employee's pick when it is still pickable.
+        let still_enabled = d
+            .enterprise_subscription_url
+            .as_ref()
+            .is_some_and(|u| options.iter().any(|o| o.url == u.trim().to_string()));
+        if !still_enabled {
+            d.enterprise_subscription_url = subscription;
+        }
     })
     .await
 }
@@ -339,6 +391,12 @@ async fn bootstrap_fetch(client: &reqwest::Client, server: &str, access: &str) -
 /// Activation failures are logged, not fatal: authentication already succeeded.
 pub async fn ensure_managed_profile(subscription_url: &str) -> Result<()> {
     let profiles = Config::profiles().await;
+    let display_name = subscriptions_from_config()
+        .await
+        .into_iter()
+        .find(|o| o.url == subscription_url)
+        .filter(|o| !o.name.trim().is_empty())
+        .map(|o| format!("公司订阅·{}", o.name.trim()));
     let existing = profiles.data_arc().items.as_ref().and_then(|items| {
         items
             .iter()
@@ -348,7 +406,7 @@ pub async fn ensure_managed_profile(subscription_url: &str) -> Result<()> {
     let uid = match existing {
         Some(uid) => uid,
         None => {
-            let name: SmartString = "公司订阅".into();
+            let name: SmartString = display_name.map(SmartString::from).unwrap_or_else(|| "公司订阅".into());
             let option = PrfOption {
                 update_interval: Some(MANAGED_UPDATE_INTERVAL_MINUTES),
                 allow_auto_update: Some(true),
@@ -374,6 +432,34 @@ pub async fn ensure_managed_profile(subscription_url: &str) -> Result<()> {
             .map_err(|failure| anyhow!("切换公司订阅失败: {failure}"))?;
     }
     Ok(())
+}
+
+async fn subscriptions_from_config() -> Vec<SubscriptionOption> {
+    let data = Config::verge().await.data_arc();
+    data.enterprise_subscriptions
+        .as_ref()
+        .and_then(|v| serde_json::from_str::<Vec<SubscriptionOption>>(v).ok())
+        .unwrap_or_default()
+}
+
+/// Employee-side switch among the enabled company subscriptions; the url
+/// must be one of the bootstrap-provided options.
+pub async fn select_managed_subscription(url: &str) -> Result<EnterpriseSession> {
+    let url = url.trim().trim_end_matches('/').to_string();
+    if !is_http_url(&url) {
+        return Err(anyhow!("订阅地址需为 http(s) 链接"));
+    }
+    let list = subscriptions_from_config().await;
+    if !list.iter().any(|o| o.url == url) {
+        return Err(anyhow!("该订阅已不可用，请同步后再选择"));
+    }
+    persist_verge_edit(|d| d.enterprise_subscription_url = Some(url.clone().into())).await?;
+    ensure_managed_profile(&url).await?;
+    if let Err(e) = crate::core::CoreManager::global().update_config_forced().await {
+        logging!(warn, Type::Cmd, "start core after subscription switch: {e:#}");
+    }
+    let data = Config::verge().await.data_arc();
+    Ok(session_from(&data, true))
 }
 
 pub async fn login(server_url: &str, username: &str, password: &str) -> Result<EnterpriseSession> {

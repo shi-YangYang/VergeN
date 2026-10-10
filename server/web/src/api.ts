@@ -167,7 +167,7 @@ export interface AdminSubscription {
   id: number
   name: string
   url: string
-  active: boolean
+  enabled: boolean
   created_at: number
 }
 
@@ -193,9 +193,10 @@ export async function updateSubscription(
   })
 }
 
-export async function activateSubscription(id: number) {
-  return request<null>(`/admin/subscriptions/${id}/activate`, {
+export async function setSubscriptionEnabled(id: number, enabled: boolean) {
+  return request<null>(`/admin/subscriptions/${id}/enable`, {
     method: 'POST',
+    body: { enabled },
   })
 }
 

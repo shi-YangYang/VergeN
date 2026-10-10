@@ -151,6 +151,14 @@
         "global": "所有流量均通过代理服务器，适用于需要全局科学上网的场景",
         "direct": "所有流量不经过代理节点，但经过 Clash 内核转发连接目标服务器，适用于需要通过内核进行分流的特定场景"
       }
+    },
+    "subscriptionSource": {
+      "title": "公司订阅源",
+      "pickerLabel": "选择要使用的订阅",
+      "hint": "切换后自动重新拉取公司配置",
+      "feedback": {
+        "switched": "已切换订阅源：{subscription}"
+      }
     }
   }
 }

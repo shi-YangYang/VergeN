@@ -80,7 +80,7 @@ func (a *Server) Handler() (http.Handler, error) {
 	mux.Handle("GET /api/v1/admin/subscriptions", a.admin(a.handleAdminListSubscriptions))
 	mux.Handle("POST /api/v1/admin/subscriptions", a.admin(a.handleAdminCreateSubscription))
 	mux.Handle("POST /api/v1/admin/subscriptions/{id}", a.admin(a.handleAdminUpdateSubscription))
-	mux.Handle("POST /api/v1/admin/subscriptions/{id}/activate", a.admin(a.handleAdminActivateSubscription))
+	mux.Handle("POST /api/v1/admin/subscriptions/{id}/enable", a.admin(a.handleAdminSetSubscriptionEnabled))
 	mux.Handle("DELETE /api/v1/admin/subscriptions/{id}", a.admin(a.handleAdminDeleteSubscription))
 	mux.Handle("GET /api/v1/admin/settings", a.admin(a.handleAdminGetSettings))
 	mux.Handle("POST /api/v1/admin/settings", a.admin(a.handleAdminSetSettings))
@@ -347,19 +347,35 @@ type announcement struct {
 	Content string `json:"content"`
 }
 
+type bootstrapSubscription struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
+}
+
 type bootstrapResp struct {
-	SubscriptionURL string        `json:"subscription_url"`
-	Managed         managedFlags  `json:"managed"`
-	Announcement    *announcement `json:"announcement"`
+	SubscriptionURL string                  `json:"subscription_url"`
+	Subscriptions   []bootstrapSubscription `json:"subscriptions"`
+	Managed         managedFlags            `json:"managed"`
+	Announcement    *announcement           `json:"announcement"`
 }
 
 func (a *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 	resp := bootstrapResp{Managed: managedFlags{}}
-	if subURL, err := a.store.ActiveSubscription(); err != nil {
+	enabled, err := a.store.EnabledSubscriptions()
+	if err != nil {
 		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
-	} else {
-		resp.SubscriptionURL = subURL
+	}
+	// The first enabled entry is the default pick for devices that never
+	// chose one; the list carries every candidate for client-side switching.
+	for _, sub := range enabled {
+		resp.Subscriptions = append(resp.Subscriptions, bootstrapSubscription{
+			Name: sub.Name,
+			URL:  sub.URL,
+		})
+	}
+	if len(enabled) > 0 {
+		resp.SubscriptionURL = enabled[0].URL
 	}
 	if raw, found, err := a.store.GetSetting("managed_flags"); err != nil {
 		fail(w, http.StatusInternalServerError, "internal_error", "internal error")

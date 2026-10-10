@@ -133,6 +133,7 @@ verge_registry! {
     enterprise_refresh_token => NoEffect;
     enterprise_access_expires_at => NoEffect;
     enterprise_subscription_url => NoEffect;
+    enterprise_subscriptions => NoEffect;
     enterprise_managed_flags => NoEffect;
     enterprise_announcement => NoEffect;
     enterprise_profile_uid => NoEffect;

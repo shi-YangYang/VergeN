@@ -79,6 +79,14 @@ pub async fn enterprise_logout() -> CmdResult<EnterpriseSession> {
         .map_err(|error| super::coded_error("ENTERPRISE_LOGOUT_FAILED", error))
 }
 
+/// Switch the employee to one of the enabled company subscriptions.
+#[tauri::command]
+pub async fn enterprise_select_subscription(url: std::string::String) -> CmdResult<EnterpriseSession> {
+    enterprise::select_managed_subscription(&url)
+        .await
+        .map_err(|error| super::coded_error("ENTERPRISE_SELECT_SUBSCRIPTION_FAILED", error))
+}
+
 #[tauri::command]
 pub async fn enterprise_sync() -> CmdResult<EnterpriseSession> {
     enterprise::sync()

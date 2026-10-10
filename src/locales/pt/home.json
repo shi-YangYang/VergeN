@@ -151,6 +151,14 @@
         "global": "Encaminha todas as requisições de rede pelo proxy selecionado.",
         "direct": "Ignora o proxy e conecta diretamente à internet."
       }
+    },
+    "subscriptionSource": {
+      "title": "Company subscription",
+      "pickerLabel": "Pick the subscription to use",
+      "hint": "Switching re-pulls the company configuration",
+      "feedback": {
+        "switched": "Subscription switched: {subscription}"
+      }
     }
   }
 }

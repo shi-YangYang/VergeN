@@ -446,13 +446,21 @@ func (a *Server) handleAdminUpdateSubscription(w http.ResponseWriter, r *http.Re
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (a *Server) handleAdminActivateSubscription(w http.ResponseWriter, r *http.Request) {
+type enablePayload struct {
+	Enabled bool `json:"enabled"`
+}
+
+func (a *Server) handleAdminSetSubscriptionEnabled(w http.ResponseWriter, r *http.Request) {
+	req, ok := readJSON[enablePayload](w, r)
+	if !ok {
+		return
+	}
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		fail(w, http.StatusBadRequest, "bad_request", "invalid subscription id")
 		return
 	}
-	found, err := a.store.ActivateSubscription(id)
+	found, err := a.store.SetSubscriptionEnabled(id, req.Enabled)
 	if err != nil {
 		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return

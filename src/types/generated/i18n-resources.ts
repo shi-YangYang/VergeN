@@ -120,6 +120,14 @@ export interface TranslationResources {
             tunMode: string
           }
         }
+        subscriptionSource: {
+          feedback: {
+            switched: string
+          }
+          hint: string
+          pickerLabel: string
+          title: string
+        }
         systemInfo: {
           actions: {
             settings: string
