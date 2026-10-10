@@ -39,7 +39,10 @@
     "password": "Contraseña",
     "retryAttempts": "Retry attempts",
     "downloaded": "Descargado",
-    "uploaded": "Subido"
+    "uploaded": "Subido",
+    "remainingTraffic": "Remaining",
+    "expireIn": "Expires in",
+    "daysCount": "{days} days"
   },
   "statuses": {
     "enabled": "Habilitado",

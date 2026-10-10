@@ -1,7 +1,6 @@
 import {
   CloudDownloadOutlined,
   CloudUploadOutlined,
-  DnsOutlined,
   EventOutlined,
   LaunchOutlined,
   SpeedOutlined,
@@ -26,7 +25,6 @@ import { useAppRefreshers } from '@/providers/app-data-context'
 import { updateProfile } from '@/services/cmds'
 import { mutate } from '@/services/mutate'
 import { showNotice } from '@/services/notice-service'
-import { isValidUrl } from '@/utils/network'
 import { openExternalUrl } from '@/utils/open-external-url'
 import parseTraffic from '@/utils/parse-traffic'
 
@@ -37,18 +35,6 @@ const round = keyframes`
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 `
-
-// 辅助函数解析URL和过期时间
-const parseUrl = (url?: string) => {
-  if (!url) return '-'
-  if (isValidUrl(url)) return new URL(url).host
-  return 'local'
-}
-
-const parseExpire = (expire?: number) => {
-  if (!expire) return '-'
-  return dayjs(expire * 1000).format('YYYY-MM-DD')
-}
 
 const openProfileHome = (url: string) => {
   void openExternalUrl(url).catch(showNotice.error)
@@ -104,76 +90,22 @@ const ProfileDetails = ({
     return Math.min(Math.round((usedTraffic / current.extra.total) * 100), 100)
   }, [current.extra, usedTraffic])
 
+  const remainingTraffic = useMemo(() => {
+    if (!current.extra || current.extra.total <= 0) return 0
+    return Math.max(current.extra.total - usedTraffic, 0)
+  }, [current.extra, usedTraffic])
+
+  const remainingDays = useMemo(() => {
+    if (!current.extra || current.extra.expire <= 0) return 0
+    return Math.max(
+      Math.ceil((current.extra.expire * 1000 - Date.now()) / 86400000),
+      0,
+    )
+  }, [current.extra])
+
   return (
     <Box>
       <Stack spacing={2}>
-        {current.url && (
-          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-            <DnsOutlined fontSize="small" color="action" />
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              noWrap
-              sx={{ display: 'flex', alignItems: 'center' }}
-            >
-              <span style={{ flexShrink: 0 }}>{t('shared.labels.from')}: </span>
-              {current.home ? (
-                <Link
-                  component="button"
-                  onClick={() => current.home && openProfileHome(current.home)}
-                  sx={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    minWidth: 0,
-                    maxWidth: 'calc(100% - 40px)',
-                    ml: 0.5,
-                    fontWeight: 'medium',
-                  }}
-                  title={parseUrl(current.url)}
-                >
-                  <Typography
-                    component="span"
-                    sx={{
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      minWidth: 0,
-                      flex: 1,
-                    }}
-                  >
-                    {parseUrl(current.url)}
-                  </Typography>
-                  <LaunchOutlined
-                    fontSize="inherit"
-                    sx={{
-                      ml: 0.5,
-                      fontSize: '0.8rem',
-                      opacity: 0.7,
-                      flexShrink: 0,
-                    }}
-                  />
-                </Link>
-              ) : (
-                <Typography
-                  component="span"
-                  sx={{
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                    minWidth: 0,
-                    flex: 1,
-                    ml: 0.5,
-                    fontWeight: 'medium',
-                  }}
-                  title={parseUrl(current.url)}
-                >
-                  {parseUrl(current.url)}
-                </Typography>
-              )}
-            </Typography>
-          </Stack>
-        )}
-
         {current.updated && (
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
             <UpdateOutlined
@@ -204,10 +136,9 @@ const ProfileDetails = ({
             <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
               <SpeedOutlined fontSize="small" color="action" />
               <Typography variant="body2" color="text.secondary">
-                {t('shared.labels.usedTotal')}:{' '}
+                {t('shared.labels.remainingTraffic')}:{' '}
                 <Box component="span" sx={{ fontWeight: 'medium' }}>
-                  {parseTraffic(usedTraffic)} /{' '}
-                  {parseTraffic(current.extra.total)}
+                  {parseTraffic(remainingTraffic)}
                 </Box>
               </Typography>
             </Stack>
@@ -216,9 +147,9 @@ const ProfileDetails = ({
               <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
                 <EventOutlined fontSize="small" color="action" />
                 <Typography variant="body2" color="text.secondary">
-                  {t('shared.labels.expireTime')}:{' '}
+                  {t('shared.labels.expireIn')}:{' '}
                   <Box component="span" sx={{ fontWeight: 'medium' }}>
-                    {parseExpire(current.extra.expire)}
+                    {t('shared.labels.daysCount', { days: remainingDays })}
                   </Box>
                 </Typography>
               </Stack>

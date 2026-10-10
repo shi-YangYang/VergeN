@@ -39,7 +39,10 @@
     "password": "Пароль",
     "retryAttempts": "Retry attempts",
     "downloaded": "Йөкләнгән",
-    "uploaded": "Чыгарылган"
+    "uploaded": "Чыгарылган",
+    "remainingTraffic": "Remaining",
+    "expireIn": "Expires in",
+    "daysCount": "{days} days"
   },
   "statuses": {
     "enabled": "Кушылган",

@@ -39,7 +39,10 @@
     "password": "パスワード",
     "retryAttempts": "Retry attempts",
     "downloaded": "ダウンロード量",
-    "uploaded": "アップロード量"
+    "uploaded": "アップロード量",
+    "remainingTraffic": "Remaining",
+    "expireIn": "Expires in",
+    "daysCount": "{days} days"
   },
   "statuses": {
     "enabled": "有効",

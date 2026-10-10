@@ -39,7 +39,10 @@
     "password": "Kata Sandi",
     "retryAttempts": "Retry attempts",
     "downloaded": "Diunduh",
-    "uploaded": "Diunggah"
+    "uploaded": "Diunggah",
+    "remainingTraffic": "Remaining",
+    "expireIn": "Expires in",
+    "daysCount": "{days} days"
   },
   "statuses": {
     "enabled": "Diaktifkan",

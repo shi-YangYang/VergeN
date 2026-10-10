@@ -1550,13 +1550,16 @@ export interface TranslationResources {
         }
       }
       labels: {
+        daysCount: string
         downloaded: string
+        expireIn: string
         expireTime: string
         from: string
         icon: string
         name: string
         password: string
         readOnly: string
+        remainingTraffic: string
         retryAttempts: string
         timeout: string
         updateAt: string

@@ -39,7 +39,10 @@
     "password": "密碼",
     "retryAttempts": "重試次數",
     "downloaded": "下載量",
-    "uploaded": "上傳量"
+    "uploaded": "上傳量",
+    "remainingTraffic": "Remaining",
+    "expireIn": "Expires in",
+    "daysCount": "{days} days"
   },
   "statuses": {
     "enabled": "已啟用",

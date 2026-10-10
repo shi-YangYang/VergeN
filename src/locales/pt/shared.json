@@ -39,7 +39,10 @@
     "password": "Senha",
     "retryAttempts": "Tentativas",
     "downloaded": "Baixado",
-    "uploaded": "Enviado"
+    "uploaded": "Enviado",
+    "remainingTraffic": "Remaining",
+    "expireIn": "Expires in",
+    "daysCount": "{days} days"
   },
   "statuses": {
     "enabled": "Ativado",

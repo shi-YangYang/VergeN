@@ -39,7 +39,10 @@
     "password": "비밀번호",
     "retryAttempts": "재시도 횟수",
     "downloaded": "다운로드됨",
-    "uploaded": "업로드됨"
+    "uploaded": "업로드됨",
+    "remainingTraffic": "Remaining",
+    "expireIn": "Expires in",
+    "daysCount": "{days} days"
   },
   "statuses": {
     "enabled": "사용",

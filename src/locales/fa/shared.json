@@ -39,7 +39,10 @@
     "password": "رمز عبور",
     "retryAttempts": "Retry attempts",
     "downloaded": "دانلود شده",
-    "uploaded": "بارگذاری شده"
+    "uploaded": "بارگذاری شده",
+    "remainingTraffic": "Remaining",
+    "expireIn": "Expires in",
+    "daysCount": "{days} days"
   },
   "statuses": {
     "enabled": "توانایی فعال شد",

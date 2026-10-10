@@ -39,7 +39,10 @@
     "password": "Passwort",
     "retryAttempts": "Wiederholungsversuche",
     "downloaded": "Heruntergeladen",
-    "uploaded": "Hochgeladen"
+    "uploaded": "Hochgeladen",
+    "remainingTraffic": "Remaining",
+    "expireIn": "Expires in",
+    "daysCount": "{days} days"
   },
   "statuses": {
     "enabled": "Aktiviert",
