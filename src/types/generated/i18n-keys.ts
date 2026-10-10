@@ -896,6 +896,7 @@ export const translationKeys = [
   'shared.labels.welcome.evening',
   'shared.labels.welcome.midnight',
   'shared.labels.welcome.friend',
+  'shared.labels.mascotPat',
   'shared.statuses.enabled',
   'shared.statuses.disabled',
   'shared.statuses.saving',

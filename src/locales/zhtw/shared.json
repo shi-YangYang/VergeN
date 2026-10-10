@@ -47,7 +47,8 @@
       "evening": "Good evening, {{name}}! Happy late-night surfing.",
       "midnight": "It is late, {{name}}. Rest well — we keep the line up.",
       "friend": "friend"
-    }
+    },
+    "mascotPat": "Pat me"
   },
   "statuses": {
     "enabled": "已啟用",

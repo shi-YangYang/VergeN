@@ -3,7 +3,6 @@ import {
   CloudUploadOutlined,
   LaunchOutlined,
   UpdateOutlined,
-  WavingHandOutlined,
 } from '@mui/icons-material'
 import {
   Box,
@@ -22,7 +21,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useEnterpriseSession } from '@/hooks/use-enterprise'
-import { useAppRefreshers } from '@/providers/app-data-context'
+import { useAppRefreshers, useProxiesData } from '@/providers/app-data-context'
 import { updateProfile } from '@/services/cmds'
 import { mutate } from '@/services/mutate'
 import { showNotice } from '@/services/notice-service'
@@ -30,6 +29,8 @@ import type { TranslationKey } from '@/types/generated/i18n-keys'
 import { openExternalUrl } from '@/utils/open-external-url'
 
 import { EnhancedCard } from './enhanced-card'
+import { ShieldMascot } from './shield-mascot'
+import type { MascotMood } from './shield-mascot'
 
 // 定义旋转动画
 const round = keyframes`
@@ -93,6 +94,13 @@ const ProfileDetails = ({
     return Math.min(Math.round((usedTraffic / current.extra.total) * 100), 100)
   }, [current.extra, usedTraffic])
 
+  const { proxyView, isProxyViewError } = useProxiesData()
+  const mascotMood: MascotMood = isProxyViewError
+    ? 'sad'
+    : proxyView
+      ? 'happy'
+      : 'idle'
+
   const welcome = useMemo(() => {
     const hour = new Date().getHours()
     const slot = (():
@@ -148,16 +156,28 @@ const ProfileDetails = ({
 
         {current.extra && (
           <>
-            <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-              <WavingHandOutlined fontSize="small" color="action" />
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                sx={{ flex: 1, minWidth: 0 }}
-                noWrap
-              >
-                {welcome}
-              </Typography>
+            <Stack
+              direction="row"
+              spacing={1}
+              sx={{ alignItems: 'flex-start' }}
+            >
+              <ShieldMascot mood={mascotMood} />
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{
+                    display: 'inline-block',
+                    bgcolor:
+                      'var(--background-color-alpha, rgba(0, 122, 255, 0.08))',
+                    borderRadius: 2,
+                    px: 1.25,
+                    py: 0.75,
+                  }}
+                >
+                  {welcome}
+                </Typography>
+              </Box>
             </Stack>
 
             <Box sx={{ mt: 1 }}>

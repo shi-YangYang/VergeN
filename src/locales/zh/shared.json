@@ -41,13 +41,14 @@
     "downloaded": "下载量",
     "uploaded": "上传量",
     "welcome": {
-      "morning": "早安，{name}！愿你今天的连接顺滑如丝。",
-      "noon": "午安，{name}！愿网络风平浪静，午休愉快。",
-      "afternoon": "下午好，{name}！愿通道畅通无阻，效率加倍。",
-      "evening": "晚上好，{name}！愿夜网冲浪一路绿灯。",
-      "midnight": "深夜了，{name}。早些休息，网络由我们一直守着。",
+      "morning": "早安，{{name}}！愿你今天的连接顺滑如丝。",
+      "noon": "午安，{{name}}！愿网络风平浪静，午休愉快。",
+      "afternoon": "下午好，{{name}}！愿通道畅通无阻，效率加倍。",
+      "evening": "晚上好，{{name}}！愿夜网冲浪一路绿灯。",
+      "midnight": "深夜了，{{name}}。早些休息，网络由我们一直守着。",
       "friend": "朋友"
-    }
+    },
+    "mascotPat": "摸摸我试试"
   },
   "statuses": {
     "enabled": "已启用",

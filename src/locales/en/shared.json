@@ -41,13 +41,14 @@
     "downloaded": "Downloaded",
     "uploaded": "Uploaded",
     "welcome": {
-      "morning": "Good morning, {name}! May your connections glide today.",
-      "noon": "Good afternoon, {name}! Smooth network, easy lunch.",
-      "afternoon": "Afternoon, {name}! Wishing you an unblocked lane.",
-      "evening": "Good evening, {name}! Happy late-night surfing.",
-      "midnight": "It is late, {name}. Rest well — we keep the line up.",
+      "morning": "Good morning, {{name}}! May your connections glide today.",
+      "noon": "Good afternoon, {{name}}! Smooth network, easy lunch.",
+      "afternoon": "Afternoon, {{name}}! Wishing you an unblocked lane.",
+      "evening": "Good evening, {{name}}! Happy late-night surfing.",
+      "midnight": "It is late, {{name}}. Rest well — we keep the line up.",
       "friend": "friend"
-    }
+    },
+    "mascotPat": "Pat me"
   },
   "statuses": {
     "enabled": "Enabled",

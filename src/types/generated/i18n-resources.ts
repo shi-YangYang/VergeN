@@ -1554,6 +1554,7 @@ export interface TranslationResources {
         expireTime: string
         from: string
         icon: string
+        mascotPat: string
         name: string
         password: string
         readOnly: string
