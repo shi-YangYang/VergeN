@@ -70,6 +70,7 @@ func (a *Server) Handler() (http.Handler, error) {
 	mux.HandleFunc("GET /api/v1/auth/dingtalk/callback", a.handleDingtalkCallback)
 	mux.Handle("GET /api/v1/client/bootstrap", a.authed(a.handleBootstrap))
 	mux.Handle("POST /api/v1/client/heartbeat", a.authed(a.handleHeartbeat))
+	mux.Handle("GET /api/v1/client/update", a.authed(a.handleClientUpdate))
 	mux.Handle("POST /api/v1/admin/users", a.admin(a.handleAdminCreateUser))
 	mux.Handle("GET /api/v1/admin/users", a.admin(a.handleAdminListUsers))
 	mux.Handle("POST /api/v1/admin/users/{id}/status", a.admin(a.handleAdminSetUserStatus))
@@ -375,6 +376,21 @@ func (a *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleClientUpdate hands the employee client the published release
+// manifest; an empty version means "nothing published" and 404s.
+func (a *Server) handleClientUpdate(w http.ResponseWriter, _ *http.Request) {
+	r, err := a.store.GetRelease()
+	if err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	}
+	if r == nil {
+		fail(w, http.StatusNotFound, "no_release", "no client release published")
+		return
+	}
+	writeJSON(w, http.StatusOK, r)
 }
 
 type heartbeatReq struct {

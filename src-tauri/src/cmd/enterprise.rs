@@ -1,10 +1,17 @@
 use super::CmdResult;
 use crate::feat::enterprise;
-use crate::feat::enterprise::{DingtalkQrPoll, DingtalkQrStart, EnterpriseSession};
+use crate::feat::enterprise::{CompanyRelease, DingtalkQrPoll, DingtalkQrStart, EnterpriseSession};
 
 #[tauri::command]
 pub async fn get_enterprise_session() -> CmdResult<EnterpriseSession> {
     Ok(enterprise::session().await)
+}
+
+#[tauri::command]
+pub async fn enterprise_release_current() -> CmdResult<Option<CompanyRelease>> {
+    enterprise::release_check()
+        .await
+        .map_err(|error| super::coded_error("ENTERPRISE_RELEASE_CHECK_FAILED", error))
 }
 
 #[tauri::command]

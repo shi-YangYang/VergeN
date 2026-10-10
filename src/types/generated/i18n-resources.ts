@@ -1011,6 +1011,9 @@ export interface TranslationResources {
           }
           title: string
         }
+        companyUpdate: {
+          download: string
+        }
         dns: {
           dialog: {
             profileScope: string

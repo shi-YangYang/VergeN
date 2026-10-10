@@ -651,6 +651,9 @@
         "ipAddress": "Endereço IP",
         "macAddress": "Endereço MAC"
       }
+    },
+    "companyUpdate": {
+      "download": "Download"
     }
   },
   "feedback": {

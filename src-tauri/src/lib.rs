@@ -188,6 +188,7 @@ mod app_init {
             cmd::patch_verge_config,
             cmd::get_enterprise_session,
             cmd::enterprise_login,
+            cmd::enterprise_release_current,
             cmd::enterprise_dingtalk_qr_start,
             cmd::enterprise_dingtalk_qr_poll,
             cmd::enterprise_dingtalk_qr_cancel,

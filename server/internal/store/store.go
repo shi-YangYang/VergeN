@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -244,6 +245,41 @@ func (s *Store) SetSetting(key, value string) error {
 		`INSERT INTO settings (key, value) VALUES (?, ?)
 		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, value)
 	return err
+}
+
+// Release is the company client update manifest the employee client polls.
+type Release struct {
+	Version string `json:"version"`
+	Notes   string `json:"notes"`
+	URL     string `json:"url"`
+	PubDate int64  `json:"pub_date"`
+}
+
+// GetRelease parses the stored release manifest; nil means nothing published.
+func (s *Store) GetRelease() (*Release, error) {
+	raw, found, err := s.GetSetting("release_manifest")
+	if err != nil || !found || raw == "" {
+		return nil, err
+	}
+	if err != nil || !found || raw == "" {
+		return nil, err
+	}
+	var r Release
+	if err := json.Unmarshal([]byte(raw), &r); err != nil || r.Version == "" {
+		return nil, nil
+	}
+	return &r, nil
+}
+
+func (s *Store) SetRelease(r *Release) error {
+	if r == nil || r.Version == "" {
+		return s.SetSetting("release_manifest", "")
+	}
+	raw, err := json.Marshal(r)
+	if err != nil {
+		return err
+	}
+	return s.SetSetting("release_manifest", string(raw))
 }
 
 type DashboardStats struct {

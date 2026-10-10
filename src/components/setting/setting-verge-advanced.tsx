@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router'
 
 import { DialogRef, TooltipIcon } from '@/components/base'
 import { useEnterpriseSession } from '@/hooks/use-enterprise'
-import { updateLastCheckTime } from '@/hooks/use-update'
+import { updateLastCheckTime, useUpdate } from '@/hooks/use-update'
 import {
   exitApp,
   exportDiagnosticInfo,
@@ -21,6 +21,7 @@ import { checkUpdateSafe as checkUpdate } from '@/services/update'
 import { version } from '@root/package.json'
 
 import { BackupViewer } from './mods/backup-viewer'
+import { CompanyUpdateViewer } from './mods/company-update-viewer'
 import { ConfigViewer } from './mods/config-viewer'
 import { HotkeyViewer } from './mods/hotkey-viewer'
 import { LayoutViewer } from './mods/layout-viewer'
@@ -37,8 +38,10 @@ interface Props {
 const SettingVergeAdvanced = ({ onError: _ }: Props) => {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const enterpriseSession = useEnterpriseSession()
   const configLocked =
-    useEnterpriseSession()?.managed.allow_change_settings === false
+    enterpriseSession?.managed.allow_change_settings === false
+  const { checkUpdate: checkChannel } = useUpdate()
 
   const configRef = useRef<DialogRef>(null)
   const hotkeyRef = useRef<DialogRef>(null)
@@ -46,13 +49,25 @@ const SettingVergeAdvanced = ({ onError: _ }: Props) => {
   const themeRef = useRef<DialogRef>(null)
   const layoutRef = useRef<DialogRef>(null)
   const updateRef = useRef<DialogRef>(null)
+  const companyUpdateRef = useRef<DialogRef>(null)
   const backupRef = useRef<DialogRef>(null)
   const liteModeRef = useRef<DialogRef>(null)
 
   const onCheckUpdate = async () => {
     try {
-      const info = await checkUpdate()
       updateLastCheckTime()
+      if (enterpriseSession?.authenticated) {
+        const { data } = await checkChannel()
+        if (!data) {
+          showNotice.success(
+            'settings.components.verge.advanced.notifications.latestVersion',
+          )
+        } else {
+          companyUpdateRef.current?.open()
+        }
+        return
+      }
+      const info = await checkUpdate()
       if (!info?.available) {
         showNotice.success(
           'settings.components.verge.advanced.notifications.latestVersion',
@@ -91,6 +106,7 @@ const SettingVergeAdvanced = ({ onError: _ }: Props) => {
       <MiscViewer ref={miscRef} />
       <LayoutViewer ref={layoutRef} />
       <UpdateViewer ref={updateRef} />
+      <CompanyUpdateViewer ref={companyUpdateRef} />
       <BackupViewer ref={backupRef} />
       <LiteModeViewer ref={liteModeRef} />
 

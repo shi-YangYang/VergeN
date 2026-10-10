@@ -208,6 +208,18 @@ export async function enterpriseLogout() {
   return invoke<EnterpriseSession>('enterprise_logout')
 }
 
+/** Mirrors feat::enterprise::CompanyRelease on the wire. */
+export interface CompanyRelease {
+  version: string
+  notes: string
+  url: string
+  pub_date: number
+}
+
+export async function enterpriseReleaseCurrent() {
+  return invoke<CompanyRelease | null>('enterprise_release_current')
+}
+
 export async function enterpriseSync() {
   return invoke<EnterpriseSession>('enterprise_sync')
 }

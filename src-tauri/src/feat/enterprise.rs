@@ -79,6 +79,19 @@ pub struct DingtalkQrPoll {
     message: std::string::String,
 }
 
+/// Mirrors store.Release on the wire; the ops panel publishes one manifest.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CompanyRelease {
+    #[serde(default)]
+    pub version: std::string::String,
+    #[serde(default)]
+    pub notes: std::string::String,
+    #[serde(default)]
+    pub url: std::string::String,
+    #[serde(default)]
+    pub pub_date: i64,
+}
+
 #[derive(Debug, Deserialize, Default)]
 struct ServerErrorInner {
     code: Option<std::string::String>,
@@ -559,6 +572,42 @@ pub async fn heartbeat() -> bool {
             false
         }
     }
+}
+
+/// Poll the company release manifest; None when ops has not published one
+/// or the session needs a login.
+pub async fn release_check() -> Result<Option<CompanyRelease>> {
+    let server = {
+        let data = Config::verge().await.data_arc();
+        data.enterprise_server_url
+            .clone()
+            .filter(|u| !u.trim().is_empty())
+            .ok_or_else(|| anyhow!("enterprise 未配置"))?
+    };
+    let client = http_client()?;
+    let access = match ensure_access(&client, &server).await? {
+        AccessOutcome::Access(access) => access,
+        AccessOutcome::NeedsLogin => return Ok(None),
+    };
+    let response = client
+        .get(format!("{server}/api/v1/client/update"))
+        .bearer_auth(&access)
+        .send()
+        .await
+        .map_err(|e| anyhow!("无法连接服务器 {server}: {e}"))?;
+    let status = response.status();
+    if status == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    let body = response.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(anyhow!("{}", server_error_message(status, &body)));
+    }
+    let parsed: CompanyRelease = serde_json::from_str(&body)?;
+    if parsed.version.trim().is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(parsed))
 }
 
 async fn heartbeat_once() -> Result<bool> {

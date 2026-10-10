@@ -182,10 +182,11 @@ func (a *Server) handleAdminSetUserDingtalk(w http.ResponseWriter, r *http.Reque
 }
 
 type settingsView struct {
-	SubscriptionURL string        `json:"subscription_url"`
-	ManagedFlags    managedFlags  `json:"managed_flags"`
-	Announcement    *announcement `json:"announcement"`
-	DingtalkAppKey  string        `json:"dingtalk_app_key"`
+	SubscriptionURL string         `json:"subscription_url"`
+	ManagedFlags    managedFlags   `json:"managed_flags"`
+	Announcement    *announcement  `json:"announcement"`
+	Release         *store.Release `json:"release"`
+	DingtalkAppKey  string         `json:"dingtalk_app_key"`
 	// The secret never round-trips to the panel; only its presence is shown.
 	DingtalkAppSecretSet bool   `json:"dingtalk_app_secret_set"`
 	DingtalkAgentID      string `json:"dingtalk_agent_id"`
@@ -196,6 +197,8 @@ type settingsPatch struct {
 	ManagedFlags    *managedFlags `json:"managed_flags"`
 	// Announcement with empty title and content clears the current one.
 	Announcement *announcement `json:"announcement"`
+	// Release with an empty version clears the published manifest.
+	Release *store.Release `json:"release"`
 
 	// Secret pointers follow "present means set": omitted leaves the stored
 	// value untouched, an empty string clears it.
@@ -231,6 +234,12 @@ func (a *Server) handleAdminGetSettings(w http.ResponseWriter, _ *http.Request) 
 		if err := json.Unmarshal([]byte(raw), &ann); err == nil && ann.Title != "" {
 			view.Announcement = &ann
 		}
+	}
+	if raw, err := a.store.GetRelease(); err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	} else if raw != nil {
+		view.Release = raw
 	}
 	if appKey, found, err := a.store.GetSetting(settingDingtalkKey); err != nil {
 		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
@@ -296,6 +305,28 @@ func (a *Server) handleAdminSetSettings(w http.ResponseWriter, r *http.Request) 
 				return
 			}
 			if err := a.store.SetSetting(settingAnnouncement, string(raw)); err != nil {
+				fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+				return
+			}
+		}
+	}
+	if req.Release != nil {
+		// An empty version clears the published manifest.
+		if req.Release.Version == "" {
+			if err := a.store.SetRelease(nil); err != nil {
+				fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+				return
+			}
+		} else {
+			if req.Release.URL != "" && !validateSubscriptionURL(req.Release.URL) {
+				fail(w, http.StatusBadRequest, "bad_request", "release url must be a valid http(s) URL")
+				return
+			}
+			pub := *req.Release
+			if pub.PubDate == 0 {
+				pub.PubDate = time.Now().Unix()
+			}
+			if err := a.store.SetRelease(&pub); err != nil {
 				fail(w, http.StatusInternalServerError, "internal_error", "internal error")
 				return
 			}

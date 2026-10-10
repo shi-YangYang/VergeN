@@ -651,6 +651,9 @@
         "ipAddress": "IP адресы",
         "macAddress": "MAC адресы"
       }
+    },
+    "companyUpdate": {
+      "download": "Download"
     }
   },
   "feedback": {

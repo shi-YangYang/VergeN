@@ -651,6 +651,9 @@
         "ipAddress": "Alamat IP",
         "macAddress": "Alamat MAC"
       }
+    },
+    "companyUpdate": {
+      "download": "Download"
     }
   },
   "feedback": {

@@ -383,6 +383,9 @@ function SettingsPanel() {
   const [agentId, setAgentId] = useState('')
   const [announcementTitle, setAnnouncementTitle] = useState('')
   const [announcementContent, setAnnouncementContent] = useState('')
+  const [releaseVersion, setReleaseVersion] = useState('')
+  const [releaseNotes, setReleaseNotes] = useState('')
+  const [releaseUrl, setReleaseUrl] = useState('')
   const [message, setMessage] = useState('')
 
   useEffect(() => {
@@ -393,6 +396,9 @@ function SettingsPanel() {
       setAgentId(data.dingtalk_agent_id ?? '')
       setAnnouncementTitle(data.announcement?.title ?? '')
       setAnnouncementContent(data.announcement?.content ?? '')
+      setReleaseVersion(data.release?.version ?? '')
+      setReleaseNotes(data.release?.notes ?? '')
+      setReleaseUrl(data.release?.url ?? '')
     })
   }, [])
 
@@ -421,6 +427,15 @@ function SettingsPanel() {
         announcementTitle.trim() === ''
           ? null
           : { title: announcementTitle, content: announcementContent },
+      release:
+        releaseVersion.trim() === ''
+          ? null
+          : {
+              version: releaseVersion.trim(),
+              notes: releaseNotes,
+              url: releaseUrl.trim(),
+              pub_date: 0,
+            },
     }
     if (appSecret.trim() !== '') {
       patch.dingtalk_app_secret = appSecret
@@ -471,6 +486,41 @@ function SettingsPanel() {
             <br />
             员工首次使用需在"员工账号"页为其绑定钉钉 UnionID。
           </div>
+        </fieldset>
+        <fieldset>
+          <legend>客户端版本发布</legend>
+          <label>
+            最新版本号(留空撤销发布)
+            <input
+              placeholder="1.0.1"
+              value={releaseVersion}
+              onChange={(e) => setReleaseVersion(e.target.value)}
+            />
+          </label>
+          <label>
+            更新说明
+            <textarea
+              rows={3}
+              value={releaseNotes}
+              onChange={(e) => setReleaseNotes(e.target.value)}
+            />
+          </label>
+          <label>
+            下载地址(安装包 URL)
+            <input
+              placeholder="https://…"
+              value={releaseUrl}
+              onChange={(e) => setReleaseUrl(e.target.value)}
+            />
+          </label>
+          {settings.release && (
+            <div className="muted" style={{ fontSize: 12 }}>
+              当前已发布 v{settings.release.version}
+              {settings.release.pub_date
+                ? ` · ${new Date(settings.release.pub_date * 1000).toLocaleString('zh-CN')}`
+                : ''}
+            </div>
+          )}
         </fieldset>
         <fieldset>
           <legend>受管策略</legend>

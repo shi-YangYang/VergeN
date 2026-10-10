@@ -394,3 +394,66 @@ func TestDingtalkQrLoginFlow(t *testing.T) {
 		t.Fatalf("lookup after unbind: err=%v", err)
 	}
 }
+
+func TestClientReleaseManifest(t *testing.T) {
+	h, s := newTestBackend(t)
+	adminToken := adminLoginToken(t, h, s)
+
+	// Publish a release.
+	code, body := doJSON(t, h, "POST", "/api/v1/admin/settings", adminToken,
+		map[string]any{
+			"release": map[string]any{
+				"version": "1.0.2",
+				"notes":   "修复与改进",
+				"url":     "https://download.example.com/vergen-1.0.2.app.tar.gz",
+			},
+		})
+	if code != http.StatusOK {
+		t.Fatalf("publish release: status=%d body=%v", code, body)
+	}
+	rel, _ := body["release"].(map[string]any)
+	if rel == nil || rel["version"] != "1.0.2" || rel["url"] == nil {
+		t.Fatalf("release view = %v", rel)
+	}
+
+	// The employee client reads it with a bearer token.
+	hash, err := auth.HashPassword("emp-password-3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateUser("emp3", hash, "user", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	code, body = login(t, h, "emp3", "emp-password-3")
+	if code != http.StatusOK {
+		t.Fatalf("emp login: status=%d", code)
+	}
+	empAccess, _ := body["access_token"].(string)
+	code, body = doJSON(t, h, "GET", "/api/v1/client/update", empAccess, nil)
+	if code != http.StatusOK || body["version"] != "1.0.2" {
+		t.Fatalf("client update: status=%d body=%v", code, body)
+	}
+
+	// An invalid URL is rejected.
+	code, body = doJSON(t, h, "POST", "/api/v1/admin/settings", adminToken,
+		map[string]any{
+			"release": map[string]any{
+				"version": "1.0.3",
+				"url":     "postgres://nope",
+			},
+		})
+	if code != http.StatusBadRequest {
+		t.Fatalf("invalid release url: status=%d body=%v", code, body)
+	}
+
+	// Clearing the version unpublishes; clients then 404.
+	code, body = doJSON(t, h, "POST", "/api/v1/admin/settings", adminToken,
+		map[string]any{"release": map[string]any{"version": ""}})
+	if code != http.StatusOK || body["release"] != nil {
+		t.Fatalf("clear release: status=%d body=%v", code, body)
+	}
+	code, body = doJSON(t, h, "GET", "/api/v1/client/update", empAccess, nil)
+	if code != http.StatusNotFound {
+		t.Fatalf("update after clear: status=%d body=%v", code, body)
+	}
+}

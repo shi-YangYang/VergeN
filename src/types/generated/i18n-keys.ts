@@ -807,6 +807,7 @@ export const translationKeys = [
   'settings.modals.networkInterface.title',
   'settings.modals.networkInterface.fields.ipAddress',
   'settings.modals.networkInterface.fields.macAddress',
+  'settings.modals.companyUpdate.download',
   'settings.feedback.errors.clash.configUpdateFailed',
   'settings.feedback.errors.clash.modeUpdateFailed',
   'settings.feedback.errors.clash.restartFailed',

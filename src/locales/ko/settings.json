@@ -651,6 +651,9 @@
         "ipAddress": "IP 주소",
         "macAddress": "MAC 주소"
       }
+    },
+    "companyUpdate": {
+      "download": "Download"
     }
   },
   "feedback": {

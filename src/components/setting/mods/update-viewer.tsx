@@ -14,7 +14,7 @@ import { useTranslation } from 'react-i18next'
 import type { Options as ReactMarkdownOptions } from 'react-markdown'
 
 import { BaseDialog, DialogRef } from '@/components/base'
-import { useUpdate } from '@/hooks/use-update'
+import { isCompanyUpdate, useUpdate } from '@/hooks/use-update'
 import {
   cancelUpdateDownload,
   installUpdate,
@@ -184,6 +184,9 @@ export function UpdateViewer({ ref }: { ref?: Ref<DialogRef> }) {
   const setUpdateState = useSetUpdateState()
 
   const { updateInfo } = useUpdate()
+  // This viewer only drives the updater plugin channel; company releases
+  // render through CompanyUpdateViewer.
+  const tauriInfo = isCompanyUpdate(updateInfo) ? null : updateInfo
 
   const [downloaded, setDownloaded] = useState(0)
   const [total, setTotal] = useState(0)
@@ -221,24 +224,24 @@ export function UpdateViewer({ ref }: { ref?: Ref<DialogRef> }) {
 
   const activeLanguage = i18n.resolvedLanguage ?? i18n.language
   const markdownContent = useMemo(() => {
-    if (!updateInfo?.body) {
+    if (!tauriInfo?.body) {
       return t('settings.modals.update.messages.available')
     }
     if (!shouldShowReleaseNotes(activeLanguage)) {
       return t('settings.modals.update.messages.available')
     }
-    return updateInfo?.body
-  }, [activeLanguage, t, updateInfo])
+    return tauriInfo?.body
+  }, [activeLanguage, t, tauriInfo])
 
   const breakChangeFlag = useMemo(() => {
-    if (!updateInfo?.body) {
+    if (!tauriInfo?.body) {
       return false
     }
-    return updateInfo?.body.toLowerCase().includes('break change')
-  }, [updateInfo])
+    return tauriInfo?.body.toLowerCase().includes('break change')
+  }, [tauriInfo])
 
   const onUpdate = useLockFn(async () => {
-    if (!updateInfo?.body) return
+    if (!tauriInfo?.body) return
     if (breakChangeFlag) {
       showNotice.error('settings.modals.update.messages.breakChangeError')
       return
@@ -276,7 +279,7 @@ export function UpdateViewer({ ref }: { ref?: Ref<DialogRef> }) {
 
     try {
       const result = await mutate(
-        () => installUpdate(updateInfo.version, onDownloadEvent),
+        () => installUpdate(tauriInfo.version, onDownloadEvent),
         {
           id: 'install-app-update',
           errorNotice: false,
