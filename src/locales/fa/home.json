@@ -110,7 +110,8 @@
         "latencyGood": "تأخیر خوب",
         "latencyExcellent": "تأخیر عالی",
         "uninitialized": "مقداردهی نشده",
-        "noProxyNode": "نود پروکسی وجود ندارد"
+        "noProxyNode": "نود پروکسی وجود ندارد",
+        "waitingCore": "Waiting for the core to be ready…"
       }
     },
     "tests": {

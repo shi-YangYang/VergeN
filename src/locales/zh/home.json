@@ -110,7 +110,8 @@
         "latencyGood": "延迟良好",
         "latencyExcellent": "延迟极佳",
         "uninitialized": "未初始化",
-        "noProxyNode": "无代理节点"
+        "noProxyNode": "无代理节点",
+        "waitingCore": "等待内核就绪…"
       }
     },
     "tests": {

@@ -110,7 +110,8 @@
         "latencyGood": "延遲良好",
         "latencyExcellent": "延遲極佳",
         "uninitialized": "未初始化",
-        "noProxyNode": "無代理節點"
+        "noProxyNode": "無代理節點",
+        "waitingCore": "Waiting for the core to be ready…"
       }
     },
     "tests": {

@@ -110,7 +110,8 @@
         "latencyGood": "Хорошая задержка",
         "latencyExcellent": "Отличная задержка",
         "uninitialized": "Не инициализировано",
-        "noProxyNode": "Нет прокси-узла"
+        "noProxyNode": "Нет прокси-узла",
+        "waitingCore": "Waiting for the core to be ready…"
       }
     },
     "tests": {

@@ -110,7 +110,8 @@
         "latencyGood": "Good latency",
         "latencyExcellent": "Excellent latency",
         "uninitialized": "Not initialized",
-        "noProxyNode": "No proxy node"
+        "noProxyNode": "No proxy node",
+        "waitingCore": "Waiting for the core to be ready…"
       }
     },
     "tests": {

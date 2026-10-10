@@ -86,6 +86,7 @@ export interface TranslationResources {
             timeout: string
             uninitialized: string
             untested: string
+            waitingCore: string
           }
           title: string
         }

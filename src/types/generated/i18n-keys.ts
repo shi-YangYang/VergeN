@@ -93,6 +93,7 @@ export const translationKeys = [
   'home.components.currentProxy.status.latencyExcellent',
   'home.components.currentProxy.status.uninitialized',
   'home.components.currentProxy.status.noProxyNode',
+  'home.components.currentProxy.status.waitingCore',
   'home.components.tests.title',
   'home.components.traffic.metrics.uploadSpeed',
   'home.components.traffic.metrics.downloadSpeed',

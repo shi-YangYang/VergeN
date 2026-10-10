@@ -110,7 +110,8 @@
         "latencyGood": "İyi gecikme",
         "latencyExcellent": "Mükemmel gecikme",
         "uninitialized": "Başlatılmadı",
-        "noProxyNode": "Proxy düğümü yok"
+        "noProxyNode": "Proxy düğümü yok",
+        "waitingCore": "Waiting for the core to be ready…"
       }
     },
     "tests": {

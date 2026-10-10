@@ -110,7 +110,8 @@
         "latencyGood": "Latencia buena",
         "latencyExcellent": "Latencia excelente",
         "uninitialized": "Sin inicializar",
-        "noProxyNode": "Sin nodo proxy"
+        "noProxyNode": "Sin nodo proxy",
+        "waitingCore": "Waiting for the core to be ready…"
       }
     },
     "tests": {

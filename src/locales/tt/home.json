@@ -110,7 +110,8 @@
         "latencyGood": "Яхшы тоткарлык",
         "latencyExcellent": "Бик яхшы тоткарлык",
         "uninitialized": "Әзерләнмәгән",
-        "noProxyNode": "Прокси төене юк"
+        "noProxyNode": "Прокси төене юк",
+        "waitingCore": "Waiting for the core to be ready…"
       }
     },
     "tests": {

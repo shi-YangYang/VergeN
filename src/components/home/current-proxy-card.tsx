@@ -546,7 +546,7 @@ export const CurrentProxyCard = () => {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const theme = useTheme()
-  const { proxyView } = useProxiesData()
+  const { proxyView, isProxyViewError } = useProxiesData()
   const { clashConfig } = useClashConfigData()
   const { refreshProxy } = useAppRefreshers()
   const { isCoreDataPending } = useCoreDataStatus()
@@ -774,9 +774,11 @@ export const CurrentProxyCard = () => {
           } satisfies Pick<ProxyOption, 'memberIndex' | 'member'>)
         : undefined
     }
-    return selectedGroup
+    const found = selectedGroup
       ? findCurrentGroupMember(proxyView, selectedGroup)
       : undefined
+    // 订阅商的"剩余流量"等伪节点不得充当当前节点展示位
+    return found && !isInfoNode(found.member.ref.name) ? found : undefined
   }, [isDirectMode, proxyView, selectedGroup])
 
   latestProxyMemberRef.current = currentOption?.member ?? null
@@ -1055,6 +1057,14 @@ export const CurrentProxyCard = () => {
     >
       {isCoreDataPending ? (
         <Box sx={{ py: 4, height: 24 }} />
+      ) : isProxyViewError || !proxyView ? (
+        <Typography
+          variant="body2"
+          sx={{ py: 3, textAlign: 'center' }}
+          color="text.secondary"
+        >
+          {t('home.components.currentProxy.status.waitingCore')}
+        </Typography>
       ) : currentProxy || (!isDirectMode && selectedGroup) ? (
         <Box>
           <Box

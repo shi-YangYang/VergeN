@@ -110,7 +110,8 @@
         "latencyGood": "지연 양호",
         "latencyExcellent": "지연 매우 우수",
         "uninitialized": "초기화되지 않음",
-        "noProxyNode": "프록시 노드 없음"
+        "noProxyNode": "프록시 노드 없음",
+        "waitingCore": "Waiting for the core to be ready…"
       }
     },
     "tests": {

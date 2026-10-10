@@ -110,7 +110,8 @@
         "latencyGood": "زمن استجابة جيد",
         "latencyExcellent": "زمن استجابة ممتاز",
         "uninitialized": "غير مُهيأ",
-        "noProxyNode": "لا توجد عقدة وكيل"
+        "noProxyNode": "لا توجد عقدة وكيل",
+        "waitingCore": "Waiting for the core to be ready…"
       }
     },
     "tests": {

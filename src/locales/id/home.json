@@ -110,7 +110,8 @@
         "latencyGood": "Latensi baik",
         "latencyExcellent": "Latensi sangat baik",
         "uninitialized": "Belum diinisialisasi",
-        "noProxyNode": "Tidak ada node proxy"
+        "noProxyNode": "Tidak ada node proxy",
+        "waitingCore": "Waiting for the core to be ready…"
       }
     },
     "tests": {

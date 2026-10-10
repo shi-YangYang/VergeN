@@ -110,7 +110,8 @@
         "latencyGood": "遅延が良好",
         "latencyExcellent": "遅延が非常に良好",
         "uninitialized": "未初期化",
-        "noProxyNode": "プロキシノードがありません"
+        "noProxyNode": "プロキシノードがありません",
+        "waitingCore": "Waiting for the core to be ready…"
       }
     },
     "tests": {
