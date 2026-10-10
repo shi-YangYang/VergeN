@@ -19,6 +19,7 @@ import {
   StickyVirtualList,
   type StickyVirtualListHandle,
 } from '@/components/base'
+import { useManagedSubscriptionLabel } from '@/hooks/use-managed-subscription'
 import { useProfiles } from '@/hooks/use-profiles'
 import { useProxySelection } from '@/hooks/use-proxy-selection'
 import { useVerge } from '@/hooks/use-verge'
@@ -90,10 +91,12 @@ function useProxyRenderState(
 ) {
   const { verge } = useVerge()
   const { proxyView } = useProxiesData()
+  const managedAlias = useManagedSubscriptionLabel()
   const { renderList, onProxies, onHeadState } = useRenderList(
     mode,
     isChainMode,
     activeSelectedGroup,
+    managedAlias,
   )
   const scrollPositionKey = useMemo(
     () =>

@@ -35,6 +35,8 @@ export interface IRenderItem {
   type: 0 | 1 | 2 | 3 | 4
   key: string
   group: ProxyGroup
+  /** Optional display name override supplied by the managed subscription. */
+  groupAlias?: string
   member?: ResolvedMemberOccurrence
   memberCol?: ResolvedMemberOccurrence[]
   col?: number
@@ -124,6 +126,7 @@ export const useRenderList = (
   mode: string,
   isChainMode?: boolean,
   selectedGroup?: string | null,
+  preferredGroupAlias?: string | null,
 ) => {
   const { proxyView } = useProxiesData()
   const { refreshProxy } = useAppRefreshers()
@@ -264,6 +267,13 @@ export const useRenderList = (
       : proxyView.global === null
         ? []
         : [proxyView.global]
+    // The primary group of a managed subscription carries the business name
+    // chosen in the ops panel; secondary groups keep their runtime names.
+    const aliasIndex = preferredGroupAlias
+      ? renderGroups.findIndex(
+          (group) => group && (group as { name: string }).name !== 'GLOBAL',
+        )
+      : -1
     const cache = groupCacheRef.current
     let anyChanged = false
 
@@ -283,6 +293,8 @@ export const useRenderList = (
       }
 
       anyChanged = true
+      const aliasTarget =
+        renderGroups.indexOf(group) === aliasIndex ? preferredGroupAlias : null
       const ret: IRenderItem[] = [
         {
           type: 0,
@@ -291,6 +303,7 @@ export const useRenderList = (
           headState,
           icon: group.icon,
           testUrl: group.testUrl,
+          groupAlias: aliasTarget ?? undefined,
         },
       ]
 
@@ -364,6 +377,7 @@ export const useRenderList = (
     isChainMode,
     latencyTimeout,
     mode,
+    preferredGroupAlias,
     proxyView,
     selectedGroup,
   ])

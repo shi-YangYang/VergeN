@@ -120,7 +120,9 @@ export const ProxyRender = memo(function ProxyRender(props: RenderProps) {
         )}
         <ListItemText
           sx={{ flex: '0 1 auto', minWidth: 0 }}
-          primary={<StyledPrimary>{group.name}</StyledPrimary>}
+          primary={
+            <StyledPrimary>{item.groupAlias ?? group.name}</StyledPrimary>
+          }
           secondary={
             <Box
               sx={{

@@ -74,14 +74,19 @@ export const enterpriseActions = {
 
 const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000
 
-/** Periodic employee heartbeat; the backend derives version and platform. */
+/** Periodic employee heartbeat; the backend derives version and platform.
+ *  The first beat fires as soon as a session turns authenticated, so a
+ *  device restored from disk provisions the managed profile without a
+ *  five minute wait. */
 export const useEnterpriseHeartbeat = () => {
   const session = useEnterpriseSession()
   const sessionRef = useRef(session)
   sessionRef.current = session
+  const authenticated = session?.authenticated ?? false
 
   useEffect(() => {
-    const timer = window.setInterval(async () => {
+    if (!authenticated) return
+    const beat = async () => {
       if (!sessionRef.current?.authenticated) return
       try {
         const ok = await enterpriseHeartbeat()
@@ -91,7 +96,9 @@ export const useEnterpriseHeartbeat = () => {
       } catch {
         // transient network errors are ignored until the next tick
       }
-    }, HEARTBEAT_INTERVAL_MS)
+    }
+    void beat()
+    const timer = window.setInterval(beat, HEARTBEAT_INTERVAL_MS)
     return () => window.clearInterval(timer)
-  }, [])
+  }, [authenticated])
 }
