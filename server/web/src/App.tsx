@@ -40,7 +40,7 @@ const TABS: [Tab, string][] = [
   ['release', '客户端发布'],
   ['dingtalk', '钉钉接入'],
   ['policy', '策略管控'],
-  ['announcement', '公告'],
+  ['announcement', '公告管理'],
   ['dashboard', '在线看板'],
 ]
 
