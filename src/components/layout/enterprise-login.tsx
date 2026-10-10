@@ -289,8 +289,10 @@ export const EnterpriseLogin = ({
   useCustomTheme()
   const { verge } = useVerge()
   // A previously provisioned device keeps its stored address; everyone else
-  // uses the address baked into the build.
-  const serverUrl = (verge?.enterprise_server_url ?? envServerUrl).trim()
+  // uses the address baked into the build. An empty stored value must fall
+  // through to the env instead of shadowing it.
+  const storedServerUrl = verge?.enterprise_server_url?.trim() ?? ''
+  const serverUrl = storedServerUrl || envServerUrl
   const [tab, setTab] = useState(0)
 
   return (
