@@ -40,11 +40,14 @@
     "retryAttempts": "Yeniden deneme sayısı",
     "downloaded": "İndirilen",
     "uploaded": "Yüklenen",
-    "remainingTraffic": "Remaining",
-    "expireIn": "Expires in",
-    "daysCount": "{days} days",
-    "proxyResources": "Resources",
-    "proxyResourceCounts": "{groups} groups · {nodes} nodes"
+    "welcome": {
+      "morning": "Good morning, {{name}}! May your connections glide today.",
+      "noon": "Good afternoon, {{name}}! Smooth network, easy lunch.",
+      "afternoon": "Afternoon, {{name}}! Wishing you an unblocked lane.",
+      "evening": "Good evening, {{name}}! Happy late-night surfing.",
+      "midnight": "It is late, {{name}}. Rest well — we keep the line up.",
+      "friend": "friend"
+    }
   },
   "statuses": {
     "enabled": "Etkin",

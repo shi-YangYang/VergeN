@@ -1,9 +1,9 @@
 import {
   CloudDownloadOutlined,
   CloudUploadOutlined,
-  LanOutlined,
   LaunchOutlined,
   UpdateOutlined,
+  WavingHandOutlined,
 } from '@mui/icons-material'
 import {
   Box,
@@ -17,13 +17,16 @@ import {
 } from '@mui/material'
 import { useLockFn } from 'ahooks'
 import dayjs from 'dayjs'
+import i18next from 'i18next'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { useAppRefreshers, useProxiesData } from '@/providers/app-data-context'
+import { useEnterpriseSession } from '@/hooks/use-enterprise'
+import { useAppRefreshers } from '@/providers/app-data-context'
 import { updateProfile } from '@/services/cmds'
 import { mutate } from '@/services/mutate'
 import { showNotice } from '@/services/notice-service'
+import type { TranslationKey } from '@/types/generated/i18n-keys'
 import { openExternalUrl } from '@/utils/open-external-url'
 
 import { EnhancedCard } from './enhanced-card'
@@ -74,7 +77,7 @@ const ProfileDetails = ({
   onUpdateProfile: () => void
   updating: boolean
 }) => {
-  const proxyView = useProxiesData().proxyView
+  const session = useEnterpriseSession()
 
   const { t } = useTranslation()
   const theme = useTheme()
@@ -90,11 +93,30 @@ const ProfileDetails = ({
     return Math.min(Math.round((usedTraffic / current.extra.total) * 100), 100)
   }, [current.extra, usedTraffic])
 
-  const profileStats = useMemo(() => {
-    const groupCount = proxyView?.groups?.length ?? 0
-    const nodeCount = proxyView ? Object.keys(proxyView.records).length : 0
-    return { groupCount, nodeCount }
-  }, [proxyView])
+  const welcome = useMemo(() => {
+    const hour = new Date().getHours()
+    const slot = (():
+      | 'midnight'
+      | 'morning'
+      | 'noon'
+      | 'afternoon'
+      | 'evening' => {
+      if (hour < 5) return 'midnight'
+      if (hour < 11) return 'morning'
+      if (hour < 14) return 'noon'
+      if (hour < 18) return 'afternoon'
+      return 'evening'
+    })()
+    const key = `shared.labels.welcome.${slot}` as TranslationKey
+    // 登录态下 username 必有;降级串不再走 i18n(键并入运行时回退)
+    const name = session?.username ?? current.name ?? 'VergeN'
+    // 欢迎语的插值绕开 i18next 的严格键类型(仅此一处使用局部签名)
+    const untypedT = i18next.t as unknown as (
+      k: string,
+      o?: Record<string, unknown>,
+    ) => string
+    return untypedT(key, { name })
+  }, [session?.username, current.name])
 
   return (
     <Box>
@@ -127,15 +149,14 @@ const ProfileDetails = ({
         {current.extra && (
           <>
             <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-              <LanOutlined fontSize="small" color="action" />
-              <Typography variant="body2" color="text.secondary">
-                {t('shared.labels.proxyResources')}:{' '}
-                <Box component="span" sx={{ fontWeight: 'medium' }}>
-                  {t('shared.labels.proxyResourceCounts', {
-                    groups: profileStats.groupCount,
-                    nodes: profileStats.nodeCount,
-                  })}
-                </Box>
+              <WavingHandOutlined fontSize="small" color="action" />
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ flex: 1, minWidth: 0 }}
+                noWrap
+              >
+                {welcome}
               </Typography>
             </Stack>
 
