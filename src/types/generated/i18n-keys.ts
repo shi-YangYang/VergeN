@@ -156,7 +156,6 @@ export const translationKeys = [
   'login.page.title',
   'login.page.subtitle',
   'login.form.server',
-  'login.form.serverPlaceholder',
   'login.form.username',
   'login.form.password',
   'login.form.submit',

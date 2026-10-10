@@ -23,6 +23,12 @@ const POLL_INTERVAL_MS = 2000
 const POLL_MAX_ATTEMPTS = 150
 const POLL_ERROR_TOLERANCE = 3
 
+// Baked at build time (.env / .env.production); employees never type the
+// company server address.
+const envServerUrl = String(
+  import.meta.env.VITE_ENTERPRISE_SERVER_URL ?? '',
+).trim()
+
 type QrPhase = 'starting' | 'scanning' | 'ok' | 'fail' | 'expired'
 
 const DingtalkQrPanel = ({ serverUrl }: { serverUrl: string }) => {
@@ -36,6 +42,11 @@ const DingtalkQrPanel = ({ serverUrl }: { serverUrl: string }) => {
   useEffect(() => {
     let active = true
     let cancelled = false
+
+    const stopPolling = () => {
+      window.clearTimeout(pollRef.current.timer)
+      pollRef.current.timer = 0
+    }
 
     const tick = async () => {
       if (cancelled) return
@@ -90,11 +101,6 @@ const DingtalkQrPanel = ({ serverUrl }: { serverUrl: string }) => {
         }
         pollRef.current.timer = window.setTimeout(tick, POLL_INTERVAL_MS)
       }
-    }
-
-    const stopPolling = () => {
-      window.clearTimeout(pollRef.current.timer)
-      pollRef.current.timer = 0
     }
 
     const start = async () => {
@@ -218,12 +224,11 @@ const DingtalkQrPanel = ({ serverUrl }: { serverUrl: string }) => {
   )
 }
 
-const PasswordForm = () => {
+const PasswordForm = ({ serverUrl }: { serverUrl: string }) => {
   const { t } = useTranslation()
   const { verge } = useVerge()
   const { login } = enterpriseActions
 
-  const [serverUrl, setServerUrl] = useState(verge?.enterprise_server_url ?? '')
   const [username, setUsername] = useState(verge?.enterprise_username ?? '')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -243,15 +248,6 @@ const PasswordForm = () => {
 
   return (
     <form onSubmit={handleSubmit}>
-      <TextField
-        fullWidth
-        size="small"
-        label={t('login.form.server')}
-        placeholder={String(t('login.form.serverPlaceholder'))}
-        value={serverUrl}
-        onChange={(e) => setServerUrl(e.target.value)}
-        sx={{ mb: 2 }}
-      />
       <TextField
         fullWidth
         size="small"
@@ -292,7 +288,9 @@ export const EnterpriseLogin = ({
   const { t } = useTranslation()
   useCustomTheme()
   const { verge } = useVerge()
-  const serverUrl = verge?.enterprise_server_url ?? ''
+  // A previously provisioned device keeps its stored address; everyone else
+  // uses the address baked into the build.
+  const serverUrl = (verge?.enterprise_server_url ?? envServerUrl).trim()
   const [tab, setTab] = useState(0)
 
   return (
@@ -339,6 +337,21 @@ export const EnterpriseLogin = ({
             {t('login.page.subtitle')}
           </Typography>
 
+          {serverUrl && (
+            <Typography
+              variant="caption"
+              sx={{
+                display: 'block',
+                color: 'text.disabled',
+                textAlign: 'center',
+                mb: 1,
+                overflowWrap: 'anywhere',
+              }}
+            >
+              {`${t('login.form.server')} · ${serverUrl}`}
+            </Typography>
+          )}
+
           <Tabs
             value={tab}
             onChange={(_, next: number) => setTab(next)}
@@ -351,7 +364,7 @@ export const EnterpriseLogin = ({
 
           {tab === 0 ? (
             <>
-              <PasswordForm />
+              <PasswordForm serverUrl={serverUrl} />
               <Typography
                 variant="caption"
                 sx={{

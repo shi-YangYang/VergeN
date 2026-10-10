@@ -5,7 +5,6 @@
   },
   "form": {
     "server": "Server address",
-    "serverPlaceholder": "https://vpn.example.com",
     "username": "Username",
     "password": "Password",
     "submit": "Sign in"

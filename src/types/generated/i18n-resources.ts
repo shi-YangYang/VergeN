@@ -276,7 +276,6 @@ export interface TranslationResources {
       form: {
         password: string
         server: string
-        serverPlaceholder: string
         submit: string
         username: string
       }
