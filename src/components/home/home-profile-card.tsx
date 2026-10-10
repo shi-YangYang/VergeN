@@ -1,9 +1,8 @@
 import {
   CloudDownloadOutlined,
   CloudUploadOutlined,
-  EventOutlined,
+  LanOutlined,
   LaunchOutlined,
-  SpeedOutlined,
   UpdateOutlined,
 } from '@mui/icons-material'
 import {
@@ -21,12 +20,11 @@ import dayjs from 'dayjs'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { useAppRefreshers } from '@/providers/app-data-context'
+import { useAppRefreshers, useProxiesData } from '@/providers/app-data-context'
 import { updateProfile } from '@/services/cmds'
 import { mutate } from '@/services/mutate'
 import { showNotice } from '@/services/notice-service'
 import { openExternalUrl } from '@/utils/open-external-url'
-import parseTraffic from '@/utils/parse-traffic'
 
 import { EnhancedCard } from './enhanced-card'
 
@@ -76,6 +74,8 @@ const ProfileDetails = ({
   onUpdateProfile: () => void
   updating: boolean
 }) => {
+  const proxyView = useProxiesData().proxyView
+
   const { t } = useTranslation()
   const theme = useTheme()
 
@@ -90,18 +90,11 @@ const ProfileDetails = ({
     return Math.min(Math.round((usedTraffic / current.extra.total) * 100), 100)
   }, [current.extra, usedTraffic])
 
-  const remainingTraffic = useMemo(() => {
-    if (!current.extra || current.extra.total <= 0) return 0
-    return Math.max(current.extra.total - usedTraffic, 0)
-  }, [current.extra, usedTraffic])
-
-  const remainingDays = useMemo(() => {
-    if (!current.extra || current.extra.expire <= 0) return 0
-    return Math.max(
-      Math.ceil((current.extra.expire * 1000 - Date.now()) / 86400000),
-      0,
-    )
-  }, [current.extra])
+  const profileStats = useMemo(() => {
+    const groupCount = proxyView?.groups?.length ?? 0
+    const nodeCount = proxyView ? Object.keys(proxyView.records).length : 0
+    return { groupCount, nodeCount }
+  }, [proxyView])
 
   return (
     <Box>
@@ -134,26 +127,17 @@ const ProfileDetails = ({
         {current.extra && (
           <>
             <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-              <SpeedOutlined fontSize="small" color="action" />
+              <LanOutlined fontSize="small" color="action" />
               <Typography variant="body2" color="text.secondary">
-                {t('shared.labels.remainingTraffic')}:{' '}
+                {t('shared.labels.proxyResources')}:{' '}
                 <Box component="span" sx={{ fontWeight: 'medium' }}>
-                  {parseTraffic(remainingTraffic)}
+                  {t('shared.labels.proxyResourceCounts', {
+                    groups: profileStats.groupCount,
+                    nodes: profileStats.nodeCount,
+                  })}
                 </Box>
               </Typography>
             </Stack>
-
-            {current.extra.expire > 0 && (
-              <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-                <EventOutlined fontSize="small" color="action" />
-                <Typography variant="body2" color="text.secondary">
-                  {t('shared.labels.expireIn')}:{' '}
-                  <Box component="span" sx={{ fontWeight: 'medium' }}>
-                    {t('shared.labels.daysCount', { days: remainingDays })}
-                  </Box>
-                </Typography>
-              </Stack>
-            )}
 
             <Box sx={{ mt: 1 }}>
               <Typography

@@ -893,6 +893,8 @@ export const translationKeys = [
   'shared.labels.remainingTraffic',
   'shared.labels.expireIn',
   'shared.labels.daysCount',
+  'shared.labels.proxyResources',
+  'shared.labels.proxyResourceCounts',
   'shared.statuses.enabled',
   'shared.statuses.disabled',
   'shared.statuses.saving',

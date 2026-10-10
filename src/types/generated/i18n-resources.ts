@@ -1558,6 +1558,8 @@ export interface TranslationResources {
         icon: string
         name: string
         password: string
+        proxyResourceCounts: string
+        proxyResources: string
         readOnly: string
         remainingTraffic: string
         retryAttempts: string
