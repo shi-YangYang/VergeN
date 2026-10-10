@@ -19,13 +19,314 @@ import {
   type SettingsPatch,
 } from './api'
 
-type Tab = 'users' | 'settings' | 'dashboard'
+type Tab = 'users' | 'subscription' | 'release' | 'dingtalk' | 'dashboard'
 
 const TABS: [Tab, string][] = [
   ['users', '员工账号'],
-  ['settings', '下发配置'],
+  ['subscription', '配置订阅'],
+  ['release', '客户端发布'],
+  ['dingtalk', '钉钉接入'],
   ['dashboard', '在线看板'],
 ]
+
+function alertContext(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+function ConfigPage() {
+  const [settings, setSettings] = useState<AdminSettings | null>(null)
+  const [subscriptionUrl, setSubscriptionUrl] = useState('')
+  const [announcementTitle, setAnnouncementTitle] = useState('')
+  const [announcementContent, setAnnouncementContent] = useState('')
+  const [message, setMessage] = useState('')
+
+  useEffect(() => {
+    void getSettings().then((data) => {
+      setSettings(data)
+      setSubscriptionUrl(data.subscription_url ?? '')
+      setAnnouncementTitle(data.announcement?.title ?? '')
+      setAnnouncementContent(data.announcement?.content ?? '')
+    })
+  }, [])
+
+  const save = async (patch: SettingsPatch) => {
+    try {
+      const data = await patchSettings(patch)
+      setSettings(data)
+      setMessage('已保存')
+      setTimeout(() => setMessage(''), 2000)
+    } catch (err) {
+      setMessage(alertContext(err))
+    }
+  }
+
+  if (!settings) return <div className="muted">加载中…</div>
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    void save({
+      subscription_url: subscriptionUrl,
+      managed_flags: settings.managed_flags,
+      announcement:
+        announcementTitle.trim() === ''
+          ? null
+          : { title: announcementTitle, content: announcementContent },
+    })
+  }
+
+  return (
+    <section className="panel narrow">
+      <form onSubmit={submit} className="stack">
+        <label>
+          公司订阅地址(员工端自动导入)
+          <input
+            placeholder="https://…"
+            value={subscriptionUrl}
+            onChange={(e) => setSubscriptionUrl(e.target.value)}
+          />
+        </label>
+        <fieldset>
+          <legend>受管策略</legend>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={settings.managed_flags.allow_change_settings}
+              onChange={(e) =>
+                setSettings({
+                  ...settings,
+                  managed_flags: {
+                    ...settings.managed_flags,
+                    allow_change_settings: e.target.checked,
+                  },
+                })
+              }
+            />
+            允许员工修改客户端设置
+          </label>
+        </fieldset>
+        <fieldset>
+          <legend>登录页公告</legend>
+          <label>
+            标题(留空清除)
+            <input
+              value={announcementTitle}
+              onChange={(e) => setAnnouncementTitle(e.target.value)}
+            />
+          </label>
+          <label>
+            内容
+            <textarea
+              rows={3}
+              value={announcementContent}
+              onChange={(e) => setAnnouncementContent(e.target.value)}
+            />
+          </label>
+        </fieldset>
+        <div className="row-form">
+          <button type="submit">保存</button>
+          {message && <span className="muted">{message}</span>}
+        </div>
+      </form>
+    </section>
+  )
+}
+
+function ReleasePage() {
+  const [settings, setSettings] = useState<AdminSettings | null>(null)
+  const [version, setVersion] = useState('')
+  const [notes, setNotes] = useState('')
+  const [url, setUrl] = useState('')
+  const [manifest, setManifest] = useState('')
+  const [message, setMessage] = useState('')
+
+  useEffect(() => {
+    void getSettings().then((data) => {
+      setSettings(data)
+      setVersion(data.release?.version ?? '')
+      setNotes(data.release?.notes ?? '')
+      setUrl(data.release?.url ?? '')
+      setManifest(data.updater_manifest ?? '')
+    })
+  }, [])
+
+  const save = async (patch: SettingsPatch) => {
+    try {
+      const data = await patchSettings(patch)
+      setSettings(data)
+      setMessage('已保存')
+      setTimeout(() => setMessage(''), 2000)
+    } catch (err) {
+      setMessage(alertContext(err))
+    }
+  }
+
+  if (!settings) return <div className="muted">加载中…</div>
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    void save({
+      release:
+        version.trim() === ''
+          ? null
+          : {
+              version: version.trim(),
+              notes,
+              url: url.trim(),
+              pub_date: 0,
+            },
+      updater_manifest: manifest,
+    })
+  }
+
+  return (
+    <section className="panel narrow">
+      <form onSubmit={submit} className="stack">
+        <fieldset>
+          <legend>版本发布(客户端弹窗展示)</legend>
+          <label>
+            最新版本号(留空撤销)
+            <input
+              placeholder="1.0.1"
+              value={version}
+              onChange={(e) => setVersion(e.target.value)}
+            />
+          </label>
+          <label>
+            更新说明
+            <textarea
+              rows={3}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+          </label>
+          <label>
+            下载地址(安装包 URL)
+            <input
+              placeholder="https://…"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+            />
+          </label>
+          {settings.release && (
+            <div className="muted" style={{ fontSize: 12 }}>
+              当前已发布 v{settings.release.version}
+              {settings.release.pub_date
+                ? ` · ${new Date(settings.release.pub_date * 1000).toLocaleString('zh-CN')}`
+                : ''}
+            </div>
+          )}
+        </fieldset>
+        <fieldset>
+          <legend>一键更新清单(可选)</legend>
+          <label>
+            updater JSON(tauri 格式,含签名;留空则只提示不自动升级)
+            <textarea
+              rows={6}
+              placeholder={'{\n  "version": "1.0.1",\n  "platforms": { … }\n}'}
+              value={manifest}
+              onChange={(e) => setManifest(e.target.value)}
+            />
+          </label>
+          {settings.updater_manifest && (
+            <div className="muted" style={{ fontSize: 12 }}>
+              一键更新已启用
+            </div>
+          )}
+        </fieldset>
+        <div className="row-form">
+          <button type="submit">保存</button>
+          {message && <span className="muted">{message}</span>}
+        </div>
+      </form>
+    </section>
+  )
+}
+
+function DingtalkPage() {
+  const [settings, setSettings] = useState<AdminSettings | null>(null)
+  const [appKey, setAppKey] = useState('')
+  const [appSecret, setAppSecret] = useState('')
+  const [agentId, setAgentId] = useState('')
+  const [message, setMessage] = useState('')
+
+  useEffect(() => {
+    void getSettings().then((data) => {
+      setSettings(data)
+      setAppKey(data.dingtalk_app_key ?? '')
+      setAgentId(data.dingtalk_agent_id ?? '')
+    })
+  }, [])
+
+  const save = async (patch: SettingsPatch) => {
+    try {
+      const data = await patchSettings(patch)
+      setSettings(data)
+      setAppSecret('')
+      setMessage('已保存')
+      setTimeout(() => setMessage(''), 2000)
+    } catch (err) {
+      setMessage(alertContext(err))
+    }
+  }
+
+  if (!settings) return <div className="muted">加载中…</div>
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    const patch: SettingsPatch = {
+      dingtalk_app_key: appKey,
+      dingtalk_agent_id: agentId,
+    }
+    if (appSecret.trim() !== '') {
+      patch.dingtalk_app_secret = appSecret
+    }
+    void save(patch)
+  }
+
+  return (
+    <section className="panel narrow">
+      <form onSubmit={submit} className="stack">
+        <fieldset>
+          <legend>钉钉扫码登录</legend>
+          <label>
+            AppKey(client_id)
+            <input value={appKey} onChange={(e) => setAppKey(e.target.value)} />
+          </label>
+          <label>
+            AppSecret
+            <input
+              type="password"
+              placeholder={
+                settings.dingtalk_app_secret_set
+                  ? '已配置,留空保持不变'
+                  : '未配置'
+              }
+              value={appSecret}
+              onChange={(e) => setAppSecret(e.target.value)}
+            />
+          </label>
+          <label>
+            AgentId(可选)
+            <input
+              value={agentId}
+              onChange={(e) => setAgentId(e.target.value)}
+            />
+          </label>
+          <div className="muted" style={{ fontSize: 12, lineHeight: 1.6 }}>
+            回调地址(填入钉钉开放平台"登录与分享"Redirect URI):
+            <code>{`${location.origin}/api/v1/auth/dingtalk/callback`}</code>
+            <br />
+            员工首次使用需在"员工账号"页为其绑定钉钉 UnionID。
+          </div>
+        </fieldset>
+        <div className="row-form">
+          <button type="submit">保存</button>
+          {message && <span className="muted">{message}</span>}
+        </div>
+      </form>
+    </section>
+  )
+}
 
 export function App() {
   const [authed, setAuthed] = useState(hasToken)
@@ -75,7 +376,9 @@ export function App() {
       </header>
       <main>
         {tab === 'users' && <UsersPanel />}
-        {tab === 'settings' && <SettingsPanel />}
+        {tab === 'subscription' && <ConfigPage />}
+        {tab === 'release' && <ReleasePage />}
+        {tab === 'dingtalk' && <DingtalkPage />}
         {tab === 'dashboard' && <DashboardPanel />}
       </main>
     </div>
@@ -371,199 +674,6 @@ function UsersPanel() {
           </button>
         </form>
       )}
-    </section>
-  )
-}
-
-function SettingsPanel() {
-  const [settings, setSettings] = useState<AdminSettings | null>(null)
-  const [subscriptionUrl, setSubscriptionUrl] = useState('')
-  const [appKey, setAppKey] = useState('')
-  const [appSecret, setAppSecret] = useState('')
-  const [agentId, setAgentId] = useState('')
-  const [announcementTitle, setAnnouncementTitle] = useState('')
-  const [announcementContent, setAnnouncementContent] = useState('')
-  const [releaseVersion, setReleaseVersion] = useState('')
-  const [releaseNotes, setReleaseNotes] = useState('')
-  const [releaseUrl, setReleaseUrl] = useState('')
-  const [message, setMessage] = useState('')
-
-  useEffect(() => {
-    void getSettings().then((data) => {
-      setSettings(data)
-      setSubscriptionUrl(data.subscription_url ?? '')
-      setAppKey(data.dingtalk_app_key ?? '')
-      setAgentId(data.dingtalk_agent_id ?? '')
-      setAnnouncementTitle(data.announcement?.title ?? '')
-      setAnnouncementContent(data.announcement?.content ?? '')
-      setReleaseVersion(data.release?.version ?? '')
-      setReleaseNotes(data.release?.notes ?? '')
-      setReleaseUrl(data.release?.url ?? '')
-    })
-  }, [])
-
-  const save = async (patch: SettingsPatch) => {
-    try {
-      const data = await patchSettings(patch)
-      setSettings(data)
-      setAppSecret('')
-      setMessage('已保存')
-      setTimeout(() => setMessage(''), 2000)
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : String(err))
-    }
-  }
-
-  if (!settings) return <div className="muted">加载中…</div>
-
-  const submit = (event: FormEvent) => {
-    event.preventDefault()
-    const patch: SettingsPatch = {
-      subscription_url: subscriptionUrl,
-      dingtalk_app_key: appKey,
-      dingtalk_agent_id: agentId,
-      managed_flags: settings.managed_flags,
-      announcement:
-        announcementTitle.trim() === ''
-          ? null
-          : { title: announcementTitle, content: announcementContent },
-      release:
-        releaseVersion.trim() === ''
-          ? null
-          : {
-              version: releaseVersion.trim(),
-              notes: releaseNotes,
-              url: releaseUrl.trim(),
-              pub_date: 0,
-            },
-    }
-    if (appSecret.trim() !== '') {
-      patch.dingtalk_app_secret = appSecret
-    }
-    void save(patch)
-  }
-
-  return (
-    <section className="panel narrow">
-      <form onSubmit={submit} className="stack">
-        <label>
-          公司订阅地址(员工端自动导入)
-          <input
-            placeholder="https://…"
-            value={subscriptionUrl}
-            onChange={(e) => setSubscriptionUrl(e.target.value)}
-          />
-        </label>
-        <fieldset>
-          <legend>钉钉扫码登录(客户端展示扫码入口)</legend>
-          <label>
-            AppKey(client_id)
-            <input value={appKey} onChange={(e) => setAppKey(e.target.value)} />
-          </label>
-          <label>
-            AppSecret
-            <input
-              type="password"
-              placeholder={
-                settings.dingtalk_app_secret_set
-                  ? '已配置,留空保持不变'
-                  : '未配置'
-              }
-              value={appSecret}
-              onChange={(e) => setAppSecret(e.target.value)}
-            />
-          </label>
-          <label>
-            AgentId(可选)
-            <input
-              value={agentId}
-              onChange={(e) => setAgentId(e.target.value)}
-            />
-          </label>
-          <div className="muted" style={{ fontSize: 12, lineHeight: 1.6 }}>
-            回调地址(填入钉钉开放平台"登录与分享"Redirect URI):
-            <code>{`${location.origin}/api/v1/auth/dingtalk/callback`}</code>
-            <br />
-            员工首次使用需在"员工账号"页为其绑定钉钉 UnionID。
-          </div>
-        </fieldset>
-        <fieldset>
-          <legend>客户端版本发布</legend>
-          <label>
-            最新版本号(留空撤销发布)
-            <input
-              placeholder="1.0.1"
-              value={releaseVersion}
-              onChange={(e) => setReleaseVersion(e.target.value)}
-            />
-          </label>
-          <label>
-            更新说明
-            <textarea
-              rows={3}
-              value={releaseNotes}
-              onChange={(e) => setReleaseNotes(e.target.value)}
-            />
-          </label>
-          <label>
-            下载地址(安装包 URL)
-            <input
-              placeholder="https://…"
-              value={releaseUrl}
-              onChange={(e) => setReleaseUrl(e.target.value)}
-            />
-          </label>
-          {settings.release && (
-            <div className="muted" style={{ fontSize: 12 }}>
-              当前已发布 v{settings.release.version}
-              {settings.release.pub_date
-                ? ` · ${new Date(settings.release.pub_date * 1000).toLocaleString('zh-CN')}`
-                : ''}
-            </div>
-          )}
-        </fieldset>
-        <fieldset>
-          <legend>受管策略</legend>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={settings.managed_flags.allow_change_settings}
-              onChange={(e) =>
-                setSettings({
-                  ...settings,
-                  managed_flags: {
-                    ...settings.managed_flags,
-                    allow_change_settings: e.target.checked,
-                  },
-                })
-              }
-            />
-            允许员工修改客户端设置
-          </label>
-        </fieldset>
-        <fieldset>
-          <legend>登录页公告</legend>
-          <label>
-            标题(留空清除)
-            <input
-              value={announcementTitle}
-              onChange={(e) => setAnnouncementTitle(e.target.value)}
-            />
-          </label>
-          <label>
-            内容
-            <textarea
-              rows={3}
-              value={announcementContent}
-              onChange={(e) => setAnnouncementContent(e.target.value)}
-            />
-          </label>
-        </fieldset>
-        <div className="row-form">
-          <button type="submit">保存全部</button>
-          {message && <span className="muted">{message}</span>}
-        </div>
-      </form>
     </section>
   )
 }

@@ -34,6 +34,7 @@ export interface AdminSettings {
     url: string
     pub_date: number
   } | null
+  updater_manifest: string
   dingtalk_app_key: string
   dingtalk_app_secret_set: boolean
   dingtalk_agent_id: string
@@ -116,6 +117,7 @@ export type SettingsPatch = Partial<{
   managed_flags: AdminSettings['managed_flags']
   announcement: { title: string; content: string } | null
   release: AdminSettings['release']
+  updater_manifest: string
   dingtalk_app_key: string
   dingtalk_app_secret: string
   dingtalk_agent_id: string

@@ -190,6 +190,7 @@ type settingsView struct {
 	// The secret never round-trips to the panel; only its presence is shown.
 	DingtalkAppSecretSet bool   `json:"dingtalk_app_secret_set"`
 	DingtalkAgentID      string `json:"dingtalk_agent_id"`
+	UpdaterManifest      string `json:"updater_manifest"`
 }
 
 type settingsPatch struct {
@@ -243,6 +244,12 @@ func (a *Server) handleAdminGetSettings(w http.ResponseWriter, _ *http.Request) 
 		return
 	} else if raw != nil {
 		view.Release = raw
+	}
+	if raw, err := a.store.UpdaterManifest(); err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	} else {
+		view.UpdaterManifest = raw
 	}
 	if appKey, found, err := a.store.GetSetting(settingDingtalkKey); err != nil {
 		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
