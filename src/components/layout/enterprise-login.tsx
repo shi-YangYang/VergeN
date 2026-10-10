@@ -19,7 +19,8 @@ import { NoticeManager } from '@/components/layout/notice-manager'
 import { enterpriseActions } from '@/hooks/use-enterprise'
 import { useVerge } from '@/hooks/use-verge'
 import { useCustomTheme } from '@/pages/_layout/hooks'
-import type { EnterpriseSession } from '@/services/cmds'
+import { enterpriseCapabilities, type EnterpriseSession } from '@/services/cmds'
+import { useQuery } from '@/services/query-client'
 
 const POLL_INTERVAL_MS = 2000
 const POLL_MAX_ATTEMPTS = 150
@@ -299,6 +300,24 @@ export const EnterpriseLogin = ({
     : envServerUrl || storedServerUrl
   const [tab, setTab] = useState(0)
 
+  // The QR tab only exists when the company server actually runs DingTalk
+  // login; unreachable probes degrade to password-only.
+  const { data: capabilities } = useQuery({
+    queryKey: ['enterpriseCapabilities', serverUrl],
+    queryFn: () => enterpriseCapabilities(serverUrl),
+    enabled: serverUrl.trim() !== '' && /^https?:\/\//.test(serverUrl),
+    staleTime: 60_000,
+    retry: 1,
+  })
+  const dingtalkReady = capabilities?.dingtalk_qr ?? false
+  const dingtalkTab = dingtalkReady
+    ? [{ key: 'dingtalk', label: t('login.tabs.dingtalk') }]
+    : []
+  const tabs = [
+    { key: 'password', label: t('login.tabs.password') },
+    ...dingtalkTab,
+  ]
+
   return (
     <Box
       sx={[
@@ -400,16 +419,17 @@ export const EnterpriseLogin = ({
           )}
 
           <Tabs
-            value={tab}
+            value={Math.min(tab, tabs.length - 1)}
             onChange={(_, next: number) => setTab(next)}
             variant="fullWidth"
             sx={{ mb: 2, '& .MuiTab-root': { textTransform: 'none' } }}
           >
-            <Tab label={t('login.tabs.password')} />
-            <Tab label={t('login.tabs.dingtalk')} />
+            {tabs.map((entry) => (
+              <Tab key={entry.key} label={entry.label} />
+            ))}
           </Tabs>
 
-          {tab === 0 ? (
+          {tabs[Math.min(tab, tabs.length - 1)].key === 'password' ? (
             <>
               <PasswordForm serverUrl={serverUrl} />
               <Typography

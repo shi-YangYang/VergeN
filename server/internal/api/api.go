@@ -64,6 +64,7 @@ func (a *Server) Handler() (http.Handler, error) {
 	mux.HandleFunc("POST /api/v1/auth/login", a.handleLogin)
 	mux.HandleFunc("POST /api/v1/auth/refresh", a.handleRefresh)
 	mux.HandleFunc("POST /api/v1/auth/logout", a.handleLogout)
+	mux.HandleFunc("GET /api/v1/auth/capabilities", a.handleAuthCapabilities)
 	mux.HandleFunc("POST /api/v1/auth/dingtalk/qr/start", a.handleDingtalkQrStart)
 	mux.HandleFunc("POST /api/v1/auth/dingtalk/qr/poll", a.handleDingtalkQrPoll)
 	mux.HandleFunc("POST /api/v1/auth/dingtalk/qr/cancel", a.handleDingtalkQrCancel)
@@ -350,6 +351,13 @@ type managedFlags struct {
 type announcement struct {
 	Title   string `json:"title"`
 	Content string `json:"content"`
+}
+
+// handleAuthCapabilities is the pre-login surface the desktop uses to
+// decide which login methods to render; exposing feature flags is harmless.
+func (a *Server) handleAuthCapabilities(w http.ResponseWriter, _ *http.Request) {
+	_, _, ok := a.dingtalkReady()
+	writeJSON(w, http.StatusOK, map[string]bool{"dingtalk_qr": ok})
 }
 
 type bootstrapSubscription struct {

@@ -1,11 +1,18 @@
 use super::CmdResult;
 use crate::core::updater::DownloadEvent;
 use crate::feat::enterprise;
-use crate::feat::enterprise::{CompanyRelease, DingtalkQrPoll, DingtalkQrStart, EnterpriseSession};
+use crate::feat::enterprise::{AuthCapabilities, CompanyRelease, DingtalkQrPoll, DingtalkQrStart, EnterpriseSession};
 
 #[tauri::command]
 pub async fn get_enterprise_session() -> CmdResult<EnterpriseSession> {
     Ok(enterprise::session().await)
+}
+
+#[tauri::command]
+pub async fn enterprise_capabilities(server_url: std::string::String) -> CmdResult<AuthCapabilities> {
+    enterprise::auth_capabilities(&server_url)
+        .await
+        .map_err(|error| super::coded_error("ENTERPRISE_CAPABILITIES_FAILED", error))
 }
 
 #[tauri::command]

@@ -462,6 +462,32 @@ pub async fn select_managed_subscription(url: &str) -> Result<EnterpriseSession>
     Ok(session_from(&data, true))
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AuthCapabilities {
+    #[serde(default)]
+    pub dingtalk_qr: bool,
+}
+
+/// Pre-login probe of server-side login methods; connection failures fall
+/// back to password-only so the login window never offers a dead method.
+pub async fn auth_capabilities(server_url: &str) -> Result<AuthCapabilities> {
+    let server = normalize_server(server_url)?;
+    let client = http_client()?;
+    let response = client
+        .get(format!("{server}/api/v1/auth/capabilities"))
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await
+        .map_err(|e| anyhow!("无法连接服务器 {server}: {e}"))?;
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(anyhow!("{}", server_error_message(status, &body)));
+    }
+    let parsed: AuthCapabilities = serde_json::from_str(&body)?;
+    Ok(parsed)
+}
+
 pub async fn login(server_url: &str, username: &str, password: &str) -> Result<EnterpriseSession> {
     let server = normalize_server(server_url)?;
     if username.trim().is_empty() || password.is_empty() {

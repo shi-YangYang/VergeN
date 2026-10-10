@@ -153,6 +153,17 @@ export interface CompanySubscription {
   url: string
 }
 
+/** Mirrors feat::enterprise::AuthCapabilities on the wire. */
+export interface EnterpriseCapabilities {
+  dingtalk_qr: boolean
+}
+
+export async function enterpriseCapabilities(serverUrl: string) {
+  return invoke<EnterpriseCapabilities>('enterprise_capabilities', {
+    serverUrl,
+  })
+}
+
 export async function getEnterpriseSession() {
   return invoke<EnterpriseSession>('get_enterprise_session')
 }

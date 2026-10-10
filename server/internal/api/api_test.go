@@ -665,3 +665,26 @@ func TestAnnouncementManagement(t *testing.T) {
 		t.Fatalf("delete: status=%d", code)
 	}
 }
+
+func TestAuthCapabilities(t *testing.T) {
+	h, s := newTestBackend(t)
+
+	// No DingTalk configuration: QR login must not be advertised so the
+	// desktop hides the scan tab entirely.
+	code, body := doJSON(t, h, "GET", "/api/v1/auth/capabilities", "", nil)
+	if code != http.StatusOK || body["dingtalk_qr"] != false {
+		t.Fatalf("capabilities unconfigured: status=%d body=%v", code, body)
+	}
+
+	adminToken := adminLoginToken(t, h, s)
+	code, _ = doJSON(t, h, "POST", "/api/v1/admin/settings", adminToken,
+		map[string]any{"dingtalk_app_key": "app-key", "dingtalk_app_secret": "secret"})
+	if code != http.StatusOK {
+		t.Fatalf("set dingtalk settings: status=%d", code)
+	}
+
+	code, body = doJSON(t, h, "GET", "/api/v1/auth/capabilities", "", nil)
+	if code != http.StatusOK || body["dingtalk_qr"] != true {
+		t.Fatalf("capabilities configured: status=%d body=%v", code, body)
+	}
+}

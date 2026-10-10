@@ -187,6 +187,7 @@ mod app_init {
             cmd::get_verge_config,
             cmd::patch_verge_config,
             cmd::get_enterprise_session,
+            cmd::enterprise_capabilities,
             cmd::enterprise_login,
             cmd::enterprise_release_current,
             cmd::enterprise_updater_install,
