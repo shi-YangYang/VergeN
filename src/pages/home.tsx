@@ -272,11 +272,9 @@ const HomePage = () => {
         'profile',
         <HomeProfileCard current={current} onProfileUpdated={mutateProfiles} />,
       ),
-      // Company employees pick their source here; hidden for single-option
-      // or unprovisioned devices, and free from the home-cards settings.
-      <Grid size={6} key="subscription">
-        <SubscriptionSourceCard />
-      </Grid>,
+      // Self-wrapping tile: hidden inline for single-option or
+      // unprovisioned devices, free from the home-cards settings.
+      <SubscriptionSourceCard key="subscription" />,
       renderCard('proxy', <CurrentProxyCard />),
       renderCard('network', <NetworkSettingsCard />),
       renderCard('mode', <ClashModeEnhancedCard />),
