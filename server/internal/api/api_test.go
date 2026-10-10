@@ -562,3 +562,106 @@ func TestSubscriptionManagement(t *testing.T) {
 		t.Fatalf("bootstrap after delete: status=%d body=%v", code, body["subscription_url"])
 	}
 }
+
+func TestAnnouncementManagement(t *testing.T) {
+	h, s := newTestBackend(t)
+	adminToken := adminLoginToken(t, h, s)
+
+	// Empty list.
+	code, body := doJSON(t, h, "GET", "/api/v1/admin/announcements", adminToken, nil)
+	if code != http.StatusOK {
+		t.Fatalf("list: status=%d", code)
+	}
+	if list, _ := body["announcements"].([]any); len(list) != 0 {
+		t.Fatalf("expected empty list, got %v", body)
+	}
+
+	// Title required.
+	code, _ = doJSON(t, h, "POST", "/api/v1/admin/announcements", adminToken, map[string]any{"title": ""})
+	if code != http.StatusBadRequest {
+		t.Fatalf("empty title: status=%d", code)
+	}
+
+	// First one is delivered immediately.
+	code, body = doJSON(t, h, "POST", "/api/v1/admin/announcements", adminToken,
+		map[string]any{"title": "维护公告", "content": "周三例行维护"})
+	if code != http.StatusCreated {
+		t.Fatalf("create: status=%d body=%v", code, body)
+	}
+	first, _ := body["announcement"].(map[string]any)
+	idA := int64(first["id"].(float64))
+	if first["enabled"] != true {
+		t.Fatalf("first announcement should be enabled: %v", first)
+	}
+
+	// Employee bootstrap sees it.
+	hash, err := auth.HashPassword("emp-password-8")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateUser("emp8", hash, "user", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	code, body = login(t, h, "emp8", "emp-password-8")
+	if code != http.StatusOK {
+		t.Fatalf("emp login: status=%d", code)
+	}
+	empAccess, _ := body["access_token"].(string)
+	code, body = doJSON(t, h, "GET", "/api/v1/client/bootstrap", empAccess, nil)
+	if code != http.StatusOK {
+		t.Fatalf("bootstrap: status=%d", code)
+	}
+	ann, _ := body["announcement"].(map[string]any)
+	if ann == nil || ann["title"] != "维护公告" {
+		t.Fatalf("bootstrap announcement = %v", ann)
+	}
+
+	// A second stays off until enabled.
+	code, body = doJSON(t, h, "POST", "/api/v1/admin/announcements", adminToken,
+		map[string]any{"title": "升级通知", "content": "客户端 1.0.1 发布"})
+	if code != http.StatusCreated {
+		t.Fatalf("create B: status=%d", code)
+	}
+	second, _ := body["announcement"].(map[string]any)
+	idB := int64(second["id"].(float64))
+	if second["enabled"] != false {
+		t.Fatalf("later announcement should stay off: %v", second)
+	}
+
+	// Editing in place.
+	code, _ = doJSON(t, h, "POST", "/api/v1/admin/announcements/"+itoa(idA), adminToken,
+		map[string]any{"title": "维护公告 v2", "content": "改期到周五"})
+	if code != http.StatusNoContent {
+		t.Fatalf("update: status=%d", code)
+	}
+	code, _ = doJSON(t, h, "POST", "/api/v1/admin/announcements/"+itoa(idB)+"/enable", adminToken,
+		map[string]any{"enabled": true})
+	if code != http.StatusNoContent {
+		t.Fatalf("enable B: status=%d", code)
+	}
+	code, body = doJSON(t, h, "GET", "/api/v1/client/bootstrap", empAccess, nil)
+	if code != http.StatusOK {
+		t.Fatalf("bootstrap after enable: status=%d", code)
+	}
+	ann, _ = body["announcement"].(map[string]any)
+	if ann == nil || ann["title"] != "升级通知" {
+		t.Fatalf("bootstrap should switch to B, got %v", ann)
+	}
+
+	// Disable everything; the bootstrap banner disappears.
+	code, _ = doJSON(t, h, "POST", "/api/v1/admin/announcements/"+itoa(idB)+"/enable", adminToken,
+		map[string]any{"enabled": false})
+	if code != http.StatusNoContent {
+		t.Fatalf("disable B: status=%d", code)
+	}
+	code, body = doJSON(t, h, "GET", "/api/v1/client/bootstrap", empAccess, nil)
+	if code != http.StatusOK || body["announcement"] != nil {
+		t.Fatalf("bootstrap should lose the banner, got %v", body["announcement"])
+	}
+
+	// Delete.
+	code, _ = doJSON(t, h, "DELETE", "/api/v1/admin/announcements/"+itoa(idA), adminToken, nil)
+	if code != http.StatusNoContent {
+		t.Fatalf("delete: status=%d", code)
+	}
+}

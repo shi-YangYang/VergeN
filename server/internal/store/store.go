@@ -69,6 +69,14 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 	active    INTEGER NOT NULL DEFAULT 0,
 	created_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS announcements (
+	id        INTEGER PRIMARY KEY AUTOINCREMENT,
+	title     TEXT NOT NULL,
+	content   TEXT NOT NULL DEFAULT '',
+	active    INTEGER NOT NULL DEFAULT 0,
+	created_at INTEGER NOT NULL,
+	updated_at INTEGER NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_refresh_user ON refresh_tokens(user_id);
 `
 
@@ -85,6 +93,10 @@ func Open(path string) (*Store, error) {
 	}
 	store := &Store{db: db}
 	if err := store.migrateSubscription(); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := store.migrateAnnouncement(); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -112,6 +124,38 @@ func (s *Store) migrateSubscription() error {
 			return err
 		}
 		_ = s.SetSetting("subscription_url", "")
+	}
+	return nil
+}
+
+// migrateAnnouncement lifts the legacy announcement setting into the
+// announcements table as the initial active row.
+func (s *Store) migrateAnnouncement() error {
+	var count int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM announcements`).Scan(&count); err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+	raw, found, err := s.GetSetting("announcement")
+	if err != nil {
+		return err
+	}
+	if found && raw != "" {
+		var legacy struct {
+			Title   string `json:"title"`
+			Content string `json:"content"`
+		}
+		if err := json.Unmarshal([]byte(raw), &legacy); err == nil && legacy.Title != "" {
+			now := time.Now().Unix()
+			if _, err := s.db.Exec(
+				`INSERT INTO announcements (title, content, active, created_at, updated_at)
+				 VALUES (?, ?, 1, ?, ?)`, legacy.Title, legacy.Content, now, now); err != nil {
+				return err
+			}
+		}
+		_ = s.SetSetting("announcement", "")
 	}
 	return nil
 }
@@ -448,6 +492,118 @@ func (s *Store) SetSubscriptionEnabled(id int64, enabled bool) (bool, error) {
 		value = 1
 	}
 	res, err := s.db.Exec(`UPDATE subscriptions SET active = ? WHERE id = ?`, value, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+// --- Announcements (single-pick delivery: enabling one blanks the rest) ---
+
+type Announcement struct {
+	ID        int64  `json:"id"`
+	Title     string `json:"title"`
+	Content   string `json:"content"`
+	Enabled   bool   `json:"enabled"`
+	CreatedAt int64  `json:"created_at"`
+	UpdatedAt int64  `json:"updated_at"`
+}
+
+const announcementCols = `id, title, content, active, created_at, updated_at`
+
+func scanAnnouncement(row interface{ Scan(dest ...any) error }) (*Announcement, error) {
+	var a Announcement
+	var active int
+	err := row.Scan(&a.ID, &a.Title, &a.Content, &active, &a.CreatedAt, &a.UpdatedAt)
+	a.Enabled = active == 1
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &a, nil
+}
+
+func (s *Store) ListAnnouncements() ([]*Announcement, error) {
+	rows, err := s.db.Query(`SELECT ` + announcementCols + ` FROM announcements ORDER BY active DESC, id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []*Announcement
+	for rows.Next() {
+		a, err := scanAnnouncement(rows)
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, a)
+	}
+	return list, rows.Err()
+}
+
+// CurrentAnnouncement resolves the row the login page displays; an empty
+// string means nothing is published.
+func (s *Store) CurrentAnnouncement() (*Announcement, error) {
+	return scanAnnouncement(s.db.QueryRow(
+		`SELECT ` + announcementCols + ` FROM announcements WHERE active = 1 ORDER BY id LIMIT 1`))
+}
+
+func (s *Store) CreateAnnouncement(title, content string, now time.Time) (*Announcement, error) {
+	// The first announcement becomes the delivered one immediately.
+	var count int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM announcements`).Scan(&count); err != nil {
+		return nil, err
+	}
+	active := 0
+	if count == 0 {
+		active = 1
+	}
+	res, err := s.db.Exec(
+		`INSERT INTO announcements (title, content, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+		title, content, active, now.Unix(), now.Unix())
+	if err != nil {
+		return nil, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+	return scanAnnouncement(s.db.QueryRow(`SELECT `+announcementCols+` FROM announcements WHERE id = ?`, id))
+}
+
+func (s *Store) UpdateAnnouncement(id int64, title, content string, now time.Time) (bool, error) {
+	res, err := s.db.Exec(
+		`UPDATE announcements SET title = ?, content = ?, updated_at = ? WHERE id = ?`,
+		title, content, now.Unix(), id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+func (s *Store) DeleteAnnouncement(id int64) (bool, error) {
+	res, err := s.db.Exec(`DELETE FROM announcements WHERE id = ?`, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+// EnableAnnouncement makes this row the delivered one and blanks the rest;
+// the login page shows the enabled row only, none when all are off.
+func (s *Store) EnableAnnouncement(id int64, enabled bool) (bool, error) {
+	value := 0
+	if enabled {
+		value = 1
+	}
+	if _, err := s.db.Exec(`UPDATE announcements SET active = 0 WHERE id != ?`, id); err != nil {
+		return false, err
+	}
+	res, err := s.db.Exec(`UPDATE announcements SET active = ? WHERE id = ?`, value, id)
 	if err != nil {
 		return false, err
 	}

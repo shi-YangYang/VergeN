@@ -18,7 +18,6 @@ var usernamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{1,31}$`)
 const (
 	settingSubscription   = "subscription_url"
 	settingManagedFlags   = "managed_flags"
-	settingAnnouncement   = "announcement"
 	settingDingtalkKey    = "dingtalk_app_key"
 	settingDingtalkSecret = "dingtalk_app_secret"
 	settingDingtalkAgent  = "dingtalk_agent_id"
@@ -183,7 +182,6 @@ func (a *Server) handleAdminSetUserDingtalk(w http.ResponseWriter, r *http.Reque
 
 type settingsView struct {
 	ManagedFlags   managedFlags   `json:"managed_flags"`
-	Announcement   *announcement  `json:"announcement"`
 	Release        *store.Release `json:"release"`
 	DingtalkAppKey string         `json:"dingtalk_app_key"`
 	// The secret never round-trips to the panel; only its presence is shown.
@@ -194,8 +192,6 @@ type settingsView struct {
 
 type settingsPatch struct {
 	ManagedFlags *managedFlags `json:"managed_flags"`
-	// Announcement with empty title and content clears the current one.
-	Announcement *announcement `json:"announcement"`
 	// Release with an empty version clears the published manifest.
 	Release *store.Release `json:"release"`
 
@@ -218,15 +214,6 @@ func (a *Server) handleAdminGetSettings(w http.ResponseWriter, _ *http.Request) 
 		if err := json.Unmarshal([]byte(raw), &view.ManagedFlags); err != nil {
 			fail(w, http.StatusInternalServerError, "internal_error", "internal error")
 			return
-		}
-	}
-	if raw, found, err := a.store.GetSetting(settingAnnouncement); err != nil {
-		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
-		return
-	} else if found && raw != "" {
-		var ann announcement
-		if err := json.Unmarshal([]byte(raw), &ann); err == nil && ann.Title != "" {
-			view.Announcement = &ann
 		}
 	}
 	if raw, err := a.store.GetRelease(); err != nil {
@@ -276,28 +263,6 @@ func (a *Server) handleAdminSetSettings(w http.ResponseWriter, r *http.Request) 
 		if err := a.store.SetSetting(settingManagedFlags, string(raw)); err != nil {
 			fail(w, http.StatusInternalServerError, "internal_error", "internal error")
 			return
-		}
-	}
-	if req.Announcement != nil {
-		if req.Announcement.Title == "" && req.Announcement.Content == "" {
-			if err := a.store.SetSetting(settingAnnouncement, ""); err != nil {
-				fail(w, http.StatusInternalServerError, "internal_error", "internal error")
-				return
-			}
-		} else {
-			if req.Announcement.Title == "" {
-				fail(w, http.StatusBadRequest, "bad_request", "announcement title is required")
-				return
-			}
-			raw, err := json.Marshal(req.Announcement)
-			if err != nil {
-				fail(w, http.StatusInternalServerError, "internal_error", "internal error")
-				return
-			}
-			if err := a.store.SetSetting(settingAnnouncement, string(raw)); err != nil {
-				fail(w, http.StatusInternalServerError, "internal_error", "internal error")
-				return
-			}
 		}
 	}
 	if req.Release != nil {
@@ -485,6 +450,107 @@ func (a *Server) handleAdminDeleteSubscription(w http.ResponseWriter, r *http.Re
 	}
 	if !found {
 		fail(w, http.StatusNotFound, "subscription_not_found", "subscription does not exist")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// --- Announcement management (single-pick delivery) ---
+
+type announcementPayload struct {
+	Title   string `json:"title"`
+	Content string `json:"content"`
+}
+
+func (a *Server) handleAdminListAnnouncements(w http.ResponseWriter, _ *http.Request) {
+	list, err := a.store.ListAnnouncements()
+	if err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	}
+	out := make([]*store.Announcement, 0, len(list))
+	out = append(out, list...)
+	writeJSON(w, http.StatusOK, map[string]any{"announcements": out})
+}
+
+func (a *Server) handleAdminCreateAnnouncement(w http.ResponseWriter, r *http.Request) {
+	req, ok := readJSON[announcementPayload](w, r)
+	if !ok {
+		return
+	}
+	if req.Title == "" {
+		fail(w, http.StatusBadRequest, "bad_request", "announcement title is required")
+		return
+	}
+	created, err := a.store.CreateAnnouncement(req.Title, req.Content, time.Now())
+	if err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"announcement": created})
+}
+
+func (a *Server) handleAdminUpdateAnnouncement(w http.ResponseWriter, r *http.Request) {
+	req, ok := readJSON[announcementPayload](w, r)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		fail(w, http.StatusBadRequest, "bad_request", "invalid announcement id")
+		return
+	}
+	if req.Title == "" {
+		fail(w, http.StatusBadRequest, "bad_request", "announcement title is required")
+		return
+	}
+	found, err := a.store.UpdateAnnouncement(id, req.Title, req.Content, time.Now())
+	if err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	}
+	if !found {
+		fail(w, http.StatusNotFound, "announcement_not_found", "announcement does not exist")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *Server) handleAdminEnableAnnouncement(w http.ResponseWriter, r *http.Request) {
+	req, ok := readJSON[enablePayload](w, r)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		fail(w, http.StatusBadRequest, "bad_request", "invalid announcement id")
+		return
+	}
+	found, err := a.store.EnableAnnouncement(id, req.Enabled)
+	if err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	}
+	if !found {
+		fail(w, http.StatusNotFound, "announcement_not_found", "announcement does not exist")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *Server) handleAdminDeleteAnnouncement(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		fail(w, http.StatusBadRequest, "bad_request", "invalid announcement id")
+		return
+	}
+	found, err := a.store.DeleteAnnouncement(id)
+	if err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	}
+	if !found {
+		fail(w, http.StatusNotFound, "announcement_not_found", "announcement does not exist")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

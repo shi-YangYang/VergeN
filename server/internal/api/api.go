@@ -82,6 +82,11 @@ func (a *Server) Handler() (http.Handler, error) {
 	mux.Handle("POST /api/v1/admin/subscriptions/{id}", a.admin(a.handleAdminUpdateSubscription))
 	mux.Handle("POST /api/v1/admin/subscriptions/{id}/enable", a.admin(a.handleAdminSetSubscriptionEnabled))
 	mux.Handle("DELETE /api/v1/admin/subscriptions/{id}", a.admin(a.handleAdminDeleteSubscription))
+	mux.Handle("GET /api/v1/admin/announcements", a.admin(a.handleAdminListAnnouncements))
+	mux.Handle("POST /api/v1/admin/announcements", a.admin(a.handleAdminCreateAnnouncement))
+	mux.Handle("POST /api/v1/admin/announcements/{id}", a.admin(a.handleAdminUpdateAnnouncement))
+	mux.Handle("POST /api/v1/admin/announcements/{id}/enable", a.admin(a.handleAdminEnableAnnouncement))
+	mux.Handle("DELETE /api/v1/admin/announcements/{id}", a.admin(a.handleAdminDeleteAnnouncement))
 	mux.Handle("GET /api/v1/admin/settings", a.admin(a.handleAdminGetSettings))
 	mux.Handle("POST /api/v1/admin/settings", a.admin(a.handleAdminSetSettings))
 	mux.Handle("GET /api/v1/admin/dashboard", a.admin(a.handleAdminDashboard))
@@ -386,14 +391,14 @@ func (a *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if raw, found, err := a.store.GetSetting("announcement"); err != nil {
+	if current, err := a.store.CurrentAnnouncement(); err == nil && current != nil && current.Enabled {
+		resp.Announcement = &announcement{
+			Title:   current.Title,
+			Content: current.Content,
+		}
+	} else if err != nil && !errors.Is(err, store.ErrNotFound) {
 		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
-	} else if found && raw != "" {
-		var ann announcement
-		if err := json.Unmarshal([]byte(raw), &ann); err == nil && ann.Title != "" {
-			resp.Announcement = &ann
-		}
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

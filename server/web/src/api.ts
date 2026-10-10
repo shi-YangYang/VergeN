@@ -62,7 +62,6 @@ export interface AdminSettings {
     allow_edit_profiles: boolean
     allow_change_settings: boolean
   }
-  announcement: { title: string; content?: string | null } | null
   release: {
     version: string
     notes: string
@@ -73,6 +72,48 @@ export interface AdminSettings {
   dingtalk_app_key: string
   dingtalk_app_secret_set: boolean
   dingtalk_agent_id: string
+}
+
+export interface AdminAnnouncement {
+  id: number
+  title: string
+  content: string
+  enabled: boolean
+  created_at: number
+  updated_at: number
+}
+
+export async function listAnnouncements() {
+  return request<{ announcements: AdminAnnouncement[] }>('/admin/announcements')
+}
+
+export async function createAnnouncement(title: string, content: string) {
+  return request<{ announcement: AdminAnnouncement }>('/admin/announcements', {
+    method: 'POST',
+    body: { title, content },
+  })
+}
+
+export async function updateAnnouncement(
+  id: number,
+  title: string,
+  content: string,
+) {
+  return request<null>(`/admin/announcements/${id}`, {
+    method: 'POST',
+    body: { title, content },
+  })
+}
+
+export async function setAnnouncementEnabled(id: number, enabled: boolean) {
+  return request<null>(`/admin/announcements/${id}/enable`, {
+    method: 'POST',
+    body: { enabled },
+  })
+}
+
+export async function deleteAnnouncement(id: number) {
+  return request<null>(`/admin/announcements/${id}`, { method: 'DELETE' })
 }
 
 export interface DashboardStats {
@@ -208,7 +249,6 @@ export const getSettings = () => request<AdminSettings>('/admin/settings')
 
 export type SettingsPatch = Partial<{
   managed_flags: AdminSettings['managed_flags']
-  announcement: { title: string; content: string } | null
   release: AdminSettings['release']
   updater_manifest: string
   dingtalk_app_key: string

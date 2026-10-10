@@ -2,6 +2,10 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 
 import {
+  createAnnouncement,
+  deleteAnnouncement,
+  listAnnouncements,
+  setAnnouncementEnabled,
   setSubscriptionEnabled,
   clearToken,
   createSubscription,
@@ -17,7 +21,9 @@ import {
   setUserDingtalk,
   setUserPassword,
   setUserStatus,
+  updateAnnouncement,
   updateSubscription,
+  type AdminAnnouncement,
   type AdminSettings,
   type AdminSubscription,
   type AdminUser,
@@ -272,56 +278,182 @@ function PolicyPage() {
 }
 
 function AnnouncementPage() {
+  const [items, setItems] = useState<AdminAnnouncement[]>([])
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
-  const [message, setMessage] = useState('')
+  const [editId, setEditId] = useState<number | null>(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editContent, setEditContent] = useState('')
+  const [error, setError] = useState('')
+
+  const reload = async () => {
+    try {
+      const data = await listAnnouncements()
+      setItems(data.announcements)
+      setError('')
+    } catch (err) {
+      setError(alertContext(err))
+    }
+  }
 
   useEffect(() => {
-    void getSettings().then((data) => {
-      setTitle(data.announcement?.title ?? '')
-      setContent(data.announcement?.content ?? '')
-    })
+    void reload()
   }, [])
 
-  const save = async (event: FormEvent) => {
+  const create = async (event: FormEvent) => {
     event.preventDefault()
+    if (!title.trim()) return
     try {
-      await patchSettings({
-        announcement:
-          title.trim() === ''
-            ? null
-            : { title: title.trim(), content: content },
-      })
-      setMessage('已保存')
-      setTimeout(() => setMessage(''), 2000)
+      await createAnnouncement(title.trim(), content)
+      setTitle('')
+      setContent('')
+      await reload()
     } catch (err) {
-      setMessage(alertContext(err))
+      setError(alertContext(err))
+    }
+  }
+
+  const saveEdit = async () => {
+    if (editId === null || !editTitle.trim()) return
+    try {
+      await updateAnnouncement(editId, editTitle.trim(), editContent)
+      setEditId(null)
+      await reload()
+    } catch (err) {
+      setError(alertContext(err))
+    }
+  }
+
+  const toggleEnabled = async (id: number, enabled: boolean) => {
+    try {
+      await setAnnouncementEnabled(id, enabled)
+      await reload()
+    } catch (err) {
+      setError(alertContext(err))
+    }
+  }
+
+  const remove = async (item: AdminAnnouncement) => {
+    if (
+      item.enabled &&
+      !window.confirm('该公告正在下发，确认删除？员工登录页将不再显示公告。')
+    ) {
+      return
+    }
+    try {
+      await deleteAnnouncement(item.id)
+      await reload()
+    } catch (err) {
+      setError(alertContext(err))
     }
   }
 
   return (
-    <section className="panel narrow">
-      <form className="stack" onSubmit={save}>
-        <fieldset>
-          <legend>登录页公告(留空标题即清除)</legend>
-          <label>
-            标题
-            <input value={title} onChange={(e) => setTitle(e.target.value)} />
-          </label>
-          <label>
-            内容
-            <textarea
-              rows={3}
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-            />
-          </label>
-        </fieldset>
-        <div className="row-form">
-          <button type="submit">保存</button>
-          {message && <span className="muted">{message}</span>}
-        </div>
+    <section className="panel">
+      <form className="row-form" onSubmit={create}>
+        <input
+          placeholder="标题"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          style={{ minWidth: 200 }}
+        />
+        <input
+          placeholder="内容(可选)"
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          style={{ flex: 1, minWidth: 260 }}
+        />
+        <button type="submit">添加公告</button>
       </form>
+      {error && <div className="error">{error}</div>}
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>标题</th>
+            <th>内容</th>
+            <th>下发</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item) => (
+            <tr key={item.id} className={item.enabled ? '' : 'off'}>
+              <td>{item.id}</td>
+              <td>{item.title}</td>
+              <td
+                className="url-cell"
+                title={item.content}
+                style={{
+                  maxWidth: 320,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {item.content || '-'}
+              </td>
+              <td>
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={item.enabled}
+                    onChange={(e) =>
+                      void toggleEnabled(item.id, e.target.checked)
+                    }
+                  />
+                  下发
+                </label>
+              </td>
+              <td className="actions">
+                <button
+                  className="ghost"
+                  onClick={() => {
+                    setEditId(editId === item.id ? null : item.id)
+                    setEditTitle(item.title)
+                    setEditContent(item.content)
+                  }}
+                >
+                  编辑
+                </button>
+                <button className="ghost" onClick={() => void remove(item)}>
+                  删除
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {editId !== null && (
+        <form
+          className="row-form"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void saveEdit()
+          }}
+        >
+          <span>编辑 #{editId}</span>
+          <input
+            placeholder="标题"
+            value={editTitle}
+            onChange={(e) => setEditTitle(e.target.value)}
+          />
+          <input
+            placeholder="内容"
+            value={editContent}
+            onChange={(e) => setEditContent(e.target.value)}
+            style={{ flex: 1, minWidth: 240 }}
+          />
+          <button type="submit">确认</button>
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => setEditId(null)}
+          >
+            取消
+          </button>
+        </form>
+      )}
     </section>
   )
 }
