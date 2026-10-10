@@ -1,4 +1,4 @@
-import { Paper, ThemeProvider } from '@mui/material'
+import { Box, Paper, ThemeProvider } from '@mui/material'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
@@ -107,7 +107,24 @@ const Layout = () => {
     )
   }
 
-  if (enterpriseSession?.enabled && !enterpriseSession.authenticated) {
+  // The login window is the first-run landing: an unprovisioned device has
+  // no server config yet, so it cannot rely on the enabled flag.
+  if (!enterpriseSession || !enterpriseSession.authenticated) {
+    if (!enterpriseSession) {
+      // Session probe still in flight; keep the window blank instead of
+      // flashing the main UI on a locked device.
+      return (
+        <ThemeProvider theme={theme}>
+          <Box
+            sx={{
+              width: '100vw',
+              height: '100vh',
+              bgcolor: 'background.paper',
+            }}
+          />
+        </ThemeProvider>
+      )
+    }
     return (
       <ThemeProvider theme={theme}>
         <EnterpriseLogin session={enterpriseSession} />
