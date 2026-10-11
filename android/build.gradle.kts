@@ -50,8 +50,8 @@ subprojects {
         buildFeatures.buildConfig = true
         defaultConfig {
             if (isApp) {
-                val customApplicationId = queryConfigProperty("custom.application.id") as? String?
-                applicationId = customApplicationId.takeIf { it?.isNotBlank() == true } ?: "com.github.metacubex.clash"
+                // VergeN fork: fixed identity, no local overrides.
+                applicationId = "io.github.vergen.android"
             }
 
             project.name.let { name ->

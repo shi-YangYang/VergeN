@@ -88,7 +88,8 @@ class EnterpriseLoginActivity : AppCompatActivity() {
                             ErrorKind.BAD_CREDENTIALS -> getString(R.string.enterprise_login_bad_credentials)
                             ErrorKind.FORBIDDEN -> getString(R.string.enterprise_login_forbidden)
                             ErrorKind.NETWORK -> getString(R.string.enterprise_login_network)
-                            else -> getString(R.string.enterprise_login_error)
+                            else -> getString(R.string.enterprise_login_error) +
+                                " [${outcome.error.kind}/${outcome.error.code}]"
                         }
                         error.visibility = View.VISIBLE
                     }

@@ -58,7 +58,9 @@ data class BootstrapSubscription(val name: String, val url: String)
 
 @Serializable
 data class BootstrapResponse(
-    @SerialName("config_version") val configVersion: String,
+    // The server's bootstrap payload predates config_version drift tracking;
+    // version bumps arrive through the heartbeat response instead.
+    @SerialName("config_version") val configVersion: String? = null,
     val subscriptions: List<BootstrapSubscription> = emptyList(),
 )
 
@@ -98,43 +100,47 @@ class EnterpriseApi(
     fun login(username: String, password: String): LoginResponse {
         val body = json.encodeToString(LoginRequest.serializer(), LoginRequest(username, password))
             .toRequestBody(JSON_MEDIA)
-        val response = request("POST", "/api/v1/auth/login", body)
-        response.use { handle(it) }
-        val text = response.body?.string().orEmpty()
-        return decode(LoginResponse.serializer(), text, response.code)
+        return request("POST", "/api/v1/auth/login", body).use { response ->
+            handle(response)
+            decode(LoginResponse.serializer(), response.body?.string().orEmpty(), response.code)
+        }
     }
 
     @Throws(ApiError::class)
     fun refresh(refreshToken: String): LoginResponse {
         val body = json.encodeToString(RefreshRequest.serializer(), RefreshRequest(refreshToken))
             .toRequestBody(JSON_MEDIA)
-        val response = request("POST", "/api/v1/auth/refresh", body)
-        response.use { handle(it) }
-        return decode(LoginResponse.serializer(), response.body?.string().orEmpty(), response.code)
+        return request("POST", "/api/v1/auth/refresh", body).use { response ->
+            handle(response)
+            decode(LoginResponse.serializer(), response.body?.string().orEmpty(), response.code)
+        }
     }
 
     /** Whether the server has DingTalk QR login configured. */
     @Throws(ApiError::class)
     fun capabilities(): CapabilitiesResponse {
-        val response = request("GET", "/api/v1/auth/capabilities")
-        response.use { if (it.code != 200) throw ApiError(ErrorKind.HTTP, it.code) }
-        return decode(CapabilitiesResponse.serializer(), response.body?.string().orEmpty(), 200)
+        return request("GET", "/api/v1/auth/capabilities").use { response ->
+            if (response.code != 200) throw ApiError(ErrorKind.HTTP, response.code)
+            decode(CapabilitiesResponse.serializer(), response.body?.string().orEmpty(), 200)
+        }
     }
 
     /** Kotlin 配合桌面端:开一个扫码会话拿 dingtalk qrcode link。 */
     @Throws(ApiError::class)
     fun dingtalkQrStart(): DingtalkQrStartResponse {
-        val response = request("POST", "/api/v1/auth/dingtalk/qr/start")
-        response.use { if (it.code != 200) throw ApiError(ErrorKind.HTTP, it.code) }
-        return decode(DingtalkQrStartResponse.serializer(), response.body?.string().orEmpty(), 200)
+        return request("POST", "/api/v1/auth/dingtalk/qr/start").use { response ->
+            if (response.code != 200) throw ApiError(ErrorKind.HTTP, response.code)
+            decode(DingtalkQrStartResponse.serializer(), response.body?.string().orEmpty(), 200)
+        }
     }
 
     /** queued → scanned → authorized(token)/failed;应每 1~2 秒轮询一次。 */
     @Throws(ApiError::class)
     fun dingtalkQrPoll(sessionId: String): DingtalkQrPollResponse {
-        val response = request("POST", "/api/v1/auth/dingtalk/qr/poll", dingtalkBody(sessionId))
-        response.use { if (it.code != 200) throw ApiError(ErrorKind.HTTP, it.code) }
-        return decode(DingtalkQrPollResponse.serializer(), response.body?.string().orEmpty(), 200)
+        return request("POST", "/api/v1/auth/dingtalk/qr/poll", dingtalkBody(sessionId)).use { response ->
+            if (response.code != 200) throw ApiError(ErrorKind.HTTP, response.code)
+            decode(DingtalkQrPollResponse.serializer(), response.body?.string().orEmpty(), 200)
+        }
     }
 
     fun dingtalkQrCancel(sessionId: String) {
@@ -159,9 +165,10 @@ class EnterpriseApi(
 
     @Throws(ApiError::class)
     fun bootstrap(accessToken: String): BootstrapResponse {
-        val response = request("GET", "/api/v1/client/bootstrap", token = accessToken)
-        response.use { handle(it) }
-        return decode(BootstrapResponse.serializer(), response.body?.string().orEmpty(), response.code)
+        return request("GET", "/api/v1/client/bootstrap", token = accessToken).use { response ->
+            handle(response)
+            decode(BootstrapResponse.serializer(), response.body?.string().orEmpty(), response.code)
+        }
     }
 
     @Throws(ApiError::class)
@@ -174,9 +181,10 @@ class EnterpriseApi(
             HeartbeatRequest.serializer(),
             HeartbeatRequest(version, "android", arch, configVersion),
         ).toRequestBody(JSON_MEDIA)
-        val response = request("POST", "/api/v1/client/heartbeat", body, accessToken)
-        response.use { handle(it) }
-        return decode(HeartbeatResponse.serializer(), response.body?.string().orEmpty(), response.code)
+        return request("POST", "/api/v1/client/heartbeat", body, accessToken).use { response ->
+            handle(response)
+            decode(HeartbeatResponse.serializer(), response.body?.string().orEmpty(), response.code)
+        }
     }
 
     private fun handle(response: okhttp3.Response): Nothing? = when (response.code) {

@@ -71,7 +71,7 @@ class EnterpriseCoordinator(
             refreshToken = login.refreshToken,
         )
         val bootstrap = withContext(Dispatchers.IO) { api.bootstrap(login.accessToken) }
-        session.update(configVersion = bootstrap.configVersion)
+        bootstrap.configVersion?.let { session.update(configVersion = it) }
         return bootstrap.subscriptions
     }
 
@@ -86,8 +86,8 @@ class EnterpriseCoordinator(
         session.update(
             accessToken = accessToken,
             refreshToken = refreshToken,
-            configVersion = bootstrap.configVersion,
         )
+        bootstrap.configVersion?.let { session.update(configVersion = it) }
         return bootstrap.subscriptions
     }
 
