@@ -472,6 +472,7 @@ function ReleasePage() {
   const [notes, setNotes] = useState('')
   const [winUrl, setWinUrl] = useState('')
   const [linuxUrl, setLinuxUrl] = useState('')
+  const [androidUrl, setAndroidUrl] = useState('')
   const [macUrl, setMacUrl] = useState('')
   const [settings, setSettings] = useState<AdminSettings | null>(null)
   const [manifest, setManifest] = useState('')
@@ -510,6 +511,7 @@ function ReleasePage() {
         win_url: winUrl.trim(),
         linux_url: linuxUrl.trim(),
         mac_url: macUrl.trim(),
+        android_url: androidUrl.trim(),
       })
       setVersion('')
       setNotes('')
@@ -588,6 +590,14 @@ function ReleasePage() {
               placeholder="https://…"
               value={linuxUrl}
               onChange={(e) => setLinuxUrl(e.target.value)}
+            />
+          </label>
+          <label>
+            Android 安装包 URL(.apk)
+            <input
+              placeholder="https://…"
+              value={androidUrl}
+              onChange={(e) => setAndroidUrl(e.target.value)}
             />
           </label>
           <div className="row-form">
@@ -844,6 +854,7 @@ function DownloadPage({ onBack }: { onBack: () => void }) {
                   ['windows', 'Windows', release.win_url],
                   ['macos', 'macOS', release.mac_url],
                   ['linux', 'Linux', release.linux_url],
+                  ['android', 'Android', release.android_url],
                 ] as const
               ).map(([key, label, url]) => (
                 <PlatformCard key={key} kind={key} label={label} url={url} />

@@ -402,11 +402,12 @@ func TestClientReleaseManifest(t *testing.T) {
 	// Publish a release (multi-platform).
 	code, body := doJSON(t, h, "POST", "/api/v1/admin/releases", adminToken,
 		map[string]any{
-			"version":   "1.0.2",
-			"notes":     "修复与改进",
-			"mac_url":   "https://download.example.com/vergen-1.0.2.app.tar.gz",
-			"win_url":   "https://download.example.com/vergen-1.0.2-setup.exe",
-			"linux_url": "https://download.example.com/vergen-1.0.2.AppImage",
+			"version":     "1.0.2",
+			"notes":       "修复与改进",
+			"mac_url":     "https://download.example.com/vergen-1.0.2.app.tar.gz",
+			"win_url":     "https://download.example.com/vergen-1.0.2-setup.exe",
+			"linux_url":   "https://download.example.com/vergen-1.0.2.AppImage",
+			"android_url": "https://download.example.com/vergen-1.0.2.apk",
 		})
 	if code != http.StatusCreated {
 		t.Fatalf("publish release: status=%d body=%v", code, body)

@@ -558,12 +558,13 @@ func (a *Server) handleAdminDeleteAnnouncement(w http.ResponseWriter, r *http.Re
 // --- Client releases (multi-version, per-platform) ---
 
 type releasePayload struct {
-	Version  string `json:"version"`
-	Notes    string `json:"notes"`
-	WinURL   string `json:"win_url"`
-	LinuxURL string `json:"linux_url"`
-	MacURL   string `json:"mac_url"`
-	PubDate  int64  `json:"pub_date"`
+	Version    string `json:"version"`
+	Notes      string `json:"notes"`
+	WinURL     string `json:"win_url"`
+	LinuxURL   string `json:"linux_url"`
+	MacURL     string `json:"mac_url"`
+	AndroidURL string `json:"android_url"`
+	PubDate    int64  `json:"pub_date"`
 }
 
 func (a *Server) handleAdminListReleases(w http.ResponseWriter, _ *http.Request) {
@@ -586,19 +587,20 @@ func (a *Server) handleAdminCreateRelease(w http.ResponseWriter, r *http.Request
 		fail(w, http.StatusBadRequest, "bad_request", "release version is required")
 		return
 	}
-	for _, url := range []string{req.WinURL, req.LinuxURL, req.MacURL} {
+	for _, url := range []string{req.WinURL, req.LinuxURL, req.MacURL, req.AndroidURL} {
 		if url != "" && !validateSubscriptionURL(url) {
 			fail(w, http.StatusBadRequest, "bad_request", "release urls must be valid http(s) URLs")
 			return
 		}
 	}
 	created, err := a.store.CreateRelease(&store.Release{
-		Version:  req.Version,
-		Notes:    req.Notes,
-		WinURL:   req.WinURL,
-		LinuxURL: req.LinuxURL,
-		MacURL:   req.MacURL,
-		PubDate:  req.PubDate,
+		Version:    req.Version,
+		Notes:      req.Notes,
+		WinURL:     req.WinURL,
+		LinuxURL:   req.LinuxURL,
+		MacURL:     req.MacURL,
+		AndroidURL: req.AndroidURL,
+		PubDate:    req.PubDate,
 	}, time.Now())
 	if err != nil {
 		slog.Error("create release failed", slog.Any("err", err))

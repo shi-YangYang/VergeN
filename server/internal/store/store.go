@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -76,9 +77,11 @@ CREATE TABLE IF NOT EXISTS releases (
 	win_url   TEXT NOT NULL DEFAULT '',
 	linux_url TEXT NOT NULL DEFAULT '',
 	mac_url   TEXT NOT NULL DEFAULT '',
+	android_url TEXT NOT NULL DEFAULT '',
 	pub_date   INTEGER NOT NULL DEFAULT 0,
 	created_at INTEGER NOT NULL
 );
+
 CREATE TABLE IF NOT EXISTS announcements (
 	id        INTEGER PRIMARY KEY AUTOINCREMENT,
 	title     TEXT NOT NULL,
@@ -110,11 +113,27 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	if err := store.migrateReleaseAndroidURL(); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return store, nil
 }
 
 // migrateSubscription lifts the legacy single-subscription setting into the
 // subscriptions table so upgrades keep serving the same url.
+// migrateReleaseAndroidURL adds the android_url column to releases tables
+// created before multi-platform support; duplicate-column errors are a no-op.
+func (s *Store) migrateReleaseAndroidURL() error {
+	if _, err := s.db.Exec(`ALTER TABLE releases ADD COLUMN android_url TEXT NOT NULL DEFAULT ''`); err != nil {
+		if strings.Contains(err.Error(), "duplicate column") {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
 func (s *Store) migrateSubscription() error {
 	var count int
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM subscriptions`).Scan(&count); err != nil {
@@ -361,21 +380,22 @@ func (s *Store) SetSetting(key, value string) error {
 // Release is a published client version with per-platform download URLs;
 // the newest row is what /client/update and the updater feed reference.
 type Release struct {
-	Version   string `json:"version"`
-	Notes     string `json:"notes"`
-	WinURL    string `json:"win_url"`
-	LinuxURL  string `json:"linux_url"`
-	MacURL    string `json:"mac_url"`
-	PubDate   int64  `json:"pub_date"`
-	CreatedAt int64  `json:"created_at"`
-	ID        int64  `json:"id"`
+	Version    string `json:"version"`
+	Notes      string `json:"notes"`
+	WinURL     string `json:"win_url"`
+	LinuxURL   string `json:"linux_url"`
+	MacURL     string `json:"mac_url"`
+	AndroidURL string `json:"android_url"`
+	PubDate    int64  `json:"pub_date"`
+	CreatedAt  int64  `json:"created_at"`
+	ID         int64  `json:"id"`
 }
 
-const releaseCols = `id, version, notes, win_url, linux_url, mac_url, pub_date, created_at`
+const releaseCols = `id, version, notes, win_url, linux_url, mac_url, android_url, pub_date, created_at`
 
 func scanRelease(row interface{ Scan(dest ...any) error }) (*Release, error) {
 	var r Release
-	err := row.Scan(&r.ID, &r.Version, &r.Notes, &r.WinURL, &r.LinuxURL, &r.MacURL, &r.PubDate, &r.CreatedAt)
+	err := row.Scan(&r.ID, &r.Version, &r.Notes, &r.WinURL, &r.LinuxURL, &r.MacURL, &r.AndroidURL, &r.PubDate, &r.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -428,9 +448,9 @@ func (s *Store) CreateRelease(r *Release, now time.Time) (*Release, error) {
 		}
 	}
 	res, err := s.db.Exec(
-		`INSERT INTO releases (version, notes, win_url, linux_url, mac_url, pub_date, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		r.Version, r.Notes, r.WinURL, r.LinuxURL, r.MacURL,
+		`INSERT INTO releases (version, notes, win_url, linux_url, mac_url, android_url, pub_date, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.Version, r.Notes, r.WinURL, r.LinuxURL, r.MacURL, r.AndroidURL,
 		r.PubDate, now.Unix())
 	if err != nil {
 		return nil, err

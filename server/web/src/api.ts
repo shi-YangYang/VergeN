@@ -263,6 +263,7 @@ export interface AdminRelease {
   win_url: string
   linux_url: string
   mac_url: string
+  android_url: string
   pub_date: number
   created_at: number
 }
@@ -276,6 +277,7 @@ export async function createRelease(payload: {
   win_url?: string
   linux_url?: string
   mac_url?: string
+  android_url?: string
 }) {
   return request<{ release: AdminRelease }>('/admin/releases', {
     method: 'POST',
@@ -295,6 +297,7 @@ export interface PublicRelease {
   win_url: string
   linux_url: string
   mac_url: string
+  android_url: string
   pub_date: number
   created_at: number
 }
