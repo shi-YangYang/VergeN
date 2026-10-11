@@ -14,7 +14,8 @@ import java.util.concurrent.TimeUnit
 
 enum class ErrorKind { NETWORK, BAD_CREDENTIALS, FORBIDDEN, HTTP, PARSE }
 
-class ApiError(val kind: ErrorKind, val code: Int = 0) : Exception("$kind($code)")
+class ApiError(val kind: ErrorKind, val code: Int = 0, val original: Throwable? = null) :
+    Exception("$kind($code)", original)
 
 @Serializable
 data class CapabilitiesResponse(

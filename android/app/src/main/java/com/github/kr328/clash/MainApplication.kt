@@ -29,6 +29,7 @@ class MainApplication : Application() {
         Log.d("Process $processName started")
 
         if (processName == packageName) {
+            com.github.kr328.clash.enterprise.EnterpriseCrashGate.install(this, true)
             Remote.launch()
             com.github.kr328.clash.enterprise.EnterpriseKit.init(this)
         } else {

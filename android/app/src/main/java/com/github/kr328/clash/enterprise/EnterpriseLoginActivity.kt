@@ -57,6 +57,12 @@ class EnterpriseLoginActivity : AppCompatActivity() {
                         Outcome.Success(subscriptions.size, synced)
                     } catch (e: ApiError) {
                         Outcome.Failure(e)
+                    } catch (e: Throwable) {
+                        // Any unexpected fault (crypto, binder, parser…) is
+                        // surfaced in the UI instead of silently killing the
+                        // process; logcat remains the authoritative trace.
+                        android.util.Log.e("EnterpriseLogin", "sign-in failed", e)
+                        Outcome.Failure(ApiError(ErrorKind.PARSE, 0, e))
                     }
                 }
 
@@ -73,6 +79,11 @@ class EnterpriseLoginActivity : AppCompatActivity() {
                     }
 
                     is Outcome.Failure -> {
+                        val trace = outcome.error.original?.stackTraceToString()
+                        if (!trace.isNullOrBlank()) {
+                            error.text = trace.take(1200)
+                            error.visibility = View.VISIBLE
+                        }
                         error.text = when (outcome.error.kind) {
                             ErrorKind.BAD_CREDENTIALS -> getString(R.string.enterprise_login_bad_credentials)
                             ErrorKind.FORBIDDEN -> getString(R.string.enterprise_login_forbidden)
@@ -89,5 +100,9 @@ class EnterpriseLoginActivity : AppCompatActivity() {
     private sealed class Outcome {
         class Success(val count: Int, val synced: Boolean) : Outcome()
         class Failure(val error: ApiError) : Outcome()
+    }
+
+    private companion object {
+        const val CRASH_KEY = "enterprise_last_error"
     }
 }
