@@ -67,7 +67,7 @@ func (a *Server) Handler() (http.Handler, error) {
 	mux.HandleFunc("GET /api/v1/auth/capabilities", a.handleAuthCapabilities)
 	// Public distribution surface for the gateway page: the manifest is
 	// meant to be handed to employees without signing in.
-	mux.HandleFunc("GET /api/v1/public/release", a.handlePublicRelease)
+	mux.HandleFunc("GET /api/v1/public/releases", a.handlePublicRelease)
 	mux.HandleFunc("POST /api/v1/auth/dingtalk/qr/start", a.handleDingtalkQrStart)
 	mux.HandleFunc("POST /api/v1/auth/dingtalk/qr/poll", a.handleDingtalkQrPoll)
 	mux.HandleFunc("POST /api/v1/auth/dingtalk/qr/cancel", a.handleDingtalkQrCancel)
@@ -91,6 +91,9 @@ func (a *Server) Handler() (http.Handler, error) {
 	mux.Handle("POST /api/v1/admin/announcements/{id}", a.admin(a.handleAdminUpdateAnnouncement))
 	mux.Handle("POST /api/v1/admin/announcements/{id}/enable", a.admin(a.handleAdminEnableAnnouncement))
 	mux.Handle("DELETE /api/v1/admin/announcements/{id}", a.admin(a.handleAdminDeleteAnnouncement))
+	mux.Handle("GET /api/v1/admin/releases", a.admin(a.handleAdminListReleases))
+	mux.Handle("POST /api/v1/admin/releases", a.admin(a.handleAdminCreateRelease))
+	mux.Handle("DELETE /api/v1/admin/releases/{id}", a.admin(a.handleAdminDeleteRelease))
 	mux.Handle("GET /api/v1/admin/settings", a.admin(a.handleAdminGetSettings))
 	mux.Handle("POST /api/v1/admin/settings", a.admin(a.handleAdminSetSettings))
 	mux.Handle("GET /api/v1/admin/dashboard", a.admin(a.handleAdminDashboard))
@@ -363,25 +366,18 @@ func (a *Server) handleAuthCapabilities(w http.ResponseWriter, _ *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]bool{"dingtalk_qr": ok})
 }
 
-// handlePublicRelease exposes the published client manifest without auth:
-// version/notes/URL are public by design (download page), no internal
-// fields are included.
+// handlePublicReleases exposes the published client manifest list without
+// auth: versions/notes/URLs are public by design (the download page), and
+// no internal fields are included.
 func (a *Server) handlePublicRelease(w http.ResponseWriter, _ *http.Request) {
-	r, err := a.store.GetRelease()
+	list, err := a.store.ListReleases()
 	if err != nil {
 		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
-	if r == nil {
-		fail(w, http.StatusNotFound, "no_release", "no client release published")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"version":  r.Version,
-		"notes":    r.Notes,
-		"url":      r.URL,
-		"pub_date": r.PubDate,
-	})
+	out := make([]*store.Release, 0, len(list))
+	out = append(out, list...)
+	writeJSON(w, http.StatusOK, map[string]any{"releases": out})
 }
 
 type bootstrapSubscription struct {
@@ -439,7 +435,7 @@ func (a *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 // manifest; an empty version means "nothing published" and 404s.
 func (a *Server) handleClientUpdate(w http.ResponseWriter, _ *http.Request) {
 	r, err := a.store.GetRelease()
-	if err != nil {
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
@@ -447,7 +443,19 @@ func (a *Server) handleClientUpdate(w http.ResponseWriter, _ *http.Request) {
 		fail(w, http.StatusNotFound, "no_release", "no client release published")
 		return
 	}
-	writeJSON(w, http.StatusOK, r)
+	url := r.WinURL
+	if url == "" {
+		url = r.MacURL
+	}
+	if url == "" {
+		url = r.LinuxURL
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"version":  r.Version,
+		"notes":    r.Notes,
+		"url":      url,
+		"pub_date": r.PubDate,
+	})
 }
 
 // handleClientUpdater hands the raw tauri-format manifest to the updater

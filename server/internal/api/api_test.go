@@ -399,21 +399,32 @@ func TestClientReleaseManifest(t *testing.T) {
 	h, s := newTestBackend(t)
 	adminToken := adminLoginToken(t, h, s)
 
-	// Publish a release.
-	code, body := doJSON(t, h, "POST", "/api/v1/admin/settings", adminToken,
+	// Publish a release (multi-platform).
+	code, body := doJSON(t, h, "POST", "/api/v1/admin/releases", adminToken,
 		map[string]any{
-			"release": map[string]any{
-				"version": "1.0.2",
-				"notes":   "修复与改进",
-				"url":     "https://download.example.com/vergen-1.0.2.app.tar.gz",
-			},
+			"version":   "1.0.2",
+			"notes":     "修复与改进",
+			"mac_url":   "https://download.example.com/vergen-1.0.2.app.tar.gz",
+			"win_url":   "https://download.example.com/vergen-1.0.2-setup.exe",
+			"linux_url": "https://download.example.com/vergen-1.0.2.AppImage",
 		})
-	if code != http.StatusOK {
+	if code != http.StatusCreated {
 		t.Fatalf("publish release: status=%d body=%v", code, body)
 	}
 	rel, _ := body["release"].(map[string]any)
-	if rel == nil || rel["version"] != "1.0.2" || rel["url"] == nil {
+	if rel == nil || rel["version"] != "1.0.2" || rel["win_url"] == nil {
 		t.Fatalf("release view = %v", rel)
+	}
+	releaseID := int64(rel["id"].(float64))
+
+	// Public listing shows it without auth.
+	code, body = doJSON(t, h, "GET", "/api/v1/public/releases", "", nil)
+	if code != http.StatusOK {
+		t.Fatalf("public releases: status=%d", code)
+	}
+	publicList, _ := body["releases"].([]any)
+	if len(publicList) != 1 {
+		t.Fatalf("public releases = %v", publicList)
 	}
 
 	// The employee client reads it with a bearer token.
@@ -435,26 +446,23 @@ func TestClientReleaseManifest(t *testing.T) {
 	}
 
 	// An invalid URL is rejected.
-	code, body = doJSON(t, h, "POST", "/api/v1/admin/settings", adminToken,
+	code, body = doJSON(t, h, "POST", "/api/v1/admin/releases", adminToken,
 		map[string]any{
-			"release": map[string]any{
-				"version": "1.0.3",
-				"url":     "postgres://nope",
-			},
+			"version": "1.0.3",
+			"win_url": "postgres://nope",
 		})
 	if code != http.StatusBadRequest {
 		t.Fatalf("invalid release url: status=%d body=%v", code, body)
 	}
 
-	// Clearing the version unpublishes; clients then 404.
-	code, body = doJSON(t, h, "POST", "/api/v1/admin/settings", adminToken,
-		map[string]any{"release": map[string]any{"version": ""}})
-	if code != http.StatusOK || body["release"] != nil {
-		t.Fatalf("clear release: status=%d body=%v", code, body)
+	// Deleting the newest release falls back to nothing; clients then 404.
+	code, _ = doJSON(t, h, "DELETE", "/api/v1/admin/releases/"+itoa(releaseID), adminToken, nil)
+	if code != http.StatusNoContent {
+		t.Fatalf("delete release: status=%d", code)
 	}
 	code, body = doJSON(t, h, "GET", "/api/v1/client/update", empAccess, nil)
 	if code != http.StatusNotFound {
-		t.Fatalf("update after clear: status=%d body=%v", code, body)
+		t.Fatalf("update after delete: status=%d body=%v", code, body)
 	}
 }
 

@@ -364,3 +364,103 @@ tr.off td {
   border-radius: 8px;
   padding: 28px;
 }
+
+/* 企业官网风格的下载页 */
+.download-wrap {
+  min-height: 100vh;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 40px 24px 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.download-hero {
+  padding: 34px 0 6px;
+  text-align: center;
+}
+.download-hero .brand {
+  font-size: 22px;
+  justify-content: center;
+}
+.download-empty {
+  background: var(--card);
+  border: 1px dashed var(--divider-strong);
+  border-radius: 8px;
+  padding: 44px 20px;
+  text-align: center;
+  color: var(--text-secondary);
+}
+.download-version {
+  background: var(--card);
+  border: 1px solid var(--divider);
+  border-radius: 8px;
+  padding: 18px 20px;
+}
+.download-version-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.download-version-head > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.download-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.platform-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 10px;
+  border: 1px solid var(--divider-strong);
+  border-radius: 8px;
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 600;
+  transition:
+    border-color 0.15s ease,
+    transform 0.15s ease;
+}
+.platform-card:hover:not(.platform-card-disabled) {
+  border-color: var(--primary);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+}
+.platform-card-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.pill {
+  display: inline-block;
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  color: var(--primary);
+  border-radius: 999px;
+  font-size: 12px;
+  padding: 1px 10px;
+  font-weight: 600;
+}
+
+/* 网关页美化:双卡片 */
+.gateway-card {
+  width: 380px;
+  padding: 32px;
+  gap: 10px;
+}
+.gateway-hero {
+  display: flex;
+  gap: 12px;
+}
+.gateway-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 15px;
+}

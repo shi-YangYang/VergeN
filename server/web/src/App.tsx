@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 
 import {
@@ -11,7 +11,10 @@ import {
   createSubscription,
   createUser,
   deleteSubscription,
-  fetchPublicRelease,
+  createRelease,
+  deleteRelease,
+  listReleases,
+  fetchPublicReleases,
   getDashboard,
   getSettings,
   hasToken,
@@ -25,6 +28,7 @@ import {
   updateAnnouncement,
   updateSubscription,
   type AdminAnnouncement,
+  type AdminRelease,
   type AdminSettings,
   type PublicRelease,
   type AdminSubscription,
@@ -32,6 +36,7 @@ import {
   type DashboardStats,
   type SettingsPatch,
 } from './api'
+import { PLATFORM_GLYPHS, type PlatformKey } from './assets/platform-glyphs'
 
 type Tab =
   | 'users'
@@ -461,26 +466,76 @@ function AnnouncementPage() {
 }
 
 function ReleasePage() {
-  const [settings, setSettings] = useState<AdminSettings | null>(null)
+  const [releases, setReleases] = useState<AdminRelease[]>([])
   const [version, setVersion] = useState('')
   const [notes, setNotes] = useState('')
-  const [url, setUrl] = useState('')
+  const [winUrl, setWinUrl] = useState('')
+  const [linuxUrl, setLinuxUrl] = useState('')
+  const [macUrl, setMacUrl] = useState('')
+  const [settings, setSettings] = useState<AdminSettings | null>(null)
   const [manifest, setManifest] = useState('')
   const [message, setMessage] = useState('')
 
-  useEffect(() => {
-    void getSettings().then((data) => {
-      setSettings(data)
-      setVersion(data.release?.version ?? '')
-      setNotes(data.release?.notes ?? '')
-      setUrl(data.release?.url ?? '')
-      setManifest(data.updater_manifest ?? '')
-    })
+  const [releaseError, setReleaseError] = useState('')
+
+  const reload = useCallback(async () => {
+    try {
+      const data = await listReleases()
+      setReleases(data.releases)
+      setReleaseError('')
+    } catch (err) {
+      setReleaseError(err instanceof Error ? err.message : String(err))
+    }
   }, [])
 
-  const save = async (patch: SettingsPatch) => {
+  useEffect(() => {
+    void reload()
+    void getSettings().then((data) => {
+      setSettings(data)
+      setManifest(data.updater_manifest ?? '')
+    })
+  }, [reload])
+
+  const save = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!version.trim()) {
+      setMessage('版本号必填')
+      return
+    }
     try {
-      const data = await patchSettings(patch)
+      await createRelease({
+        version: version.trim(),
+        notes,
+        win_url: winUrl.trim(),
+        linux_url: linuxUrl.trim(),
+        mac_url: macUrl.trim(),
+      })
+      setVersion('')
+      setNotes('')
+      setWinUrl('')
+      setLinuxUrl('')
+      setMacUrl('')
+      setMessage('已发布')
+      setTimeout(() => setMessage(''), 2000)
+      await reload()
+    } catch (err) {
+      setMessage(alertContext(err))
+    }
+  }
+
+  const removeRelease = async (release: AdminRelease) => {
+    if (!window.confirm(`删除 v${release.version}?`)) return
+    try {
+      await deleteRelease(release.id)
+      await reload()
+    } catch (err) {
+      setMessage(alertContext(err))
+    }
+  }
+
+  const saveManifest = async () => {
+    try {
+      const data = await patchSettings({ updater_manifest: manifest })
       setSettings(data)
       setMessage('已保存')
       setTimeout(() => setMessage(''), 2000)
@@ -489,84 +544,124 @@ function ReleasePage() {
     }
   }
 
-  if (!settings) return <div className="muted">加载中…</div>
-
-  const submit = (event: FormEvent) => {
-    event.preventDefault()
-    void save({
-      release:
-        version.trim() === ''
-          ? null
-          : {
-              version: version.trim(),
-              notes,
-              url: url.trim(),
-              pub_date: 0,
-            },
-      updater_manifest: manifest,
-    })
-  }
-
   return (
-    <section className="panel narrow">
-      <form onSubmit={submit} className="stack">
+    <section className="panel">
+      {releaseError && <div className="error">{releaseError}</div>}
+      <form className="stack" onSubmit={save}>
         <fieldset>
-          <legend>版本发布(客户端弹窗展示)</legend>
+          <legend>发布新版本</legend>
+          <div className="row-form">
+            <label>
+              版本号
+              <input
+                placeholder="1.0.2"
+                value={version}
+                onChange={(e) => setVersion(e.target.value)}
+                style={{ minWidth: 120 }}
+              />
+            </label>
+            <label style={{ flex: 1 }}>
+              更新说明
+              <input value={notes} onChange={(e) => setNotes(e.target.value)} />
+            </label>
+          </div>
           <label>
-            最新版本号(留空撤销)
-            <input
-              placeholder="1.0.1"
-              value={version}
-              onChange={(e) => setVersion(e.target.value)}
-            />
-          </label>
-          <label>
-            更新说明
-            <textarea
-              rows={3}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-            />
-          </label>
-          <label>
-            下载地址(安装包 URL)
+            Windows 安装包 URL(.exe/.msi)
             <input
               placeholder="https://…"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
+              value={winUrl}
+              onChange={(e) => setWinUrl(e.target.value)}
             />
           </label>
-          {settings.release && (
-            <div className="muted" style={{ fontSize: 12 }}>
-              当前已发布 v{settings.release.version}
-              {settings.release.pub_date
-                ? ` · ${new Date(settings.release.pub_date * 1000).toLocaleString('zh-CN')}`
-                : ''}
-            </div>
-          )}
-        </fieldset>
-        <fieldset>
-          <legend>一键更新清单(可选)</legend>
           <label>
-            updater JSON(tauri 格式,含签名;留空则只提示不自动升级)
-            <textarea
-              rows={6}
-              placeholder={'{\n  "version": "1.0.1",\n  "platforms": { … }\n}'}
-              value={manifest}
-              onChange={(e) => setManifest(e.target.value)}
+            macOS 安装包 URL(.dmg/.app.tar.gz)
+            <input
+              placeholder="https://…"
+              value={macUrl}
+              onChange={(e) => setMacUrl(e.target.value)}
             />
           </label>
-          {settings.updater_manifest && (
-            <div className="muted" style={{ fontSize: 12 }}>
-              一键更新已启用
-            </div>
-          )}
+          <label>
+            Linux 安装包 URL(.AppImage/.deb)
+            <input
+              placeholder="https://…"
+              value={linuxUrl}
+              onChange={(e) => setLinuxUrl(e.target.value)}
+            />
+          </label>
+          <div className="row-form">
+            <button type="submit">发布</button>
+            {message && <span className="muted">{message}</span>}
+          </div>
         </fieldset>
-        <div className="row-form">
-          <button type="submit">保存</button>
-          {message && <span className="muted">{message}</span>}
-        </div>
       </form>
+      <table>
+        <thead>
+          <tr>
+            <th>版本</th>
+            <th>说明</th>
+            <th>发布时间</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {releases.map((release, index) => (
+            <tr key={release.id} className={index === 0 ? '' : 'off'}>
+              <td>
+                {index === 0 && <span className="pill">最新</span>}v
+                {release.version}
+              </td>
+              <td>{release.notes || '-'}</td>
+              <td>
+                {release.pub_date
+                  ? new Date(release.pub_date * 1000).toLocaleString('zh-CN')
+                  : '-'}
+              </td>
+              <td className="actions">
+                <button
+                  className="ghost"
+                  onClick={() => void removeRelease(release)}
+                >
+                  删除
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {settings && (
+        <form
+          className="stack"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void saveManifest()
+          }}
+          style={{ marginTop: 20 }}
+        >
+          <fieldset>
+            <legend>一键更新清单(可选)</legend>
+            <label>
+              updater JSON(tauri 格式;留空则只提示不自动升级)
+              <textarea
+                rows={5}
+                placeholder={
+                  '{\n  "version": "1.0.1",\n  "platforms": { … }\n}'
+                }
+                value={manifest}
+                onChange={(e) => setManifest(e.target.value)}
+              />
+            </label>
+            {settings.updater_manifest && (
+              <div className="muted" style={{ fontSize: 12 }}>
+                一键更新已启用
+              </div>
+            )}
+            <div className="row-form">
+              <button type="submit">保存清单</button>
+            </div>
+          </fieldset>
+        </form>
+      )}
     </section>
   )
 }
@@ -672,75 +767,6 @@ function DingtalkPage() {
   )
 }
 
-export function App() {
-  const [authed, setAuthed] = useState(hasToken)
-  const [gateView, setGateView] = useState<'gateway' | 'login' | 'download'>(
-    'gateway',
-  )
-  const [user, setUser] = useState<string>('')
-  const [tab, setTab] = useState<Tab>('users')
-
-  if (!authed) {
-    if (gateView === 'login') {
-      return (
-        <LoginPage
-          onLogin={(username) => {
-            setUser(username)
-            setAuthed(true)
-          }}
-          onBack={() => setGateView('gateway')}
-        />
-      )
-    }
-    if (gateView === 'download') {
-      return <DownloadPage onBack={() => setGateView('gateway')} />
-    }
-    return <GatewayPage onPick={setGateView} />
-  }
-
-  return (
-    <div className="shell">
-      <header>
-        <div className="brand">
-          <span className="brand-mark">N</span> VergeN 运维面板
-        </div>
-        <nav>
-          {TABS.map(([key, label]) => (
-            <button
-              key={key}
-              className={tab === key ? 'tab active' : 'tab'}
-              onClick={() => setTab(key)}
-            >
-              {label}
-            </button>
-          ))}
-        </nav>
-        <div className="header-right">
-          <span className="who">{user}</span>
-          <button
-            className="ghost"
-            onClick={() => {
-              clearToken()
-              setAuthed(false)
-            }}
-          >
-            退出
-          </button>
-        </div>
-      </header>
-      <main>
-        {tab === 'users' && <UsersPanel />}
-        {tab === 'subscription' && <SubscriptionsPage />}
-        {tab === 'release' && <ReleasePage />}
-        {tab === 'dingtalk' && <DingtalkPage />}
-        {tab === 'policy' && <PolicyPage />}
-        {tab === 'announcement' && <AnnouncementPage />}
-        {tab === 'dashboard' && <DashboardPanel />}
-      </main>
-    </div>
-  )
-}
-
 function GatewayPage({
   onPick,
 }: {
@@ -752,9 +778,6 @@ function GatewayPage({
         <div className="brand" style={{ justifyContent: 'center' }}>
           <span className="brand-mark">N</span> VergeN
         </div>
-        <p className="muted" style={{ textAlign: 'center', marginTop: 0 }}>
-          企业 VPN 客户端分发与运维管理
-        </p>
         <button className="gateway-btn" onClick={() => onPick('login')}>
           管理员登录
         </button>
@@ -770,65 +793,113 @@ function GatewayPage({
 }
 
 function DownloadPage({ onBack }: { onBack: () => void }) {
-  const [release, setRelease] = useState<PublicRelease | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [releases, setReleases] = useState<PublicRelease[] | null>(null)
 
   useEffect(() => {
-    void fetchPublicRelease().then((data) => {
-      setRelease(data)
-      setLoading(false)
-    })
+    void fetchPublicReleases().then(setReleases)
+  }, [])
+
+  // hash 路由直入下载页:面板地址 + /#/download
+  useEffect(() => {
+    if (location.hash === '' || location.hash !== '#/download') {
+      window.location.hash = '#/download'
+    }
+    return () => {
+      window.location.hash = ''
+    }
   }, [])
 
   return (
-    <div className="login-wrap">
-      <div className="gateway-card">
+    <div className="download-wrap">
+      <div className="download-hero">
         <div className="brand" style={{ justifyContent: 'center' }}>
-          <span className="brand-mark">N</span> 下载客户端
+          <span className="brand-mark">N</span> VergeN 企业客户端
         </div>
-        {loading ? (
-          <div className="muted" style={{ textAlign: 'center' }}>
-            加载中…
-          </div>
-        ) : release ? (
-          <div className="stack" style={{ gap: 10 }}>
-            <div style={{ fontSize: 20, fontWeight: 700 }}>
-              V{release.version}
+      </div>
+
+      {releases === null ? (
+        <div className="muted" style={{ textAlign: 'center', padding: 32 }}>
+          加载中…
+        </div>
+      ) : releases.length === 0 ? (
+        <div className="download-empty">
+          <div style={{ fontSize: 40 }}>📦</div>
+          管理员尚未发布客户端,敬请期待。
+        </div>
+      ) : (
+        releases.map((release, index) => (
+          <div className="download-version" key={release.id}>
+            <div className="download-version-head">
+              <div>
+                <span className="pill">{index === 0 ? '最新' : '历史'}</span>
+                <strong style={{ fontSize: 19 }}>v{release.version}</strong>
+              </div>
+              <span className="muted" style={{ fontSize: 12 }}>
+                {release.pub_date
+                  ? new Date(release.pub_date * 1000).toLocaleDateString(
+                      'zh-CN',
+                    )
+                  : ''}
+              </span>
             </div>
             {release.notes && (
-              <div className="muted" style={{ whiteSpace: 'pre-line' }}>
+              <div
+                className="muted"
+                style={{ marginBottom: 12, whiteSpace: 'pre-line' }}
+              >
                 {release.notes}
               </div>
             )}
-            <a
-              className="gateway-btn"
-              href={release.url}
-              style={{ textAlign: 'center', textDecoration: 'none' }}
-              target="_blank"
-              rel="noreferrer"
-            >
-              下载安装包
-            </a>
-            {release.pub_date > 0 && (
-              <div
-                className="muted"
-                style={{ fontSize: 12, textAlign: 'center' }}
-              >
-                发布于{' '}
-                {new Date(release.pub_date * 1000).toLocaleString('zh-CN')}
-              </div>
-            )}
+            <div className="download-grid">
+              {(
+                [
+                  ['windows', 'Windows', release.win_url],
+                  ['macos', 'macOS', release.mac_url],
+                  ['linux', 'Linux', release.linux_url],
+                ] as const
+              ).map(([key, label, url]) => (
+                <PlatformCard key={key} kind={key} label={label} url={url} />
+              ))}
+            </div>
           </div>
-        ) : (
-          <div className="muted" style={{ textAlign: 'center' }}>
-            管理员尚未发布客户端,敬请期待。
-          </div>
-        )}
-        <button className="ghost" onClick={onBack} style={{ marginTop: 12 }}>
-          返回
-        </button>
-      </div>
+        ))
+      )}
+      <button className="ghost" onClick={onBack} style={{ marginTop: 12 }}>
+        返回
+      </button>
     </div>
+  )
+}
+
+function PlatformCard({
+  kind,
+  label,
+  url,
+}: {
+  kind: PlatformKey
+  label: string
+  url: string
+}) {
+  const glyph = PLATFORM_GLYPHS[kind]
+  const disabled = !url
+  return (
+    <a
+      className={`platform-card${disabled ? ' platform-card-disabled' : ''}`}
+      href={disabled ? undefined : url}
+      target="_blank"
+      rel="noreferrer"
+      aria-disabled={disabled}
+    >
+      <svg viewBox={glyph.viewbox} width="34" height="34" aria-hidden>
+        {glyph.paths.map((path) => (
+          <path key={path.slice(0, 14)} d={path} fill={glyph.color} />
+        ))}
+      </svg>
+      <span>{label}</span>
+      <span className="muted" style={{ fontSize: 12 }}>
+        {disabled ? '暂无安装包' : '下载'}
+      </span>
+    </a>
   )
 }
 
@@ -1203,6 +1274,75 @@ function DistTable({
           </tbody>
         </table>
       )}
+    </div>
+  )
+}
+
+export function App() {
+  const [authed, setAuthed] = useState(hasToken)
+  const [gateView, setGateView] = useState<'gateway' | 'login' | 'download'>(
+    'gateway',
+  )
+  const [user, setUser] = useState<string>('')
+  const [tab, setTab] = useState<Tab>('users')
+
+  if (!authed) {
+    if (gateView === 'login') {
+      return (
+        <LoginPage
+          onLogin={(username) => {
+            setUser(username)
+            setAuthed(true)
+          }}
+          onBack={() => setGateView('gateway')}
+        />
+      )
+    }
+    if (gateView === 'download') {
+      return <DownloadPage onBack={() => setGateView('gateway')} />
+    }
+    return <GatewayPage onPick={setGateView} />
+  }
+
+  return (
+    <div className="shell">
+      <header>
+        <div className="brand">
+          <span className="brand-mark">N</span> VergeN 运维面板
+        </div>
+        <nav>
+          {TABS.map(([key, label]) => (
+            <button
+              key={key}
+              className={tab === key ? 'tab active' : 'tab'}
+              onClick={() => setTab(key)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+        <div className="header-right">
+          <span className="who">{user}</span>
+          <button
+            className="ghost"
+            onClick={() => {
+              clearToken()
+              setAuthed(false)
+            }}
+          >
+            退出
+          </button>
+        </div>
+      </header>
+      <main>
+        {tab === 'users' && <UsersPanel />}
+        {tab === 'subscription' && <SubscriptionsPage />}
+        {tab === 'release' && <ReleasePage />}
+        {tab === 'dingtalk' && <DingtalkPage />}
+        {tab === 'policy' && <PolicyPage />}
+        {tab === 'announcement' && <AnnouncementPage />}
+        {tab === 'dashboard' && <DashboardPanel />}
+      </main>
     </div>
   )
 }

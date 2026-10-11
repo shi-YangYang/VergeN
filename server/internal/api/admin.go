@@ -1,6 +1,8 @@
 package api
 
 import (
+	"log/slog"
+
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -182,9 +184,8 @@ func (a *Server) handleAdminSetUserDingtalk(w http.ResponseWriter, r *http.Reque
 }
 
 type settingsView struct {
-	ManagedFlags   managedFlags   `json:"managed_flags"`
-	Release        *store.Release `json:"release"`
-	DingtalkAppKey string         `json:"dingtalk_app_key"`
+	ManagedFlags   managedFlags `json:"managed_flags"`
+	DingtalkAppKey string       `json:"dingtalk_app_key"`
 	// The secret never round-trips to the panel; only its presence is shown.
 	DingtalkAppSecretSet bool   `json:"dingtalk_app_secret_set"`
 	DingtalkAgentID      string `json:"dingtalk_agent_id"`
@@ -220,12 +221,6 @@ func (a *Server) handleAdminGetSettings(w http.ResponseWriter, _ *http.Request) 
 			fail(w, http.StatusInternalServerError, "internal_error", "internal error")
 			return
 		}
-	}
-	if raw, err := a.store.GetRelease(); err != nil {
-		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
-		return
-	} else if raw != nil {
-		view.Release = raw
 	}
 	if raw, err := a.store.UpdaterManifest(); err != nil {
 		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
@@ -275,28 +270,6 @@ func (a *Server) handleAdminSetSettings(w http.ResponseWriter, r *http.Request) 
 		if err := a.store.SetSetting(settingManagedFlags, string(raw)); err != nil {
 			fail(w, http.StatusInternalServerError, "internal_error", "internal error")
 			return
-		}
-	}
-	if req.Release != nil {
-		// An empty version clears the published manifest.
-		if req.Release.Version == "" {
-			if err := a.store.SetRelease(nil); err != nil {
-				fail(w, http.StatusInternalServerError, "internal_error", "internal error")
-				return
-			}
-		} else {
-			if req.Release.URL != "" && !validateSubscriptionURL(req.Release.URL) {
-				fail(w, http.StatusBadRequest, "bad_request", "release url must be a valid http(s) URL")
-				return
-			}
-			pub := *req.Release
-			if pub.PubDate == 0 {
-				pub.PubDate = time.Now().Unix()
-			}
-			if err := a.store.SetRelease(&pub); err != nil {
-				fail(w, http.StatusInternalServerError, "internal_error", "internal error")
-				return
-			}
 		}
 	}
 	if req.UpdaterManifest != nil {
@@ -576,6 +549,79 @@ func (a *Server) handleAdminDeleteAnnouncement(w http.ResponseWriter, r *http.Re
 	}
 	if !found {
 		fail(w, http.StatusNotFound, "announcement_not_found", "announcement does not exist")
+		return
+	}
+	_ = a.store.BumpConfigVersion()
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// --- Client releases (multi-version, per-platform) ---
+
+type releasePayload struct {
+	Version  string `json:"version"`
+	Notes    string `json:"notes"`
+	WinURL   string `json:"win_url"`
+	LinuxURL string `json:"linux_url"`
+	MacURL   string `json:"mac_url"`
+	PubDate  int64  `json:"pub_date"`
+}
+
+func (a *Server) handleAdminListReleases(w http.ResponseWriter, _ *http.Request) {
+	list, err := a.store.ListReleases()
+	if err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	}
+	out := make([]*store.Release, 0, len(list))
+	out = append(out, list...)
+	writeJSON(w, http.StatusOK, map[string]any{"releases": out})
+}
+
+func (a *Server) handleAdminCreateRelease(w http.ResponseWriter, r *http.Request) {
+	req, ok := readJSON[releasePayload](w, r)
+	if !ok {
+		return
+	}
+	if req.Version == "" {
+		fail(w, http.StatusBadRequest, "bad_request", "release version is required")
+		return
+	}
+	for _, url := range []string{req.WinURL, req.LinuxURL, req.MacURL} {
+		if url != "" && !validateSubscriptionURL(url) {
+			fail(w, http.StatusBadRequest, "bad_request", "release urls must be valid http(s) URLs")
+			return
+		}
+	}
+	created, err := a.store.CreateRelease(&store.Release{
+		Version:  req.Version,
+		Notes:    req.Notes,
+		WinURL:   req.WinURL,
+		LinuxURL: req.LinuxURL,
+		MacURL:   req.MacURL,
+		PubDate:  req.PubDate,
+	}, time.Now())
+	if err != nil {
+		slog.Error("create release failed", slog.Any("err", err))
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	}
+	_ = a.store.BumpConfigVersion()
+	writeJSON(w, http.StatusCreated, map[string]any{"release": created})
+}
+
+func (a *Server) handleAdminDeleteRelease(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		fail(w, http.StatusBadRequest, "bad_request", "invalid release id")
+		return
+	}
+	found, err := a.store.DeleteRelease(id)
+	if err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	}
+	if !found {
+		fail(w, http.StatusNotFound, "release_not_found", "release does not exist")
 		return
 	}
 	_ = a.store.BumpConfigVersion()

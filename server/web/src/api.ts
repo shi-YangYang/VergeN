@@ -62,12 +62,6 @@ export interface AdminSettings {
     allow_edit_profiles: boolean
     allow_change_settings: boolean
   }
-  release: {
-    version: string
-    notes: string
-    url: string
-    pub_date: number
-  } | null
   updater_manifest: string
   dingtalk_app_key: string
   dingtalk_app_secret_set: boolean
@@ -250,7 +244,6 @@ export const getSettings = () => request<AdminSettings>('/admin/settings')
 
 export type SettingsPatch = Partial<{
   managed_flags: AdminSettings['managed_flags']
-  release: AdminSettings['release']
   updater_manifest: string
   dingtalk_app_key: string
   dingtalk_app_secret: string
@@ -263,19 +256,56 @@ export const patchSettings = (patch: SettingsPatch) =>
 
 export const getDashboard = () => request<DashboardStats>('/admin/dashboard')
 
-// Gateway download page: intentionally unauthenticated.
-export interface PublicRelease {
+export interface AdminRelease {
+  id: number
   version: string
   notes: string
-  url: string
+  win_url: string
+  linux_url: string
+  mac_url: string
   pub_date: number
+  created_at: number
 }
 
-export const getPublicRelease = () =>
-  fetch('/api/v1/public/release')
-    .then((response) => response.json() as Promise<PublicRelease>)
-    .catch(() => null)
+export const listReleases = () =>
+  request<{ releases: AdminRelease[] }>('/admin/releases')
 
-export function fetchPublicRelease(): Promise<PublicRelease | null> {
-  return getPublicRelease().catch(() => null)
+export async function createRelease(payload: {
+  version: string
+  notes: string
+  win_url?: string
+  linux_url?: string
+  mac_url?: string
+}) {
+  return request<{ release: AdminRelease }>('/admin/releases', {
+    method: 'POST',
+    body: payload,
+  })
+}
+
+export async function deleteRelease(id: number) {
+  return request<null>(`/admin/releases/${id}`, { method: 'DELETE' })
+}
+
+// Gateway download page: intentionally unauthenticated.
+export interface PublicRelease {
+  id: number
+  version: string
+  notes: string
+  win_url: string
+  linux_url: string
+  mac_url: string
+  pub_date: number
+  created_at: number
+}
+
+export async function fetchPublicReleases(): Promise<PublicRelease[]> {
+  try {
+    const response = await fetch('/api/v1/public/releases')
+    if (!response.ok) return []
+    const data = (await response.json()) as { releases: PublicRelease[] }
+    return data.releases ?? []
+  } catch {
+    return []
+  }
 }

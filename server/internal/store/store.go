@@ -69,6 +69,16 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 	active    INTEGER NOT NULL DEFAULT 0,
 	created_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS releases (
+	id        INTEGER PRIMARY KEY AUTOINCREMENT,
+	version   TEXT NOT NULL,
+	notes     TEXT NOT NULL DEFAULT '',
+	win_url   TEXT NOT NULL DEFAULT '',
+	linux_url TEXT NOT NULL DEFAULT '',
+	mac_url   TEXT NOT NULL DEFAULT '',
+	pub_date   INTEGER NOT NULL DEFAULT 0,
+	created_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS announcements (
 	id        INTEGER PRIMARY KEY AUTOINCREMENT,
 	title     TEXT NOT NULL,
@@ -348,39 +358,104 @@ func (s *Store) SetSetting(key, value string) error {
 	return err
 }
 
-// Release is the company client update manifest the employee client polls.
+// Release is a published client version with per-platform download URLs;
+// the newest row is what /client/update and the updater feed reference.
 type Release struct {
-	Version string `json:"version"`
-	Notes   string `json:"notes"`
-	URL     string `json:"url"`
-	PubDate int64  `json:"pub_date"`
+	Version   string `json:"version"`
+	Notes     string `json:"notes"`
+	WinURL    string `json:"win_url"`
+	LinuxURL  string `json:"linux_url"`
+	MacURL    string `json:"mac_url"`
+	PubDate   int64  `json:"pub_date"`
+	CreatedAt int64  `json:"created_at"`
+	ID        int64  `json:"id"`
 }
 
-// GetRelease parses the stored release manifest; nil means nothing published.
-func (s *Store) GetRelease() (*Release, error) {
-	raw, found, err := s.GetSetting("release_manifest")
-	if err != nil || !found || raw == "" {
-		return nil, err
-	}
-	if err != nil || !found || raw == "" {
-		return nil, err
-	}
+const releaseCols = `id, version, notes, win_url, linux_url, mac_url, pub_date, created_at`
+
+func scanRelease(row interface{ Scan(dest ...any) error }) (*Release, error) {
 	var r Release
-	if err := json.Unmarshal([]byte(raw), &r); err != nil || r.Version == "" {
-		return nil, nil
+	err := row.Scan(&r.ID, &r.Version, &r.Notes, &r.WinURL, &r.LinuxURL, &r.MacURL, &r.PubDate, &r.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
 	}
 	return &r, nil
 }
 
-func (s *Store) SetRelease(r *Release) error {
-	if r == nil || r.Version == "" {
-		return s.SetSetting("release_manifest", "")
-	}
-	raw, err := json.Marshal(r)
+// ListReleases newest-first.
+func (s *Store) ListReleases() ([]*Release, error) {
+	rows, err := s.db.Query(`SELECT ` + releaseCols + ` FROM releases ORDER BY id DESC`)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return s.SetSetting("release_manifest", string(raw))
+	defer rows.Close()
+	var list []*Release
+	for rows.Next() {
+		r, err := scanRelease(rows)
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, r)
+	}
+	return list, rows.Err()
+}
+
+// GetRelease resolves the manifest the employee client sees (newest row);
+// nil when nothing has been published yet.
+func (s *Store) GetRelease() (*Release, error) {
+	return scanRelease(s.db.QueryRow(
+		`SELECT ` + releaseCols + ` FROM releases ORDER BY id DESC LIMIT 1`))
+}
+
+func (s *Store) CreateRelease(r *Release, now time.Time) (*Release, error) {
+	// The legacy single-release manifest migrates here so upgrades keep
+	// serving the published version.
+	if legacy, found, _ := s.GetSetting("release_manifest"); found && legacy != "" {
+		var old Release
+		_ = json.Unmarshal([]byte(legacy), &old)
+		if old.Version != "" {
+			_, _ = s.db.Exec(
+				`INSERT INTO releases (version, notes, win_url, linux_url, mac_url, pub_date, created_at)
+				 SELECT ?, ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM releases)`,
+				old.Version, old.Notes, old.WinURL, old.MacURL, old.LinuxURL,
+				time_now_or(old.PubDate, now.Unix()), now.Unix())
+			_ = s.SetSetting("release_manifest", "")
+		} else {
+			_ = s.SetSetting("release_manifest", "")
+		}
+	}
+	res, err := s.db.Exec(
+		`INSERT INTO releases (version, notes, win_url, linux_url, mac_url, pub_date, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		r.Version, r.Notes, r.WinURL, r.LinuxURL, r.MacURL,
+		r.PubDate, now.Unix())
+	if err != nil {
+		return nil, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+	return scanRelease(s.db.QueryRow(`SELECT `+releaseCols+` FROM releases WHERE id = ?`, id))
+}
+
+func time_now_or(stored, now int64) int64 {
+	if stored > 0 {
+		return stored
+	}
+	return now
+}
+
+func (s *Store) DeleteRelease(id int64) (bool, error) {
+	res, err := s.db.Exec(`DELETE FROM releases WHERE id = ?`, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
 }
 
 // UpdaterManifest is the raw tauri-format update.json fed to the updater
