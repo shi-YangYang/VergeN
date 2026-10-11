@@ -29,6 +29,11 @@ object EnterpriseKit {
     lateinit var coordinator: EnterpriseCoordinator
         private set
 
+    fun apiOrNull(): io.github.vergen.android.enterprise.EnterpriseApi? {
+        if (!::session.isInitialized) return null
+        return apiHolder.api
+    }
+
     @Synchronized
     fun init(context: Context) {
         if (::session.isInitialized) return

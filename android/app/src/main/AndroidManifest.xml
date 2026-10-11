@@ -46,6 +46,10 @@
             android:value="@integer/release_code" />
 
         <activity
+            android:name=".enterprise.EnterpriseDingtalkActivity"
+            android:label="@string/enterprise_login_title"
+            android:exported="false" />
+        <activity
             android:name=".enterprise.EnterpriseLoginActivity"
             android:label="@string/enterprise_login_title"
             android:exported="false" />

@@ -5,6 +5,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Orchestrates bootstrap + heartbeat against the vergen-server:
@@ -16,7 +17,9 @@ import kotlinx.coroutines.launch
  *  - [syncNow]: foreground fetch of `GET /client/bootstrap`, used by the UI
  *    after login.
  *
- * 401/403 mean the admin disabled the user; callers treat that as logout.
+ * Authorization calls wrap [author]: on 401 the refresh token buys a fresh
+ * pair once; when that also fails the session clears (admin disabled the
+ * user) and the failure rethrows.
  */
 class EnterpriseCoordinator(
     private val apiHolder: EnterpriseApiHolder,
@@ -31,7 +34,6 @@ class EnterpriseCoordinator(
         scope.launch(Dispatchers.IO) {
             while (true) {
                 runCatching { tick() }
-                    .onFailure { if (it is ApiError && it.code in 401..403) { /* surfaced below */ } }
                 delay(HEARTBEAT_MILLIS)
             }
         }
@@ -39,81 +41,114 @@ class EnterpriseCoordinator(
 
     /** Returns true when local state matched the server (nothing to re-sync). */
     suspend fun tick(): Boolean {
-        val stored = session.load()
-        val token = stored.accessToken ?: return false
         val api = apiHolder.api ?: return false
         return try {
-            val response = api.heartbeat(token, appVersion, stored.configVersion.orEmpty())
-            val serverVersion = response.configVersion
-            if (!serverVersion.isNullOrEmpty() && serverVersion != stored.configVersion) {
-                session.update(configVersion = serverVersion)
-                onSyncRequired()
-                false
-            } else {
-                true
+            author { token ->
+                val stored = session.load()
+                val response = api.heartbeat(token, appVersion, stored.configVersion.orEmpty())
+                val serverVersion = response.configVersion
+                if (!serverVersion.isNullOrEmpty() && serverVersion != stored.configVersion) {
+                    session.update(configVersion = serverVersion)
+                    onSyncRequired()
+                }
             }
+            true
         } catch (e: ApiError) {
             when (e.kind) {
-                ErrorKind.BAD_CREDENTIALS, ErrorKind.FORBIDDEN -> {
-                    session.clear()
-                    false
-                }
+                ErrorKind.BAD_CREDENTIALS, ErrorKind.FORBIDDEN -> false
                 else -> false
             }
         }
     }
 
-    /** Login → tokens stored → immediate bootstrap; returns subscription list. */
+    /** Login with password → tokens stored → immediate bootstrap. */
     suspend fun signIn(username: String, password: String): List<BootstrapSubscription> {
         val api = apiHolder.api
             ?: throw ApiError(ErrorKind.NETWORK)
-        val login = api.login(username, password)
+        val login = withContext(Dispatchers.IO) { api.login(username, password) }
         session.update(
             accessToken = login.accessToken,
             refreshToken = login.refreshToken,
         )
-        val bootstrap = api.bootstrap(login.accessToken)
+        val bootstrap = withContext(Dispatchers.IO) { api.bootstrap(login.accessToken) }
         session.update(configVersion = bootstrap.configVersion)
+        return bootstrap.subscriptions
+    }
+
+    /** Accepts a token pair minted by the DingTalk QR flow. */
+    suspend fun signInWithTokens(
+        accessToken: String,
+        refreshToken: String,
+    ): List<BootstrapSubscription> {
+        val bootstrap = withContext(Dispatchers.IO) {
+            (apiHolder.api ?: throw ApiError(ErrorKind.NETWORK)).bootstrap(accessToken)
+        }
+        session.update(
+            accessToken = accessToken,
+            refreshToken = refreshToken,
+            configVersion = bootstrap.configVersion,
+        )
         return bootstrap.subscriptions
     }
 
     suspend fun signOut() {
         val stored = session.load()
         stored.refreshToken?.let { token ->
-            runCatching { apiHolder.sessionApi?.let { it.logout(token) } }
+            runCatching {
+                apiHolder.api?.logout(token)
+            }
         }
         session.clear()
     }
 
     /** Pull bootstrap only (offline-safe); used after app start with a session. */
     suspend fun syncNow(): List<BootstrapSubscription> {
-        val stored = session.load()
-        val token = stored.accessToken ?: throw ApiError(ErrorKind.BAD_CREDENTIALS)
         val api = apiHolder.api ?: throw ApiError(ErrorKind.NETWORK)
-        val bootstrap = api.bootstrap(token)
-        if (stored.configVersion != bootstrap.configVersion) {
-            session.update(configVersion = bootstrap.configVersion)
+        return withContext(Dispatchers.IO) {
+            author { token ->
+                val bootstrap = api.bootstrap(token)
+                if (stored() != bootstrap.configVersion) {
+                    session.update(configVersion = bootstrap.configVersion)
+                }
+                bootstrap.subscriptions
+            }
         }
-        return bootstrap.subscriptions
     }
 
     val isSignedIn: Boolean
         get() = !session.load().accessToken.isNullOrEmpty()
 
+    private suspend fun <T> author(block: suspend (String) -> T): T {
+        val api = apiHolder.api ?: throw ApiError(ErrorKind.NETWORK)
+        val stored = session.load()
+        val token = stored.accessToken ?: throw ApiError(ErrorKind.BAD_CREDENTIALS)
+        return try {
+            block(token)
+        } catch (e: ApiError) {
+            if (e.kind != ErrorKind.BAD_CREDENTIALS) throw e
+
+            val refreshToken = session.load().refreshToken
+                ?: run {
+                    session.clear()
+                    throw e
+                }
+            try {
+                val refreshed = withContext(Dispatchers.IO) { api.refresh(refreshToken) }
+                session.update(
+                    accessToken = refreshed.accessToken,
+                    refreshToken = refreshed.refreshToken,
+                )
+                block(refreshed.accessToken)
+            } catch (_: ApiError) {
+                session.clear()
+                throw e
+            }
+        }
+    }
+
+    private fun stored(): String? = session.load().configVersion
+
     private companion object {
         const val HEARTBEAT_MILLIS = 5L * 60 * 1000
     }
-}
-
-/**
- * Holds the concrete [EnterpriseApi] once the deployment URL is known;
- * the server address is shipped at build time so users never type it.
- */
-class EnterpriseApiHolder(
-    private val baseUrl: String,
-) {
-    val api: EnterpriseApi? = runCatching {
-        EnterpriseApi(baseUrl)
-    }.getOrNull()
-    var sessionApi: EnterpriseApi? = api
 }

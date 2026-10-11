@@ -17,6 +17,29 @@ enum class ErrorKind { NETWORK, BAD_CREDENTIALS, FORBIDDEN, HTTP, PARSE }
 class ApiError(val kind: ErrorKind, val code: Int = 0) : Exception("$kind($code)")
 
 @Serializable
+data class CapabilitiesResponse(
+    @SerialName("dingtalk_qr") val dingtalkQr: Boolean = false,
+)
+
+@Serializable
+data class DingtalkQrPollRequest(
+    @SerialName("session_id") val sessionId: String,
+)
+
+@Serializable
+data class DingtalkQrStartResponse(
+    @SerialName("session_id") val sessionId: String,
+    @SerialName("qr_url") val qrUrl: String,
+)
+
+@Serializable
+data class DingtalkQrPollResponse(
+    val status: String,
+    @SerialName("access_token") val accessToken: String? = null,
+    @SerialName("refresh_token") val refreshToken: String? = null,
+)
+
+@Serializable
 data class LoginRequest(val username: String, val password: String)
 
 @Serializable
@@ -41,6 +64,8 @@ data class BootstrapResponse(
 @Serializable
 data class HeartbeatRequest(
     val version: String,
+    val os: String,
+    val arch: String,
     @SerialName("config_version") val configVersion: String,
 )
 
@@ -57,6 +82,7 @@ data class HeartbeatResponse(
 class EnterpriseApi(
     private val baseUrl: String,
     client: OkHttpClient? = null,
+    private val arch: String = "arm64-v8a",
 ) {
     private val json = Json {
         ignoreUnknownKeys = true
@@ -86,7 +112,43 @@ class EnterpriseApi(
         return decode(LoginResponse.serializer(), response.body?.string().orEmpty(), response.code)
     }
 
+    /** Whether the server has DingTalk QR login configured. */
     @Throws(ApiError::class)
+    fun capabilities(): CapabilitiesResponse {
+        val response = request("GET", "/api/v1/auth/capabilities")
+        response.use { if (it.code != 200) throw ApiError(ErrorKind.HTTP, it.code) }
+        return decode(CapabilitiesResponse.serializer(), response.body?.string().orEmpty(), 200)
+    }
+
+    /** Kotlin 配合桌面端:开一个扫码会话拿 dingtalk qrcode link。 */
+    @Throws(ApiError::class)
+    fun dingtalkQrStart(): DingtalkQrStartResponse {
+        val response = request("POST", "/api/v1/auth/dingtalk/qr/start")
+        response.use { if (it.code != 200) throw ApiError(ErrorKind.HTTP, it.code) }
+        return decode(DingtalkQrStartResponse.serializer(), response.body?.string().orEmpty(), 200)
+    }
+
+    /** queued → scanned → authorized(token)/failed;应每 1~2 秒轮询一次。 */
+    @Throws(ApiError::class)
+    fun dingtalkQrPoll(sessionId: String): DingtalkQrPollResponse {
+        val response = request("POST", "/api/v1/auth/dingtalk/qr/poll", dingtalkBody(sessionId))
+        response.use { if (it.code != 200) throw ApiError(ErrorKind.HTTP, it.code) }
+        return decode(DingtalkQrPollResponse.serializer(), response.body?.string().orEmpty(), 200)
+    }
+
+    fun dingtalkQrCancel(sessionId: String) {
+        runCatching {
+            request("POST", "/api/v1/auth/dingtalk/qr/cancel", dingtalkBody(sessionId))
+                .close()
+        }
+    }
+
+    private fun dingtalkBody(sessionId: String): okhttp3.RequestBody =
+        json.encodeToString(
+            DingtalkQrPollRequest.serializer(),
+            DingtalkQrPollRequest(sessionId),
+        ).toRequestBody(JSON_MEDIA)
+
     fun logout(accessToken: String) {
         request("POST", "/api/v1/auth/logout", emptyBody(), accessToken).use { r ->
             // The provider is disposable; a stale session is still a success.
@@ -107,8 +169,10 @@ class EnterpriseApi(
         version: String,
         configVersion: String,
     ): HeartbeatResponse {
-        val body = json.encodeToString(HeartbeatRequest.serializer(), HeartbeatRequest(version, configVersion))
-            .toRequestBody(JSON_MEDIA)
+        val body = json.encodeToString(
+            HeartbeatRequest.serializer(),
+            HeartbeatRequest(version, "android", arch, configVersion),
+        ).toRequestBody(JSON_MEDIA)
         val response = request("POST", "/api/v1/client/heartbeat", body, accessToken)
         response.use { handle(it) }
         return decode(HeartbeatResponse.serializer(), response.body?.string().orEmpty(), response.code)

@@ -73,6 +73,60 @@ jobs:
           prerelease: false
           args: --target ${{ matrix.target }}
 
+  android:
+    name: Android client
+    runs-on: ubuntu-24.04
+    env:
+      JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk_21_latest_x64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: android/core/src/foss/golang/clash/go.mod
+      - name: Install Android SDK pieces
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager --install \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "platform-tools" \
+            "ndk;27.1.12297006" \
+            "cmake;3.22.1" >/dev/null
+      - name: Wire signing config
+        working-directory: android
+        env:
+          VERGEN_STORE_PASSWORD: ${{ secrets.ANDROID_SIGN_STORE_PASSWORD }}
+          VERGEN_KEY_PASSWORD: ${{ secrets.ANDROID_SIGN_KEY_PASSWORD }}
+        run: |
+          # The repo carries a dev keystore; production overrides via secrets.
+          store="${VERGEN_STORE_PASSWORD:-vergen1234}"
+          printf 'keystore.password=%s\nkey.alias=vergen\nkey.password=%s\n' \
+            "$store" "${VERGEN_KEY_PASSWORD:-$store}" > signing.properties
+      - name: Build the Android client
+        working-directory: android
+        run: ./gradlew :app:assembleAlphaRelease --no-daemon --console=plain
+      - name: Rename artifacts
+        working-directory: android/app/build/outputs/apk/alpha/release
+        run: |
+          mkdir -p ../upload
+          for arch in arm64-v8a armeabi-v7a x86 x86_64 universal; do
+            src="cmfa-${GITHUB_REF_NAME#v}-alpha-${arch}-release.apk"
+            [ -f "$src" ] && cp "$src" "../upload/vergen-${GITHUB_REF_NAME#v}-android-$arch.apk"
+          done
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" \
+            android/app/build/outputs/apk/alpha/release/upload/*.apk \
+            --clobber --repo "$GITHUB_REPOSITORY"
+
   server:
     name: Server ${{ matrix.label }}
     needs: client

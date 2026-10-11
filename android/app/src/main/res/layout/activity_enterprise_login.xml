@@ -69,6 +69,14 @@
             android:layout_marginTop="24dp"
             android:text="@string/enterprise_login_submit" />
 
+        <Button
+            android:id="@id/enterprise_dingtalk"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/enterprise_login_dingtalk" />
+
         <ProgressBar
             android:id="@id/enterprise_progress"
             style="?android:attr/progressBarStyleHorizontal"

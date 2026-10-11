@@ -7,4 +7,8 @@
     <item name="enterprise_submit" type="id" />
     <item name="enterprise_progress" type="id" />
     <item name="enterprise_error" type="id" />
+    <item name="dingtalk_web" type="id" />
+    <item name="dingtalk_error" type="id" />
+    <item name="dingtalk_fallback" type="id" />
+    <item name="enterprise_dingtalk" type="id" />
 </resources>

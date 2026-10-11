@@ -32,6 +32,10 @@ class EnterpriseLoginActivity : AppCompatActivity() {
         val progress = findViewById<View>(R.id.enterprise_progress)
         val error = findViewById<TextView>(R.id.enterprise_error)
 
+        findViewById<View>(R.id.enterprise_dingtalk).setOnClickListener {
+            startActivity(EnterpriseDingtalkActivity::class.intent)
+        }
+
         submit.setOnClickListener {
             val user = username.text.toString().trim()
             val pass = password.text.toString()
