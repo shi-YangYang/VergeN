@@ -156,23 +156,33 @@ const ProfileDetails = ({
 
         {current.extra && (
           <>
-            <Stack
-              direction="row"
-              spacing={1}
-              sx={{ alignItems: 'flex-start' }}
-            >
+            <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
               <ShieldMascot mood={mascotMood} />
               <Box sx={{ flex: 1, minWidth: 0 }}>
                 <Typography
                   variant="body2"
                   color="text.secondary"
                   sx={{
+                    position: 'relative',
                     display: 'inline-block',
                     bgcolor:
                       'var(--background-color-alpha, rgba(0, 122, 255, 0.08))',
                     borderRadius: 2,
                     px: 1.25,
                     py: 0.75,
+                    ml: 1,
+                    '&::before': {
+                      content: "''",
+                      position: 'absolute',
+                      left: -4,
+                      bottom: 12,
+                      width: 9,
+                      height: 9,
+                      bgcolor:
+                        'var(--background-color-alpha, rgba(0, 122, 255, 0.08))',
+                      transform: 'rotate(45deg)',
+                      borderRadius: 0.5,
+                    },
                   }}
                 >
                   {welcome}

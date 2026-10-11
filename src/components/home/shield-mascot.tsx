@@ -66,7 +66,7 @@ export const ShieldMascot = ({
       title={t('shared.labels.mascotPat')}
       sx={{
         position: 'relative',
-        width: 64,
+        width: 58,
         flexShrink: 0,
         cursor: 'pointer',
         userSelect: 'none',
