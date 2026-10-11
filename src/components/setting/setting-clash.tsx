@@ -9,7 +9,7 @@ import { BaseDialog, DialogRef, Switch, TooltipIcon } from '@/components/base'
 import { useClash } from '@/hooks/use-clash'
 import { useClashLog } from '@/hooks/use-clash-log'
 import { useDisplayedMixedPort } from '@/hooks/use-displayed-mixed-port'
-import { useEnterpriseSession } from '@/hooks/use-enterprise'
+import { useManagedLocks } from '@/hooks/use-managed-locks'
 import { useProfiles } from '@/hooks/use-profiles'
 import { useVerge } from '@/hooks/use-verge'
 import { invoke_uwp_tool, setDnsOverride } from '@/services/cmds'
@@ -40,8 +40,7 @@ const SettingClash = ({ onError }: Props) => {
   const { clash, version, mutateClash, patchClash } = useClash()
   const { verge, mutateVerge } = useVerge()
   const { current: currentProfile } = useProfiles()
-  const configLocked =
-    useEnterpriseSession()?.managed.allow_change_settings === false
+  const configLocked = useManagedLocks().lockSettings
   const dnsEnabled = currentProfile
     ? (verge?.profile_dns_settings?.[currentProfile.uid]?.enabled ??
       verge?.enable_dns_settings ??

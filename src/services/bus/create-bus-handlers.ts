@@ -74,6 +74,7 @@ export const createEventBus = (deps: BusHandlerDeps) => {
     'verge://refresh-verge-config': () =>
       deps.revalidateKeys([
         'getVergeConfig',
+        'getEnterpriseSession',
         'getSystemProxy',
         'getAutotemProxy',
       ]),
