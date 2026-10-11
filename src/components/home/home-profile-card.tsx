@@ -162,28 +162,32 @@ const ProfileDetails = ({
                 <Typography
                   variant="body2"
                   color="text.secondary"
-                  sx={{
-                    position: 'relative',
-                    display: 'inline-block',
-                    bgcolor:
-                      'var(--background-color-alpha, rgba(0, 122, 255, 0.08))',
-                    borderRadius: 2,
-                    px: 1.25,
-                    py: 0.75,
-                    ml: 1,
-                    '&::before': {
-                      content: "''",
-                      position: 'absolute',
-                      left: -4,
-                      bottom: 12,
-                      width: 9,
-                      height: 9,
-                      bgcolor:
-                        'var(--background-color-alpha, rgba(0, 122, 255, 0.08))',
-                      transform: 'rotate(45deg)',
-                      borderRadius: 0.5,
+                  sx={[
+                    ({ palette: { mode } }) => {
+                      // 实色等效 8% 主色叠加,避免尾巴与气泡半透明叠层出菱形缝
+                      const bg = mode === 'dark' ? '#2b2d39' : '#ebf4ff'
+                      return {
+                        position: 'relative',
+                        display: 'inline-block',
+                        bgcolor: bg,
+                        borderRadius: 2,
+                        px: 1.25,
+                        py: 0.75,
+                        ml: 1,
+                        '&::after': {
+                          content: '""',
+                          position: 'absolute',
+                          left: -4,
+                          bottom: 12,
+                          width: 9,
+                          height: 9,
+                          bgcolor: bg,
+                          transform: 'rotate(45deg)',
+                          borderRadius: 0.5,
+                        },
+                      }
                     },
-                  }}
+                  ]}
                 >
                   {welcome}
                 </Typography>
