@@ -1,7 +1,10 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <network-security-config xmlns:tools="http://schemas.android.com/tools"
     tools:ignore="AcceptsUserCertificates">
-    <base-config>
+    <!-- Enterprise deployments ship the server address at build time; allow
+         cleartext until the deployment front door serves HTTPS. User-added
+         CAs stay trusted for Fiddler-style debugging. -->
+    <base-config cleartextTrafficPermitted="true">
         <trust-anchors>
             <certificates src="system" />
             <certificates src="user" />
