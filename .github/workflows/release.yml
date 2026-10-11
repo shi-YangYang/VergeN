@@ -28,6 +28,8 @@ jobs:
     env:
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      # Baked into the client at build time; set it in repo variables.
+      VITE_ENTERPRISE_SERVER_URL: ${{ vars.VITE_ENTERPRISE_SERVER_URL }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
