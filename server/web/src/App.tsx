@@ -801,7 +801,7 @@ function DownloadPage({ onBack }: { onBack: () => void }) {
     <div className="download-wrap">
       <div className="download-hero">
         <div className="brand" style={{ justifyContent: 'center' }}>
-          <span className="brand-mark">N</span> VergeN 企业客户端
+          <span className="brand-mark">N</span> VergeN 客户端
         </div>
       </div>
 
