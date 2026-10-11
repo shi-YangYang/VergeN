@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Resource shadowing: overrides design/ic_clash (the legacy CMFA glyph)
+     so the main banner shows the VergeN launcher mark. The downscaled
+     bitmap keeps the background centered without scaling artifacts. -->
+<bitmap xmlns:android="http://schemas.android.com/apk/res/android"
+    android:src="@drawable/ic_clash_mark"
+    android:gravity="center" />

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 12% alpha of the error color: readable on both light and dark surfaces. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="#20B00020" />
+    <corners android:radius="12dp" />
+</shape>

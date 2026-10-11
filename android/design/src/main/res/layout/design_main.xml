@@ -63,11 +63,14 @@
                         android:layout_width="@dimen/large_item_header_layout_size"
                         android:layout_height="@dimen/large_item_header_layout_size">
 
-                        <View
+                        <!-- ImageView (not a background View): bitmaps need
+                             fitCenter scaling, backgrounds never scale. -->
+                        <ImageView
                             android:layout_width="@dimen/main_logo_size"
                             android:layout_height="@dimen/main_logo_size"
                             android:layout_gravity="center"
-                            android:background="@drawable/ic_clash" />
+                            android:contentDescription="@null"
+                            android:src="@drawable/ic_clash" />
                     </FrameLayout>
 
                     <TextView

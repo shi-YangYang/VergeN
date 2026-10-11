@@ -40,7 +40,7 @@ class EnterpriseLoginActivity : AppCompatActivity() {
             val user = username.text.toString().trim()
             val pass = password.text.toString()
             if (user.isEmpty() || pass.isEmpty()) {
-                error.text = getString(R.string.enterprise_login_hint)
+                error.text = getString(R.string.enterprise_login_empty)
                 error.visibility = View.VISIBLE
                 return@setOnClickListener
             }
@@ -79,11 +79,6 @@ class EnterpriseLoginActivity : AppCompatActivity() {
                     }
 
                     is Outcome.Failure -> {
-                        val trace = outcome.error.original?.stackTraceToString()
-                        if (!trace.isNullOrBlank()) {
-                            error.text = trace.take(1200)
-                            error.visibility = View.VISIBLE
-                        }
                         error.text = when (outcome.error.kind) {
                             ErrorKind.BAD_CREDENTIALS -> getString(R.string.enterprise_login_bad_credentials)
                             ErrorKind.FORBIDDEN -> getString(R.string.enterprise_login_forbidden)

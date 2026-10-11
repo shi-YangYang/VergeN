@@ -11,6 +11,8 @@
     <string name="enterprise_login_error">登录失败,请稍后再试</string>
     <string name="enterprise_login_connecting">连接中…</string>
     <string name="enterprise_login_dingtalk">使用钉钉扫码登录</string>
+    <string name="enterprise_login_or">或</string>
+    <string name="enterprise_login_empty">请输入账号和密码</string>
     <string name="enterprise_dingtalk_failed">二维码已失效,请重试</string>
     <string name="enterprise_dingtalk_fallback">改用账号密码登录</string>
 </resources>
