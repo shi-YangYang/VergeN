@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
+import { BrowserRouter, Route, Routes, useNavigate } from 'react-router-dom'
 
 import {
   createAnnouncement,
@@ -767,23 +768,20 @@ function DingtalkPage() {
   )
 }
 
-function GatewayPage({
-  onPick,
-}: {
-  onPick: (view: 'login' | 'download') => void
-}) {
+function GatewayPage() {
+  const navigate = useNavigate()
   return (
     <div className="login-wrap">
       <div className="gateway-card">
         <div className="brand" style={{ justifyContent: 'center' }}>
           <span className="brand-mark">N</span> VergeN
         </div>
-        <button className="gateway-btn" onClick={() => onPick('login')}>
+        <button className="gateway-btn" onClick={() => navigate('/login')}>
           管理员登录
         </button>
         <button
           className="gateway-btn ghost"
-          onClick={() => onPick('download')}
+          onClick={() => navigate('/download')}
         >
           下载客户端
         </button>
@@ -797,16 +795,6 @@ function DownloadPage({ onBack }: { onBack: () => void }) {
 
   useEffect(() => {
     void fetchPublicReleases().then(setReleases)
-  }, [])
-
-  // hash 路由直入下载页:面板地址 + /#/download
-  useEffect(() => {
-    if (location.hash === '' || location.hash !== '#/download') {
-      window.location.hash = '#/download'
-    }
-    return () => {
-      window.location.hash = ''
-    }
   }, [])
 
   return (
@@ -1279,29 +1267,42 @@ function DistTable({
 }
 
 export function App() {
-  const [authed, setAuthed] = useState(hasToken)
-  const [gateView, setGateView] = useState<'gateway' | 'login' | 'download'>(
-    'gateway',
+  return (
+    <BrowserRouter>
+      <RouterShell />
+    </BrowserRouter>
   )
+}
+
+function RouterShell() {
+  const navigate = useNavigate()
+  const [authed, setAuthed] = useState(hasToken)
   const [user, setUser] = useState<string>('')
   const [tab, setTab] = useState<Tab>('users')
 
   if (!authed) {
-    if (gateView === 'login') {
-      return (
-        <LoginPage
-          onLogin={(username) => {
-            setUser(username)
-            setAuthed(true)
-          }}
-          onBack={() => setGateView('gateway')}
+    return (
+      <Routes>
+        <Route path="/" element={<GatewayPage />} />
+        <Route
+          path="/login"
+          element={
+            <LoginPage
+              onLogin={(username) => {
+                setUser(username)
+                setAuthed(true)
+                navigate('/', { replace: true })
+              }}
+            />
+          }
         />
-      )
-    }
-    if (gateView === 'download') {
-      return <DownloadPage onBack={() => setGateView('gateway')} />
-    }
-    return <GatewayPage onPick={setGateView} />
+        <Route
+          path="/download"
+          element={<DownloadPage onBack={() => navigate('/')} />}
+        />
+        <Route path="*" element={<GatewayPage />} />
+      </Routes>
+    )
   }
 
   return (
@@ -1327,7 +1328,9 @@ export function App() {
             className="ghost"
             onClick={() => {
               clearToken()
+              setUser('')
               setAuthed(false)
+              navigate('/', { replace: true })
             }}
           >
             退出
