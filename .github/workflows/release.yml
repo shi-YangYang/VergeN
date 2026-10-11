@@ -120,3 +120,118 @@ jobs:
         shell: bash
         run: |
           gh release upload "$GITHUB_REF_NAME" "$output" --clobber --repo "$GITHUB_REPOSITORY"
+
+  deploy:
+    name: Deploy ops server
+    # Installs/restarts vergen-server (admin panel embeds in it) on the
+    # target host; the SQLite db on the host survives binary replacements.
+    # Required configuration: secrets DEPLOY_HOST / DEPLOY_USER /
+    # DEPLOY_SSH_KEY, optional secrets DEPLOY_PORT (service port, default
+    # 8080) and DEPLOY_SSH_PORT, optional var DEPLOY_ARCH (default amd64).
+    needs: [client, server]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Skip when deployment is not configured
+        shell: bash
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_USER" ] || [ -z "$DEPLOY_SSH_KEY" ]; then
+            echo "::notice::DEPLOY_HOST/DEPLOY_USER/DEPLOY_SSH_KEY not set; skipping server deploy."
+            echo "SKIP_DEPLOY=1" >> "$GITHUB_ENV"
+          fi
+      - name: Prepare ssh config
+        if: env.SKIP_DEPLOY != '1'
+        shell: bash
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_SSH_KEY" > ~/.ssh/vergen_deploy_key
+          chmod 600 ~/.ssh/vergen_deploy_key
+          {
+            echo "Host vergen-target"
+            echo "  HostName $DEPLOY_HOST"
+            echo "  User $DEPLOY_USER"
+            echo "  Port ${DEPLOY_SSH_PORT:-22}"
+            echo "  IdentityFile ~/.ssh/vergen_deploy_key"
+            echo "  StrictHostKeyChecking accept-new"
+          } > ~/.ssh/config
+          chmod 600 ~/.ssh/config
+      - name: Download the server binary asset
+        if: env.SKIP_DEPLOY != '1'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEPLOY_ARCH: ${{ vars.DEPLOY_ARCH }}
+        run: |
+          ARCH="${DEPLOY_ARCH:-amd64}"
+          gh release download "$GITHUB_REF_NAME" \
+            --pattern "vergen-server-linux-$ARCH" --dir . --repo "$GITHUB_REPOSITORY"
+          mv "vergen-server-linux-$ARCH" vergen-server
+          chmod +x vergen-server
+      - name: Render the systemd unit
+        if: env.SKIP_DEPLOY != '1'
+        shell: bash
+        env:
+          DEPLOY_SERVICE_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          port="${DEPLOY_SERVICE_PORT:-8080}"
+          cat > /tmp/vergen-server.service <<UNIT
+          [Unit]
+          Description=VergeN ops server
+          After=network.target
+
+          [Service]
+          User=vergen
+          ExecStart=/usr/local/bin/vergen-server --db /var/lib/vergen/vergen.db --addr :$port
+          Restart=always
+          RestartSec=3
+          NoNewPrivileges=true
+          ProtectSystem=full
+          ProtectHome=true
+          PrivateTmp=true
+
+          [Install]
+          WantedBy=multi-user.target
+          UNIT
+      - name: Ship and restart
+        if: env.SKIP_DEPLOY != '1'
+        shell: bash
+        run: |
+          scp vergen-server vergen-target:/tmp/vergen-server.new
+          scp /tmp/vergen-server.service vergen-target:/tmp/vergen-server.service
+          ssh vergen-target <<'REMOTE'
+          set -e
+          id vergen >/dev/null 2>&1 || sudo useradd -r -s /usr/sbin/nologin vergen
+          sudo mv /tmp/vergen-server.new /usr/local/bin/vergen-server
+          sudo chmod 755 /usr/local/bin/vergen-server
+          sudo mkdir -p /var/lib/vergen
+          sudo chown -R vergen:vergen /var/lib/vergen
+          sudo mv /tmp/vergen-server.service /etc/systemd/system/vergen-server.service
+          sudo systemctl daemon-reload
+          sudo systemctl enable vergen-server
+          sudo systemctl restart vergen-server
+          REMOTE
+      - name: Health check
+        if: env.SKIP_DEPLOY != '1'
+        shell: bash
+        env:
+          DEPLOY_SERVICE_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          port="${DEPLOY_SERVICE_PORT:-8080}"
+          for _ in $(seq 1 30); do
+            if curl -fsS --max-time 5 "http://$DEPLOY_HOST:$port/healthz" | grep -q ok; then
+              echo "deploy health check ok"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::health check failed after deploy"
+          exit 1
