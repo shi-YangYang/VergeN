@@ -15,6 +15,7 @@ import com.github.kr328.clash.design.databinding.DialogProfileQrCodeBinding
 import com.github.kr328.clash.design.dialog.AppBottomSheetDialog
 import com.github.kr328.clash.design.ui.ToastDuration
 import com.github.kr328.clash.design.util.*
+import com.github.kr328.clash.design.util.ProfileLock
 import com.github.kr328.clash.service.model.Profile
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.zxing.BarcodeFormat
@@ -58,7 +59,9 @@ class ProfilesDesign(context: Context) : Design<ProfilesDesign.Request>(context)
         }
 
         val updatable = withContext(Dispatchers.Default) {
-            profiles.any { it.imported && it.type != Profile.Type.File }
+            profiles.any {
+                it.imported && it.type != Profile.Type.File && !ProfileLock.isManaged(it)
+            }
         }
 
         withContext(Dispatchers.Main) {

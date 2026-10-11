@@ -270,6 +270,7 @@
     <string name="geofile_imported">%1$s 已导入</string>
     <string name="toast_profile_updated_complete">更新配置 %s 成功</string>
     <string name="toast_profile_updated_failed">更新配置 %1$s 失败：%2$s</string>
+    <string name="toast_profiles_locked">受管配置不可修改</string>
     <string name="external_control_activity">外部控制</string>
     <string name="external_control_started">VergeN 服务已启动</string>
     <string name="external_control_stopped">VergeN 服务已停止</string>

@@ -9,6 +9,7 @@ import com.github.kr328.clash.common.util.setUUID
 import com.github.kr328.clash.common.util.ticker
 import com.github.kr328.clash.design.ProfilesDesign
 import com.github.kr328.clash.design.ui.ToastDuration
+import com.github.kr328.clash.enterprise.EnterpriseKit
 import com.github.kr328.clash.service.model.Profile
 import com.github.kr328.clash.util.withProfile
 import kotlinx.coroutines.Dispatchers
@@ -46,7 +47,10 @@ class ProfilesActivity : BaseActivity<ProfilesDesign>() {
                             withProfile {
                                 try {
                                     queryAll().forEach { p ->
-                                        if (p.imported && p.type != Profile.Type.File)
+                                        // 受管订阅由服务器经 config_version 推送,本地不刷新
+                                        if (p.imported && p.type != Profile.Type.File &&
+                                            !EnterpriseKit.isManaged(p)
+                                        )
                                             update(p.uuid)
                                     }
                                 }
@@ -57,11 +61,19 @@ class ProfilesActivity : BaseActivity<ProfilesDesign>() {
                                 }
                             }
                         is ProfilesDesign.Request.Update ->
-                            withProfile { update(it.profile.uuid) }
+                            if (EnterpriseKit.isManaged(it.profile))
+                                design.showToast(R.string.toast_profiles_locked, ToastDuration.Long)
+                            else
+                                withProfile { update(it.profile.uuid) }
                         is ProfilesDesign.Request.Delete ->
                             withProfile { delete(it.profile.uuid) }
                         is ProfilesDesign.Request.Edit ->
-                            startActivity(PropertiesActivity::class.intent.setUUID(it.profile.uuid))
+                            if (EnterpriseKit.isManaged(it.profile))
+                                design.showToast(R.string.toast_profiles_locked, ToastDuration.Long)
+                            else
+                                startActivity(
+                                    PropertiesActivity::class.intent.setUUID(it.profile.uuid)
+                                )
                         is ProfilesDesign.Request.Active -> {
                             withProfile {
                                 if (it.profile.imported)
@@ -71,12 +83,20 @@ class ProfilesActivity : BaseActivity<ProfilesDesign>() {
                             }
                         }
                         is ProfilesDesign.Request.Duplicate -> {
-                            val uuid = withProfile { clone(it.profile.uuid) }
+                            if (EnterpriseKit.isManaged(it.profile)) {
+                                design.showToast(R.string.toast_profiles_locked, ToastDuration.Long)
+                            } else {
+                                val uuid = withProfile { clone(it.profile.uuid) }
 
-                            startActivity(PropertiesActivity::class.intent.setUUID(uuid))
+                                startActivity(PropertiesActivity::class.intent.setUUID(uuid))
+                            }
                         }
-                        is ProfilesDesign.Request.ShareQrCode ->
-                            design.showProfileQrCode(it.profile)
+                        is ProfilesDesign.Request.ShareQrCode -> {
+                            if (EnterpriseKit.isManaged(it.profile))
+                                design.showToast(R.string.toast_profiles_locked, ToastDuration.Long)
+                            else
+                                design.showProfileQrCode(it.profile)
+                        }
                     }
                 }
                 if (activityStarted) {
@@ -113,16 +133,21 @@ class ProfilesActivity : BaseActivity<ProfilesDesign>() {
             return;
         launch {
             var name: String? = null;
+            var managed = false;
             withProfile {
-                name = queryByUUID(uuid)?.name
+                queryByUUID(uuid)?.let {
+                    name = it.name
+                    managed = EnterpriseKit.isManaged(it)
+                }
             }
             design?.showToast(
                 getString(R.string.toast_profile_updated_failed, name, reason),
                 ToastDuration.Long
-            ){
-                setAction(R.string.edit) {
-                    startActivity(PropertiesActivity::class.intent.setUUID(uuid))
-                }
+            ) {
+                if (!managed)
+                    setAction(R.string.edit) {
+                        startActivity(PropertiesActivity::class.intent.setUUID(uuid))
+                    }
             }
         }
     }

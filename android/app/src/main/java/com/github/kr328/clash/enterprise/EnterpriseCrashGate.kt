@@ -20,6 +20,13 @@ object EnterpriseCrashGate {
         if (!isMainProcess) return
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            // The hook below suppresses the default handler (and thus the
+            // AndroidRuntime FATAL logcat entry) on the main thread, so the
+            // trace must be logged explicitly to stay diagnosable.
+            com.github.kr328.clash.common.log.Log.e(
+                "VergenCrash: uncaught on ${thread.name}",
+                throwable,
+            )
             runCatching {
                 val dir = File(application.filesDir, "enterprise_crash").apply { mkdirs() }
                 val file = File(dir, "last.txt")

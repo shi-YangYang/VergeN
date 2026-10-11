@@ -6,6 +6,7 @@ import com.github.kr328.clash.common.util.uuid
 import com.github.kr328.clash.design.PropertiesDesign
 import com.github.kr328.clash.design.ui.ToastDuration
 import com.github.kr328.clash.design.util.showExceptionToast
+import com.github.kr328.clash.enterprise.EnterpriseKit
 import com.github.kr328.clash.service.model.Profile
 import com.github.kr328.clash.util.withProfile
 import kotlinx.coroutines.coroutineScope
@@ -25,6 +26,12 @@ class PropertiesActivity : BaseActivity<PropertiesDesign>() {
         val design = PropertiesDesign(this)
 
         original = withProfile { queryByUUID(uuid) } ?: return finish()
+
+        // 编辑页是所有 profile 属性改动的总入口;受管配置在此一刀切。
+        if (EnterpriseKit.isManaged(original)) {
+            design.showToast(R.string.toast_profiles_locked, ToastDuration.Long)
+            return finish()
+        }
 
         design.profile = original
 

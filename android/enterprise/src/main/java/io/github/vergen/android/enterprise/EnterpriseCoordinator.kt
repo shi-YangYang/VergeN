@@ -5,6 +5,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -28,6 +30,7 @@ class EnterpriseCoordinator(
     private val onSyncRequired: suspend () -> Unit,
 ) {
     private val running = AtomicReference<CoroutineScope?>(null)
+    private val authorLock = Mutex()
 
     fun start(scope: CoroutineScope) {
         if (!running.compareAndSet(null, scope)) return
@@ -118,33 +121,41 @@ class EnterpriseCoordinator(
     val isSignedIn: Boolean
         get() = !session.load().accessToken.isNullOrEmpty()
 
-    private suspend fun <T> author(block: suspend (String) -> T): T {
-        val api = apiHolder.api ?: throw ApiError(ErrorKind.NETWORK)
-        val stored = session.load()
-        val token = stored.accessToken ?: throw ApiError(ErrorKind.BAD_CREDENTIALS)
-        return try {
-            block(token)
-        } catch (e: ApiError) {
-            if (e.kind != ErrorKind.BAD_CREDENTIALS) throw e
+    /**
+     * Authorization wrapper. All authorized calls funnel through a single
+     * mutex: the server rotates refresh tokens one-time, so two concurrent
+     * 401 retries would race — the loser's refresh is already consumed and
+     * the session gets wiped. Serializing makes the second caller reuse the
+     * freshly stored pair.
+     */
+    private suspend fun <T> author(block: suspend (String) -> T): T =
+        authorLock.withLock {
+            val api = apiHolder.api ?: throw ApiError(ErrorKind.NETWORK)
+            val stored = session.load()
+            val token = stored.accessToken ?: throw ApiError(ErrorKind.BAD_CREDENTIALS)
+            try {
+                block(token)
+            } catch (e: ApiError) {
+                if (e.kind != ErrorKind.BAD_CREDENTIALS) throw e
 
-            val refreshToken = session.load().refreshToken
-                ?: run {
+                val refreshToken = session.load().refreshToken
+                    ?: run {
+                        session.clear()
+                        throw e
+                    }
+                try {
+                    val refreshed = withContext(Dispatchers.IO) { api.refresh(refreshToken) }
+                    session.update(
+                        accessToken = refreshed.accessToken,
+                        refreshToken = refreshed.refreshToken,
+                    )
+                    block(refreshed.accessToken)
+                } catch (_: ApiError) {
                     session.clear()
                     throw e
                 }
-            try {
-                val refreshed = withContext(Dispatchers.IO) { api.refresh(refreshToken) }
-                session.update(
-                    accessToken = refreshed.accessToken,
-                    refreshToken = refreshed.refreshToken,
-                )
-                block(refreshed.accessToken)
-            } catch (_: ApiError) {
-                session.clear()
-                throw e
             }
         }
-    }
 
     private fun stored(): String? = session.load().configVersion
 

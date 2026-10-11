@@ -32,6 +32,9 @@ class MainApplication : Application() {
             com.github.kr328.clash.enterprise.EnterpriseCrashGate.install(this, true)
             Remote.launch()
             com.github.kr328.clash.enterprise.EnterpriseKit.init(this)
+            com.github.kr328.clash.design.util.ProfileLock.detector = {
+                com.github.kr328.clash.enterprise.EnterpriseKit.isManaged(it)
+            }
         } else {
             sendServiceRecreated()
         }

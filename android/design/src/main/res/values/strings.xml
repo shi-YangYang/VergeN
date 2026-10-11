@@ -356,6 +356,7 @@
     <string name="geofile_imported">%1$s imported</string>
     <string name="toast_profile_updated_complete">Update profile %s completed</string>
     <string name="toast_profile_updated_failed">Update profile %1$s failed: %2$s</string>
+    <string name="toast_profiles_locked">Managed profile cannot be modified</string>
     <string name="external_control_activity">External Control</string>
     <string name="external_control_started">VergeN 服务已启动</string>
     <string name="external_control_stopped">VergeN service stopped</string>

@@ -1,6 +1,7 @@
 package com.github.kr328.clash.enterprise
 
 import android.content.Context
+import android.content.SharedPreferences
 import com.github.kr328.clash.common.util.intent
 import com.github.kr328.clash.service.model.Profile
 import com.github.kr328.clash.util.withProfile
@@ -16,9 +17,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import java.util.UUID
 
 // 服务地址随构建注入(CI 用 -PvergenServerAddr=… / 本地默认局域网地址)。
-const val VERGEN_SERVER_URL = "http://192.168.0.102:8080"
+const val VERGEN_SERVER_URL = "http://192.168.0.100:8080"
 
 /**
  * App-facing bridge to the enterprise layer: lazily wires the session, the
@@ -29,10 +31,31 @@ const val VERGEN_SERVER_URL = "http://192.168.0.102:8080"
 object EnterpriseKit {
     private lateinit var apiHolder: EnterpriseApiHolder
     private lateinit var session: EnterpriseSession
+    private lateinit var managedProfiles: SharedPreferences
     private val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     lateinit var coordinator: EnterpriseCoordinator
         private set
+
+    /**
+     * Profiles inserted by the sync are managed: the subscription source can
+     * be any third-party URL the admin chose, so "managed" is tracked per
+     * uuid (persisted) rather than guessed from the source. The UI must not
+     * expose update/edit/duplicate/share for them — the server pushes new
+     * content via config_version and the sync refetches.
+     */
+    fun isManaged(profile: Profile): Boolean =
+        ::managedProfiles.isInitialized &&
+            managedProfiles.getStringSet(KEY_MANAGED, emptySet())
+                ?.contains(profile.uuid.toString()) == true
+
+    private fun markManaged(uuid: UUID) {
+        // SharedPreferences returns the live set — copy before mutating.
+        val set = managedProfiles.getStringSet(KEY_MANAGED, null)?.toMutableSet()
+            ?: mutableSetOf()
+        if (set.add(uuid.toString()))
+            managedProfiles.edit().putStringSet(KEY_MANAGED, set).apply()
+    }
 
     fun apiOrNull(): io.github.vergen.android.enterprise.EnterpriseApi? {
         if (!::session.isInitialized) return null
@@ -43,14 +66,19 @@ object EnterpriseKit {
     fun init(context: Context) {
         if (::session.isInitialized) return
 
-        session = EnterpriseSession(context.applicationContext)
+        val appContext = context.applicationContext
+        session = EnterpriseSession(appContext)
+        managedProfiles = appContext.getSharedPreferences(
+            MANAGED_PREFS_NAME,
+            Context.MODE_PRIVATE,
+        )
         apiHolder = EnterpriseApiHolder(VERGEN_SERVER_URL)
 
         coordinator = EnterpriseCoordinator(
             apiHolder = apiHolder,
             session = session,
             appVersion = try {
-                context.packageManager.getPackageInfo(context.packageName, 0)?.versionName ?: "?"
+                appContext.packageManager.getPackageInfo(appContext.packageName, 0)?.versionName ?: "?"
             } catch (_: Exception) {
                 "?"
             },
@@ -60,10 +88,11 @@ object EnterpriseKit {
     }
 
     /**
-     * Mirrors the desktop client: pull bootstrap, insert missing managed
-     * profiles. The profile manager commits each URL over its own fetch
-     * observer, so this is fire-and-forget per subscription. Deletions are
-     * not automated yet — admins disable subscriptions instead.
+     * Mirrors the desktop client: pull bootstrap, reconcile the managed
+     * profiles — insert missing ones, commit pending ones (the fetch
+     * otherwise never starts), refetch stale ones so admin-driven content
+     * updates arrive without manual interaction. Deletions are not
+     * automated yet — admins disable subscriptions instead.
      */
     suspend fun syncProfiles(): Boolean = withContext(Dispatchers.IO) {
         // 服务进程绑定是异步的;刚装完/冷启动时 binder 未就绪,重试直至可用。
@@ -80,11 +109,14 @@ object EnterpriseKit {
                         val uuid = profile?.uuid
                             ?: create(Profile.Type.Url, subscription.name, subscription.url)
                                 .also { Log.d("managed profile created: ${subscription.name}") }
-                        // commit 会拉取订阅内容并落库;没有它 profile 永远停在 pending("Unsaved"),无法激活。
                         if (profile == null || profile.pending) {
                             commit(uuid, null)
                             Log.d("managed profile committed: ${subscription.name}")
+                        } else if (System.currentTimeMillis() - profile.updatedAt > REFETCH_MILLIS) {
+                            update(uuid)
+                            Log.d("managed profile refetched: ${subscription.name}")
                         }
+                        markManaged(uuid)
                     }
                 }
                 return@withContext true
@@ -103,6 +135,9 @@ object EnterpriseKit {
 
 private const val SYNC_ATTEMPTS = 12
 private const val SYNC_RETRY_MILLIS = 3000L
+private const val REFETCH_MILLIS = 5L * 60 * 1000
+private const val MANAGED_PREFS_NAME = "vergen_managed_profiles"
+private const val KEY_MANAGED = "managed_uuids"
 
 private fun isTransient(e: Throwable): Boolean =
     e is io.github.vergen.android.enterprise.ApiError &&
