@@ -42,7 +42,12 @@ pub struct PrfItem {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub desc: Option<String>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        serialize_with = "crate::config::encrypt::serialize_encrypted",
+        deserialize_with = "crate::config::encrypt::deserialize_encrypted",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
     pub url: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -562,4 +567,59 @@ fn fix_dirty_url(input: &str) -> Result<Url> {
     }
 
     Ok(url)
+}
+
+#[cfg(test)]
+mod url_at_rest_tests {
+    use super::PrfItem;
+
+    #[tokio::test]
+    async fn managed_profile_url_is_encrypted_at_rest() {
+        let dir = std::env::temp_dir().join(format!("vergen-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("profiles-encrypted.yaml");
+        // 直接构造,避免触发真实的网络拉取
+        let item = PrfItem {
+            uid: Some("test-uid".into()),
+            itype: Some("remote".into()),
+            name: Some("公司订阅".into()),
+            file: Some("test-sub.yaml".into()),
+            desc: None,
+            url: Some("https://provider.example.com/sub?token=SECRET-TOKEN".into()),
+            selected: None,
+            latency_test_urls: None,
+            extra: None,
+            updated: None,
+            option: None,
+            home: None,
+            file_data: None,
+        };
+        crate::utils::help::save_yaml(&path, &item, None).await.unwrap();
+
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            !raw.contains("provider.example.com") && !raw.contains("SECRET-TOKEN"),
+            "url must not be plaintext on disk: {raw}"
+        );
+
+        let parsed: PrfItem = crate::utils::help::read_yaml(&path).await.unwrap();
+        assert_eq!(
+            parsed.url.as_deref(),
+            Some("https://provider.example.com/sub?token=SECRET-TOKEN")
+        );
+    }
+
+    #[tokio::test]
+    async fn legacy_plain_url_still_loads() {
+        let dir = std::env::temp_dir().join(format!("vergen-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("profiles-legacy.yaml");
+        std::fs::write(&path, "{\n  url: \"https://provider.example.com/sub?token=OLD\"\n}\n").unwrap();
+
+        let parsed: PrfItem = crate::utils::help::read_yaml(&path).await.unwrap();
+        assert_eq!(
+            parsed.url.as_deref(),
+            Some("https://provider.example.com/sub?token=OLD")
+        );
+    }
 }

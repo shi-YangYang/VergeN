@@ -73,8 +73,19 @@ where
 
         match encrypted_opt {
             Some(encrypted) if !encrypted.is_empty() => {
-                let decrypted_string = decrypt_data(&encrypted).map_err(serde::de::Error::custom)?;
-                serde_json::from_str(&decrypted_string).map_err(serde::de::Error::custom)
+                // Tolerates historical plaintext data: restores as-is on decrypt failure;
+                // the new round of saving goes through the encryption channel
+                match decrypt_data(&encrypted) {
+                    Ok(decrypted_string) => serde_json::from_str(&decrypted_string),
+                    // Legacy plaintext: wrap it as the same json as the
+                    // encrypted shape so T (Option<..>) resolves as before.
+                    Err(_) => {
+                        let value = serde_json::Value::String(encrypted.clone());
+                        let text = serde_json::to_string(&value).map_err(serde::de::Error::custom)?;
+                        serde_json::from_str::<T>(&text)
+                    }
+                }
+                .map_err(serde::de::Error::custom)
             }
             _ => Ok(T::default()),
         }

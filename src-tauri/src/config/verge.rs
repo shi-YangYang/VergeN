@@ -235,7 +235,12 @@ pub struct IVerge {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enterprise_access_expires_at: Option<i64>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        serialize_with = "serialize_encrypted",
+        deserialize_with = "deserialize_encrypted",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
     pub enterprise_subscription_url: Option<String>,
 
     /// Bootstrap-provided subscription picks (name+url), serialized JSON.
