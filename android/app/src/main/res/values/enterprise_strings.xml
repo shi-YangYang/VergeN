@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="enterprise_login_title">登录 VergeN</string>
+    <string name="enterprise_login_hint">输入管理员分发的员工账号</string>
+    <string name="enterprise_login_username">账号</string>
+    <string name="enterprise_login_password">密码</string>
+    <string name="enterprise_login_submit">登录</string>
+    <string name="enterprise_login_bad_credentials">账号或密码错误</string>
+    <string name="enterprise_login_forbidden">账号已被停用,请联系管理员</string>
+    <string name="enterprise_login_network">无法连接服务器,请检查网络</string>
+    <string name="enterprise_login_error">登录失败,请稍后再试</string>
+    <string name="enterprise_login_connecting">连接中…</string>
+</resources>
