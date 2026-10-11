@@ -65,6 +65,9 @@ func (a *Server) Handler() (http.Handler, error) {
 	mux.HandleFunc("POST /api/v1/auth/refresh", a.handleRefresh)
 	mux.HandleFunc("POST /api/v1/auth/logout", a.handleLogout)
 	mux.HandleFunc("GET /api/v1/auth/capabilities", a.handleAuthCapabilities)
+	// Public distribution surface for the gateway page: the manifest is
+	// meant to be handed to employees without signing in.
+	mux.HandleFunc("GET /api/v1/public/release", a.handlePublicRelease)
 	mux.HandleFunc("POST /api/v1/auth/dingtalk/qr/start", a.handleDingtalkQrStart)
 	mux.HandleFunc("POST /api/v1/auth/dingtalk/qr/poll", a.handleDingtalkQrPoll)
 	mux.HandleFunc("POST /api/v1/auth/dingtalk/qr/cancel", a.handleDingtalkQrCancel)
@@ -358,6 +361,27 @@ type announcement struct {
 func (a *Server) handleAuthCapabilities(w http.ResponseWriter, _ *http.Request) {
 	_, _, ok := a.dingtalkReady()
 	writeJSON(w, http.StatusOK, map[string]bool{"dingtalk_qr": ok})
+}
+
+// handlePublicRelease exposes the published client manifest without auth:
+// version/notes/URL are public by design (download page), no internal
+// fields are included.
+func (a *Server) handlePublicRelease(w http.ResponseWriter, _ *http.Request) {
+	r, err := a.store.GetRelease()
+	if err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	}
+	if r == nil {
+		fail(w, http.StatusNotFound, "no_release", "no client release published")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"version":  r.Version,
+		"notes":    r.Notes,
+		"url":      r.URL,
+		"pub_date": r.PubDate,
+	})
 }
 
 type bootstrapSubscription struct {

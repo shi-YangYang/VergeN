@@ -11,6 +11,7 @@ import {
   createSubscription,
   createUser,
   deleteSubscription,
+  fetchPublicRelease,
   getDashboard,
   getSettings,
   hasToken,
@@ -25,6 +26,7 @@ import {
   updateSubscription,
   type AdminAnnouncement,
   type AdminSettings,
+  type PublicRelease,
   type AdminSubscription,
   type AdminUser,
   type DashboardStats,
@@ -672,18 +674,28 @@ function DingtalkPage() {
 
 export function App() {
   const [authed, setAuthed] = useState(hasToken)
+  const [gateView, setGateView] = useState<'gateway' | 'login' | 'download'>(
+    'gateway',
+  )
   const [user, setUser] = useState<string>('')
   const [tab, setTab] = useState<Tab>('users')
 
   if (!authed) {
-    return (
-      <LoginPage
-        onLogin={(username) => {
-          setUser(username)
-          setAuthed(true)
-        }}
-      />
-    )
+    if (gateView === 'login') {
+      return (
+        <LoginPage
+          onLogin={(username) => {
+            setUser(username)
+            setAuthed(true)
+          }}
+          onBack={() => setGateView('gateway')}
+        />
+      )
+    }
+    if (gateView === 'download') {
+      return <DownloadPage onBack={() => setGateView('gateway')} />
+    }
+    return <GatewayPage onPick={setGateView} />
   }
 
   return (
@@ -729,7 +741,104 @@ export function App() {
   )
 }
 
-function LoginPage({ onLogin }: { onLogin: (username: string) => void }) {
+function GatewayPage({
+  onPick,
+}: {
+  onPick: (view: 'login' | 'download') => void
+}) {
+  return (
+    <div className="login-wrap">
+      <div className="gateway-card">
+        <div className="brand" style={{ justifyContent: 'center' }}>
+          <span className="brand-mark">N</span> VergeN
+        </div>
+        <p className="muted" style={{ textAlign: 'center', marginTop: 0 }}>
+          企业 VPN 客户端分发与运维管理
+        </p>
+        <button className="gateway-btn" onClick={() => onPick('login')}>
+          管理员登录
+        </button>
+        <button
+          className="gateway-btn ghost"
+          onClick={() => onPick('download')}
+        >
+          下载客户端
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function DownloadPage({ onBack }: { onBack: () => void }) {
+  const [release, setRelease] = useState<PublicRelease | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    void fetchPublicRelease().then((data) => {
+      setRelease(data)
+      setLoading(false)
+    })
+  }, [])
+
+  return (
+    <div className="login-wrap">
+      <div className="gateway-card">
+        <div className="brand" style={{ justifyContent: 'center' }}>
+          <span className="brand-mark">N</span> 下载客户端
+        </div>
+        {loading ? (
+          <div className="muted" style={{ textAlign: 'center' }}>
+            加载中…
+          </div>
+        ) : release ? (
+          <div className="stack" style={{ gap: 10 }}>
+            <div style={{ fontSize: 20, fontWeight: 700 }}>
+              V{release.version}
+            </div>
+            {release.notes && (
+              <div className="muted" style={{ whiteSpace: 'pre-line' }}>
+                {release.notes}
+              </div>
+            )}
+            <a
+              className="gateway-btn"
+              href={release.url}
+              style={{ textAlign: 'center', textDecoration: 'none' }}
+              target="_blank"
+              rel="noreferrer"
+            >
+              下载安装包
+            </a>
+            {release.pub_date > 0 && (
+              <div
+                className="muted"
+                style={{ fontSize: 12, textAlign: 'center' }}
+              >
+                发布于{' '}
+                {new Date(release.pub_date * 1000).toLocaleString('zh-CN')}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="muted" style={{ textAlign: 'center' }}>
+            管理员尚未发布客户端,敬请期待。
+          </div>
+        )}
+        <button className="ghost" onClick={onBack} style={{ marginTop: 12 }}>
+          返回
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function LoginPage({
+  onLogin,
+  onBack,
+}: {
+  onLogin: (username: string) => void
+  onBack?: () => void
+}) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -779,6 +888,16 @@ function LoginPage({ onLogin }: { onLogin: (username: string) => void }) {
         <button type="submit" disabled={loading}>
           {loading ? '登录中…' : '登录'}
         </button>
+        {onBack && (
+          <button
+            type="button"
+            className="ghost"
+            onClick={onBack}
+            style={{ marginTop: 8 }}
+          >
+            返回
+          </button>
+        )}
       </form>
     </div>
   )

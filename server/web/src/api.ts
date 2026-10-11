@@ -262,3 +262,20 @@ export const patchSettings = (patch: SettingsPatch) =>
   request<AdminSettings>('/admin/settings', { method: 'POST', body: patch })
 
 export const getDashboard = () => request<DashboardStats>('/admin/dashboard')
+
+// Gateway download page: intentionally unauthenticated.
+export interface PublicRelease {
+  version: string
+  notes: string
+  url: string
+  pub_date: number
+}
+
+export const getPublicRelease = () =>
+  fetch('/api/v1/public/release')
+    .then((response) => response.json() as Promise<PublicRelease>)
+    .catch(() => null)
+
+export function fetchPublicRelease(): Promise<PublicRelease | null> {
+  return getPublicRelease().catch(() => null)
+}
