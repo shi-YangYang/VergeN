@@ -242,14 +242,16 @@ jobs:
           DEPLOY_SERVICE_PORT: ${{ secrets.DEPLOY_PORT }}
         run: |
           port="${DEPLOY_SERVICE_PORT:-8080}"
+          # Loopback bind only: caddy on the host terminates TLS for the
+          # public 443 and proxies into 127.0.0.1:$port.
           cat > /tmp/vergen-server.service <<UNIT
           [Unit]
           Description=VergeN ops server
-          After=network.target
+          After=network.target caddy.service
 
           [Service]
           User=vergen
-          ExecStart=/usr/local/bin/vergen-server --db /var/lib/vergen/vergen.db --addr :$port
+          ExecStart=/usr/local/bin/vergen-server --db /var/lib/vergen/vergen.db --addr 127.0.0.1:$port
           Restart=always
           RestartSec=3
           NoNewPrivileges=true
