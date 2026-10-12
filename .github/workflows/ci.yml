@@ -50,6 +50,21 @@ jobs:
             librsvg2-dev
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - uses: Swatinem/rust-cache@v2
+      # Tauri's build script validates every externalBin path before any
+      # rust code compiles; lint/test don't run the sidecars, so empty
+      # placeholders satisfy the check (the release workflow downloads
+      # real ones).
+      - name: Create sidecar placeholders
+        run: |
+          mkdir -p src-tauri/sidecar
+          for name in \
+            clash-verge-service \
+            clash-verge-service-install \
+            clash-verge-service-uninstall \
+            verge-mihomo \
+            verge-mihomo-alpha; do
+            touch "src-tauri/sidecar/$name-x86_64-unknown-linux-gnu"
+          done
       - name: Format check
         run: cargo fmt --all -- --check
       - name: Clippy
