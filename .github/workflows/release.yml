@@ -96,8 +96,14 @@ jobs:
             "platforms;android-35" \
             "build-tools;35.0.0" \
             "platform-tools" \
-            "ndk;27.1.12297006" \
+            "ndk;29.0.14206865" \
             "cmake;3.22.1" >/dev/null
+      # remove.suffix keeps the applicationId a bare io.github.vergen.android
+      # so upgrades install over the same package instead of a .alpha twin.
+      - name: Configure the flavor identity
+        working-directory: android
+        run: printf 'sdk.dir=%s\nremove.suffix=true\n' \
+          "$ANDROID_HOME" > local.properties
       - name: Wire signing config
         working-directory: android
         env:
@@ -110,7 +116,7 @@ jobs:
             "$store" "${VERGEN_KEY_PASSWORD:-$store}" > signing.properties
       - name: Build the Android client
         working-directory: android
-        run: ./gradlew :app:assembleAlphaRelease --no-daemon --console=plain
+        run: JAVA_HOME=$JAVA_HOME ./gradlew :app:assembleAlphaRelease --no-daemon --console=plain
       - name: Rename artifacts
         working-directory: android/app/build/outputs/apk/alpha/release
         run: |
