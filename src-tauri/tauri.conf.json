@@ -31,7 +31,7 @@
   "identifier": "io.github.vergen.vergen",
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDgwMjhEQURGNUFBMUI5NzYKUldSMnVhRmEzOW9vZ0tjczkwc0c5RGtTU2RqQzRveSt5SjZuWXpneWRiMUM3U3kvM25qUmgwanMK",
+      "pubkey": "ZFc1MGNuVnpkR1ZrSUdOdmJXMWxiblE2SUcxcGJtbHphV2R1SUhCMVlteHBZeUJyWlhrNklEQXhSVUkxUlVNd1FrTTFOakl4TVRFS1VsZFJVa2xXWVRoM1JqZHlRVmR5UkRZeWJsRlhaU3QzTXpac09GQjJOMFZMVDBKMGJuWjZlV1JaWVdKME0yNVBURzAzVVhGRE5XRUs=",
       "endpoints": [
         "https://update.example.invalid/vergen/update.json",
         "https://mirror.example.invalid/vergen/update.json",
