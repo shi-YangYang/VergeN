@@ -5,7 +5,7 @@
   <br>
 </h1>
 
-VergeN 是基于 [clash-verge-rev](https://github.com/clash-verge-rev/clash-verge-rev)(GPL-3.0)二次开发的 VPN 客户端:桌面端基于 [Tauri 2](https://github.com/tauri-apps/tauri) 与 Rust,内核为 [mihomo(Clash Meta)](https://github.com/MetaCubeX/mihomo);配套一个用 Go 写的运维面板,负责账号、订阅、公告与版本分发。
+VergeN 是基于 [clash-verge-rev](https://github.com/clash-verge-rev/clash-verge-rev)(GPL-3.0)二次开发的企业 VPN:桌面端基于 [Tauri 2](https://github.com/tauri-apps/tauri) 与 Rust,移动端为 Android 自研客户端(Clash Meta for Android fork),内核均为 [mihomo(Clash Meta)](https://github.com/MetaCubeX/mihomo);配套一个用 Go 写的运维面板,负责账号、订阅、公告与版本分发。
 
 ## 客户端特性
 
@@ -15,9 +15,27 @@ VergeN 是基于 [clash-verge-rev](https://github.com/clash-verge-rev/clash-verg
 - 系统代理和守卫、`TUN(虚拟网卡)` 模式
 - 可视化节点和规则编辑
 - WebDav 配置备份和同步
-- 钉钉扫码登录,账号由组织统一管理
-- 订阅等敏感配置 AES-256-GCM 加密落盘
-- 自动更新:从自建更新服务拉取安装包并校验签名后静默安装
+- 企业模式:
+  - 钉钉扫码登录,账号由组织统一管理
+  - 订阅等敏感配置 AES-256-GCM 加密落盘
+  - 公司下发的订阅锁定为只读:不可编辑、复制、二维码分享;卡片不暴露流量/到期信息
+  - 心跳保活(在线人数/版本分布看板),服务器变更订阅后自动重新拉取
+  - 一键退出登录(服务器侧 token 吊销 + 本地会话清除)
+  - 应用内自动更新:从自建更新服务拉取安装包并校验签名后静默安装
+
+## Android 客户端
+
+- 基于 [Clash Meta for Android](https://github.com/MetaCubeX/ClashMetaForAndroid) fork,应用名 `io.github.vergen.android`
+- 企业能力:登录闸门(密码/钉钉扫码)、订阅 bootstrap(自动创建+激活)、5 分钟心跳、AndroidKeyStore 加密会话、崩溃兜底落盘
+- 受管订阅由服务端统一推送;本地仅可删除或启动,更新由系统按 config_version 自动完成
+- 本地构建(JDK 21):
+
+  ```shell
+  cd android
+  ./gradlew :app:assembleAlphaRelease
+  ```
+
+  产物在 `android/app/build/outputs/apk/alpha/release/`。
 
 ## 运维面板特性
 
@@ -27,7 +45,7 @@ VergeN 是基于 [clash-verge-rev](https://github.com/clash-verge-rev/clash-verg
 - 订阅管理:增删改、启停;客户端通过心跳拉取
 - 公告管理:逐用户认领、可撤回
 - 策略管控:锁定端口/外部控制器等敏感设置
-- 版本发布:多版本管理(Windows / macOS / Linux),客户端弹窗提示与一键更新
+- 版本发布:多版本管理(Windows / macOS / Linux / Android),客户端弹窗提示与一键更新
 - 公开下载页与登录/下载中转页
 - 健康检查 `/healthz`,在线人数与版本分布看板
 
@@ -35,8 +53,22 @@ VergeN 是基于 [clash-verge-rev](https://github.com/clash-verge-rev/clash-verg
 
 - `src/` — 客户端前端(React)
 - `src-tauri/` — Tauri 客户端(Rust)
+- `android/` — Android 客户端(CMFA fork,Kotlin;mihomo 内核以 submodule 引入)
 - `server/` — 运维服务(Go)与面板前端(`server/web`,React,构建产物内嵌)
 - `crates/` — 客户端附属 Rust 组件(内核管理、国际化等)
+
+## Release(CI)
+
+推送 `v*` tag 自动构建并上传发布产物(见 `.github/workflows/release.yml`):
+
+- 桌面三平台(macOS / Windows / Linux,tauri-action)
+- Android 五个 ABI(arm64-v8a / armeabi-v7a / x86 / x86_64 / universal),命名 `vergen-<tag>-android-<abi>.apk`
+- 运维服务 5 个平台的 `vergen-server-<os>-<arch>`
+- 可选:配置 `DEPLOY_*` secrets 后自动部署运维服务到目标服务器
+
+所需仓库配置:变量 `VITE_ENTERPRISE_SERVER_URL`(烧进客户端的公司服务地址);secrets `TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)`(桌面更新签名)、`ANDROID_SIGN_STORE_PASSWORD / ANDROID_SIGN_KEY_PASSWORD`(生产签名密码,未配置时回退到仓库 dev keystore)。
+
+本地 Android 构建如需覆盖默认服务地址,编辑 `android/app/src/main/java/com/github/kr328/clash/enterprise/EnterpriseKit.kt` 顶部的 `VERGEN_SERVER_URL`。
 
 ## Development
 
