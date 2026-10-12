@@ -152,7 +152,17 @@ pub fn path_to_str(path: &Path) -> Result<&str> {
         .ok_or_else(|| anyhow::anyhow!("failed to get path from {:?}", path))
 }
 
+// The on-demand key bootstrap must not race: two tasks generating their
+// own key concurrently would let the later write overwrite the earlier
+// key and silently break decryption of what the first one just encrypted
+// (observed as a test wrapper falling back to treating ciphertext as a
+// legacy plaintext value).
+static ENCRYPTION_KEY_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 pub fn get_encryption_key() -> Result<Vec<u8>> {
+    let _guard = ENCRYPTION_KEY_LOCK
+        .lock()
+        .map_err(|_| anyhow::anyhow!("encryption key lock poisoned"))?;
     let app_dir = app_home_dir()?;
     let key_path = app_dir.join(".encryption_key");
 
@@ -165,7 +175,11 @@ pub fn get_encryption_key() -> Result<Vec<u8>> {
         if let Some(parent) = key_path.parent() {
             fs::create_dir_all(parent).map_err(|e| anyhow::anyhow!("Failed to create key directory: {}", e))?;
         }
-        fs::write(&key_path, &key).map_err(|e| anyhow::anyhow!("Failed to save encryption key: {}", e))?;
+        // Publish atomically: readers either see nothing (and wait under
+        // the lock) or a complete key, never a torn write.
+        let temporary = key_path.with_extension(format!("tmp-{}", std::process::id()));
+        fs::write(&temporary, &key).map_err(|e| anyhow::anyhow!("Failed to save encryption key: {}", e))?;
+        fs::rename(&temporary, &key_path).map_err(|e| anyhow::anyhow!("Failed to publish encryption key: {}", e))?;
         Ok(key)
     }
 }

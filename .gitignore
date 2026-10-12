@@ -1,7 +1,8 @@
 node_modules
 .pnpm-store
 .DS_Store
-dist
+dist/*
+!dist/.gitkeep
 dist-ssr
 *.local
 update.json

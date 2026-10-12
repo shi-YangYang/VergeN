@@ -37,8 +37,10 @@ the ownership evidence the AI-slop review evaluates (see
 5. **Comments state constraints, not narration.** Write a comment only for a
    non-obvious constraint the code cannot express; never restate what the code
    does.
-6. **Language and commits.** Code, comments, commit messages, and PR text are in
-   English. Commit subjects follow Conventional Commits (e.g. `fix(sysproxy): …`).
+6. **Language and commits.** Code, comments, and PR text are in
+   English. Commit subjects keep the Conventional Commits prefix in
+   English — `type(scope):` — and the description from the colon onward
+   is Chinese: e.g. `fix(sysproxy): 受管模式下系统代理失效`.
 7. **No performative artifacts.** Do not add verification checklists, "Testing"
    filler, or mechanical commit splitting to satisfy review tooling. Provide
    real evidence instead: reproduction steps, failure output, targeted tests.
@@ -58,6 +60,24 @@ the ownership evidence the AI-slop review evaluates (see
 11. **Changelog.** Entries follow the rules in
     [`template/Changelog.md`](template/Changelog.md): one line per
     user-visible change, no internals.
+
+## Branch Model and Release Workflow
+
+- `main` is the release trunk; changes land there only through pull
+  requests.
+- `dev` is the default working branch: commit directly to it, and open a
+  `dev` → `main` PR when a line of work is ready. Do not develop on
+  `main`.
+- Pull requests run the CI checks automatically
+  ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)); green CI is
+  expected before merge.
+- Releasing — CD — is a manual step, never an automatic one: run the
+  Release workflow from the Actions tab with branch `main` and an
+  explicit `vX.Y.Z` tag input
+  ([`.github/workflows/release.yml`](.github/workflows/release.yml);
+  the trigger needs the workflow definition on `main`, which only a
+  merge supplies). Pushing a `v*` tag fires the same pipeline, but the
+  manual dispatch is the expected entry point.
 
 ## Pull Request Shape
 
