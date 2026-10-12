@@ -34,30 +34,22 @@ pub async fn patch_verge_config(payload: IVerge) -> CmdResult {
 /// Returns an error when the patch touches fields locked by the managed
 /// policy (allow_change_settings=false).
 async fn guard_managed_verge_patch(payload: &IVerge) -> Result<(), String> {
-    use serde::Serialize as _;
     let Some(policy) = crate::feat::enterprise::managed_policy().await else {
         return Ok(());
     };
     if policy.allow_change_settings {
         return Ok(());
     }
-    let serialized = serde_json::to_value(payload)
-        .map(|value| value)
-        .unwrap_or(serde_json::Value::Null);
-    let touched: Vec<&str> = MANAGED_LOCKED_FIELDS
-        .iter()
-        .filter(|field| {
-            matches!(
-                serialized.get(*field),
-                Some(serde_json::Value::Null) | None // absent means untouched
-            ) == false
-        })
-        .copied()
-        .collect();
-    if touched.is_empty() {
-        return Ok(());
+    let serialized = serde_json::to_value(payload).unwrap_or(serde_json::Value::Null);
+    if MANAGED_LOCKED_FIELDS.iter().any(|field| {
+        !matches!(
+            serialized.get(*field),
+            Some(serde_json::Value::Null) | None // absent means untouched
+        )
+    }) {
+        return Err("该设置项由公司统一管理".to_string());
     }
-    Err("该设置项由公司统一管理".to_string())
+    Ok(())
 }
 
 /// Extract a system proxy operation from a Verge patch.

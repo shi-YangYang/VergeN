@@ -16,6 +16,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
+release = ["custom-protocol"]
 verge-dev = ["clash-verge-logging/color", "clash_verge_service_ipc/development-channel"]
 dev-sidecar = ["verge-dev"]
 tauri-dev = ["dep:tauri-plugin-devtools"]
@@ -153,6 +154,13 @@ tauri-plugin-updater = "2.13.1"
 criterion = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 warp = { version = "0.4.3", features = ["test"] }
+
+# The e2e example drives an installed-layout context that only exists when
+# the release build (custom-protocol assets) is produced; keep plain
+# clippy/test invocations away from it.
+[[example]]
+name = "updater-company-e2e"
+required-features = ["release"]
 
 [lints]
 workspace = true

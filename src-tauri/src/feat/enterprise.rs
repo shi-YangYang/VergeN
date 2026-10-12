@@ -334,7 +334,7 @@ async fn store_bootstrap(server: &str, bootstrap: &BootstrapResponse) -> Result<
         let still_enabled = d
             .enterprise_subscription_url
             .as_ref()
-            .is_some_and(|u| options.iter().any(|o| o.url == u.trim().to_string()));
+            .is_some_and(|u| options.iter().any(|o| u.trim() == o.url));
         if !still_enabled {
             d.enterprise_subscription_url = subscription;
         }

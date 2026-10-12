@@ -14,8 +14,11 @@ args = ["fmt", "--", "--emit=files"]
 
 [tasks.rust-clippy]
 description = "Run cargo clippy to lint the code"
+# Same feature set as CI (.github/workflows/ci.yml): --all-features also
+# enables the clippy/tauri-test profile, whose context builder rejects the
+# e2e example's release-only assets and fails unrelated code.
 command = "cargo"
-args = ["clippy", "--all-targets", "--all-features", "--", "-D", "warnings"]
+args = ["clippy", "--all-targets", "--", "-D", "warnings"]
 
 # --- Frontend ---
 

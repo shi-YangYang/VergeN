@@ -570,6 +570,10 @@ fn fix_dirty_url(input: &str) -> Result<Url> {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    reason = "tests assert by panicking on fixture failures"
+)]
 mod url_at_rest_tests {
     use super::PrfItem;
 
