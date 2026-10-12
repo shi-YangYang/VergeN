@@ -30,5 +30,8 @@
   "feedback": {
     "welcome": "欢迎回来，{name}",
     "logout": "已退出登录"
+  },
+  "account": {
+    "logout": "退出登录"
   }
 }

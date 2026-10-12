@@ -176,6 +176,7 @@ export const translationKeys = [
   'login.announcement.title',
   'login.feedback.welcome',
   'login.feedback.logout',
+  'login.account.logout',
   'logs.page.title',
   'logs.actions.showDescending',
   'logs.actions.showAscending',

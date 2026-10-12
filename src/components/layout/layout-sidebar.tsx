@@ -1,9 +1,19 @@
 import { DragDropProvider, KeyboardSensor, PointerSensor } from '@dnd-kit/react'
-import { Box, List, Menu, MenuItem, SvgIcon } from '@mui/material'
+import { LogoutRounded } from '@mui/icons-material'
+import {
+  Box,
+  IconButton,
+  List,
+  Menu,
+  MenuItem,
+  SvgIcon,
+  Typography,
+} from '@mui/material'
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import VergenMark from '@/assets/image/vergen-mark.svg?react'
+import { enterpriseActions, useEnterpriseSession } from '@/hooks/use-enterprise'
 import { useVerge } from '@/hooks/use-verge'
 import { useNavMenuOrder } from '@/pages/_layout/hooks'
 import { navItems } from '@/pages/_navigation'
@@ -27,6 +37,7 @@ export const LayoutSidebar = (props: LayoutSidebarProps) => {
   const { isDark, isCollapsed } = props
   const { t } = useTranslation()
   const { verge, mutateVerge, patchVerge } = useVerge()
+  const enterpriseSession = useEnterpriseSession()
   const [menuUnlocked, setMenuUnlocked] = useState(false)
   const [menuContextPosition, setMenuContextPosition] =
     useState<MenuContextPosition | null>(null)
@@ -231,6 +242,44 @@ export const LayoutSidebar = (props: LayoutSidebarProps) => {
           {t('layout.components.navigation.menu.restoreDefaultOrder')}
         </MenuItem>
       </Menu>
+
+      {/* Enterprise account row; hidden when managed mode is off */}
+      {enterpriseSession?.enabled && (
+        <Box
+          sx={{
+            px: 1.75,
+            py: 1,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+          }}
+        >
+          <Typography
+            variant="body2"
+            sx={{
+              color: 'text.secondary',
+              flex: 1,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {enterpriseSession.username
+              ? t('login.feedback.welcome', {
+                  name: enterpriseSession.username,
+                })
+              : ''}
+          </Typography>
+          <IconButton
+            size="small"
+            aria-label={t('login.account.logout')}
+            sx={{ color: 'text.secondary', mr: -0.5 }}
+            onClick={() => void enterpriseActions.logout()}
+          >
+            <LogoutRounded fontSize="small" />
+          </IconButton>
+        </Box>
+      )}
 
       {/* Traffic */}
       <div className="the-traffic">

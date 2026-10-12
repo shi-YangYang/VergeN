@@ -264,6 +264,9 @@ export interface TranslationResources {
       }
     }
     login: {
+      account: {
+        logout: string
+      }
       announcement: {
         title: string
       }

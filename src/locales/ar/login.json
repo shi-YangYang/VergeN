@@ -30,5 +30,8 @@
   "feedback": {
     "welcome": "Welcome, {name}",
     "logout": "Signed out"
+  },
+  "account": {
+    "logout": "Sign out"
   }
 }
