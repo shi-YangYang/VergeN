@@ -37,8 +37,10 @@ the ownership evidence the AI-slop review evaluates (see
 5. **Comments state constraints, not narration.** Write a comment only for a
    non-obvious constraint the code cannot express; never restate what the code
    does.
-6. **Language and commits.** Code, comments, commit messages, and PR text are in
-   English. Commit subjects follow Conventional Commits (e.g. `fix(sysproxy): …`).
+6. **Language and commits.** Code, comments, and PR text are in
+   English. Commit subjects keep the Conventional Commits prefix in
+   English — `type(scope):` — and the description from the colon onward
+   is Chinese: e.g. `fix(sysproxy): 受管模式下系统代理失效`.
 7. **No performative artifacts.** Do not add verification checklists, "Testing"
    filler, or mechanical commit splitting to satisfy review tooling. Provide
    real evidence instead: reproduction steps, failure output, targeted tests.
