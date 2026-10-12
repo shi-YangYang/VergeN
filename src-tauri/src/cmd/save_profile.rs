@@ -1,7 +1,8 @@
-use super::CmdResult;
+use super::{
+    CmdResult, StringifyErr as _, WithErrorCode as _,
+    validate::{ValidationNoticeTarget, handle_validation_notice},
+};
 use crate::{
-    cmd::StringifyErr as _,
-    cmd::validate::{ValidationNoticeTarget, handle_validation_notice},
     config::{Config, IProfiles, PrfItem},
     core::auto_backup::{AutoBackupManager, AutoBackupTrigger},
     core::{
@@ -17,6 +18,9 @@ use tokio::fs;
 /// 保存profiles的配置
 #[tauri::command]
 pub async fn save_profile_file(index: String, file_data: Option<String>) -> CmdResult<ValidationOutcome> {
+    crate::cmd::profile::guard_managed_profile(index.as_str())
+        .await
+        .with_error_code("PROFILE_PATCH_FAILED")?;
     let file_data = match file_data {
         Some(d) => d,
         None => return Ok(ValidationOutcome::Valid),

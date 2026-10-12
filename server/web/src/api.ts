@@ -181,10 +181,9 @@ export const createUser = (username: string, password: string) =>
     body: { username, password },
   })
 
-export const setUserStatus = (id: number, status: 'active' | 'disabled') =>
-  request<null>(`/admin/users/${id}/status`, {
-    method: 'POST',
-    body: { status },
+export const deleteUser = (id: number) =>
+  request<null>(`/admin/users/${id}`, {
+    method: 'DELETE',
   })
 
 export const setUserPassword = (id: number, password: string) =>

@@ -157,23 +157,29 @@ func TestEnterpriseFlow(t *testing.T) {
 		t.Fatalf("reused refresh: status=%d body=%v", code, body)
 	}
 
-	// Disabling the employee blocks access even with a valid access token.
-	code, body = doJSON(t, h, "POST", "/api/v1/admin/users/"+itoa(empID)+"/status", adminToken,
-		map[string]string{"status": "disabled"})
+	// Deleting the employee removes the account and its tokens: neither the
+	// still-cached access token nor the refresh token can reach anything.
+	code, body = doJSON(t, h, "DELETE", "/api/v1/admin/users/"+itoa(empID), adminToken, nil)
 	if code != http.StatusNoContent {
-		t.Fatalf("disable user: status=%d body=%v", code, body)
+		t.Fatalf("delete user: status=%d body=%v", code, body)
 	}
 	code, body = doJSON(t, h, "GET", "/api/v1/client/bootstrap", empAccess, nil)
-	if code != http.StatusForbidden {
-		t.Fatalf("bootstrap after disable: status=%d body=%v", code, body)
+	if code != http.StatusUnauthorized {
+		t.Fatalf("bootstrap after delete: status=%d body=%v", code, body)
 	}
 
-	// Dashboard aggregates the disabled user.
+	// A second delete of the same id is a 404.
+	code, body = doJSON(t, h, "DELETE", "/api/v1/admin/users/"+itoa(empID), adminToken, nil)
+	if code != http.StatusNotFound {
+		t.Fatalf("delete missing user: status=%d body=%v", code, body)
+	}
+
+	// Dashboard aggregates the remaining users.
 	code, body = doJSON(t, h, "GET", "/api/v1/admin/dashboard", adminToken, nil)
 	if code != http.StatusOK {
 		t.Fatalf("dashboard: status=%d body=%v", code, body)
 	}
-	if body["total_users"] != float64(2) || body["disabled_users"] != float64(1) {
+	if body["total_users"] != float64(1) {
 		t.Fatalf("dashboard counts = %v", body)
 	}
 }

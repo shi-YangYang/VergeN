@@ -78,7 +78,7 @@ func (a *Server) Handler() (http.Handler, error) {
 	mux.Handle("GET /api/v1/client/updater", a.authed(a.handleClientUpdater))
 	mux.Handle("POST /api/v1/admin/users", a.admin(a.handleAdminCreateUser))
 	mux.Handle("GET /api/v1/admin/users", a.admin(a.handleAdminListUsers))
-	mux.Handle("POST /api/v1/admin/users/{id}/status", a.admin(a.handleAdminSetUserStatus))
+	mux.Handle("DELETE /api/v1/admin/users/{id}", a.admin(a.handleAdminDeleteUser))
 	mux.Handle("POST /api/v1/admin/users/{id}/password", a.admin(a.handleAdminSetUserPassword))
 	mux.Handle("POST /api/v1/admin/users/{id}/dingtalk", a.admin(a.handleAdminSetUserDingtalk))
 	mux.Handle("GET /api/v1/admin/subscriptions", a.admin(a.handleAdminListSubscriptions))

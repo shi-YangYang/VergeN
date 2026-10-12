@@ -296,6 +296,15 @@ func (s *Store) SetUserStatus(id int64, status string, now time.Time) (bool, err
 	return n > 0, err
 }
 
+func (s *Store) DeleteUser(id int64) (bool, error) {
+	res, err := s.db.Exec(`DELETE FROM users WHERE id = ?`, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
 func (s *Store) SetUserPassword(id int64, passwordHash string, now time.Time) (bool, error) {
 	res, err := s.db.Exec(`UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?`,
 		passwordHash, now.Unix(), id)
