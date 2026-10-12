@@ -66,7 +66,10 @@ class ProfilesActivity : BaseActivity<ProfilesDesign>() {
                             else
                                 withProfile { update(it.profile.uuid) }
                         is ProfilesDesign.Request.Delete ->
-                            withProfile { delete(it.profile.uuid) }
+                            if (EnterpriseKit.isManaged(it.profile))
+                                design.showToast(R.string.toast_profiles_locked, ToastDuration.Long)
+                            else
+                                withProfile { delete(it.profile.uuid) }
                         is ProfilesDesign.Request.Edit ->
                             if (EnterpriseKit.isManaged(it.profile))
                                 design.showToast(R.string.toast_profiles_locked, ToastDuration.Long)

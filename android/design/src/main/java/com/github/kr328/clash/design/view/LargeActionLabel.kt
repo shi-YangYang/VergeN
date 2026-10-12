@@ -71,5 +71,21 @@ class LargeActionLabel @JvmOverloads constructor(
                 recycle()
             }
         }
+
+        // 数据绑定在 ai 初始化阶段改的 enabled 不会自动反映到子 view,
+        // 这里把 disabled 的降透明度显示同步进去
+        applyDisabledAlpha()
+    }
+
+    override fun setEnabled(enabled: Boolean) {
+        super.setEnabled(enabled)
+        applyDisabledAlpha()
+    }
+
+    private fun applyDisabledAlpha() {
+        val alpha = if (isEnabled) 1.0f else 0.42f
+        binding.iconView.alpha = alpha
+        binding.textView.alpha = alpha
+        binding.subtextView.alpha = alpha
     }
 }
