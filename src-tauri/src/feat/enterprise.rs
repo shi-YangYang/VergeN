@@ -1,9 +1,10 @@
 use crate::config::{
-    Config, IProfiles, IVerge, PrfItem, PrfOption, profiles::profiles_save_file_safe, profiles_append_item_safe,
+    Config, IVerge, PrfItem, PrfOption, profiles::PROFILE_WRITE_LOCK, profiles::profiles_save_file_safe,
+    profiles_append_item_safe,
 };
 use crate::core::notify::{Refresh, announce};
 use anyhow::{Result, anyhow};
-use clash_verge_draft::{Draft, DraftTransaction};
+use clash_verge_draft::DraftTransaction;
 use clash_verge_logging::{Type, logging};
 use serde::{Deserialize, Serialize};
 use smartstring::alias::String as SmartString;
@@ -430,16 +431,20 @@ fn is_managed_subscription_item(item: &PrfItem, subscription_url: &str) -> bool 
 /// Activation failures are logged, not fatal: authentication already succeeded.
 pub async fn ensure_managed_profile(subscription_url: &str) -> Result<()> {
     let subscription_url = normalize_subscription_url(subscription_url);
-    let profiles = Config::profiles().await;
     let display_name = subscriptions_from_config()
         .await
         .into_iter()
         .find(|o| normalize_subscription_url(&o.url) == subscription_url)
         .filter(|o| !o.name.trim().is_empty())
         .map(|o| format!("公司订阅·{}", o.name.trim()));
-    let managed_pointer = Config::verge().await.data_arc().enterprise_profile_uid.clone();
-    let matches = |profiles: &Draft<IProfiles>| -> Vec<SmartString> {
-        profiles
+    // The match/create/collect phase must run serialized: concurrent bootstrap
+    // and subscription-switch calls would both miss the existing entry and
+    // import it twice (observed with two items dated the same second).
+    let (uid, duplicates) = {
+        let _write_guard = PROFILE_WRITE_LOCK.lock().await;
+        let profiles = Config::profiles().await;
+        let managed_pointer = Config::verge().await.data_arc().enterprise_profile_uid.clone();
+        let matched: Vec<SmartString> = profiles
             .data_arc()
             .items
             .as_ref()
@@ -450,44 +455,42 @@ pub async fn ensure_managed_profile(subscription_url: &str) -> Result<()> {
                     .filter_map(|it| it.uid.clone())
                     .collect()
             })
-            .unwrap_or_default()
-    };
-    let mut candidates = matches(&profiles);
-    let uid = candidates
-        .iter()
-        .find(|u| managed_pointer.as_deref() == Some(u.as_str()))
-        .cloned()
-        .or_else(|| candidates.first().cloned());
-    let uid = match uid {
-        Some(uid) => uid,
-        None => {
-            let name: SmartString = display_name.map(SmartString::from).unwrap_or_else(|| "公司订阅".into());
-            let option = PrfOption {
-                update_interval: Some(MANAGED_UPDATE_INTERVAL_MINUTES),
-                allow_auto_update: Some(true),
-                with_proxy: Some(false),
-                timeout_seconds: Some(30),
-                ..PrfOption::default()
-            };
-            let mut item = PrfItem::from_url(&subscription_url, Some(&name), None, Some(&option)).await?;
-            profiles_append_item_safe(&mut item).await?;
-            profiles_save_file_safe().await?;
-            candidates = matches(&Config::profiles().await);
-            match item.uid.clone() {
-                Some(uid) => uid,
-                None => return Err(anyhow!("导入公司订阅失败: 未生成配置 ID")),
+            .unwrap_or_default();
+        let uid = matched
+            .iter()
+            .find(|u| managed_pointer.as_deref() == Some(u.as_str()))
+            .cloned()
+            .or_else(|| matched.first().cloned());
+        match uid {
+            Some(uid) => {
+                let duplicates = matched
+                    .into_iter()
+                    .filter(|candidate| candidate != &uid)
+                    .collect::<Vec<_>>();
+                (uid, duplicates)
+            }
+            None => {
+                let name: SmartString = display_name.map(SmartString::from).unwrap_or_else(|| "公司订阅".into());
+                let option = PrfOption {
+                    update_interval: Some(MANAGED_UPDATE_INTERVAL_MINUTES),
+                    allow_auto_update: Some(true),
+                    with_proxy: Some(false),
+                    timeout_seconds: Some(30),
+                    ..PrfOption::default()
+                };
+                let mut item = PrfItem::from_url(&subscription_url, Some(&name), None, Some(&option)).await?;
+                profiles_append_item_safe(&mut item).await?;
+                profiles_save_file_safe().await?;
+                match item.uid.clone() {
+                    Some(uid) => (uid, Vec::new()),
+                    None => return Err(anyhow!("导入公司订阅失败: 未生成配置 ID")),
+                }
             }
         }
     };
-    // Older builds created one profile per login when the stored url differed
-    // only by a trailing slash; build a fresh list so newly imported entries
-    // are covered too.
-    let duplicates = candidates
-        .into_iter()
-        .filter(|candidate| candidate != &uid)
-        .collect::<Vec<_>>();
     // The pointer moves before any deletion so the managed guard never
     // rejects removing stale duplicates.
+    let managed_pointer = Config::verge().await.data_arc().enterprise_profile_uid.clone();
     if managed_pointer.as_deref() != Some(uid.as_str()) {
         persist_verge_edit(|d| d.enterprise_profile_uid = Some(uid.clone())).await?;
     }
