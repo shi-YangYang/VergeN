@@ -4,9 +4,20 @@ on:
   push:
     tags:
       - "v*"
+  # Manual CD: run from Actions against the main branch and give the
+  # release tag; a tag push of the same shape does the same thing.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v0.1.0)"
+        required: true
+        type: string
 
 permissions:
   contents: write
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
   client:
@@ -66,8 +77,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: VergeN ${{ github.ref_name }}
+          tagName: ${{ env.RELEASE_TAG }}
+          releaseName: VergeN ${{ env.RELEASE_TAG }}
           releaseBody: "See the assets to download and install this version."
           releaseDraft: false
           prerelease: false
@@ -122,14 +133,14 @@ jobs:
         run: |
           mkdir -p ../upload
           for arch in arm64-v8a armeabi-v7a x86 x86_64 universal; do
-            src="cmfa-${GITHUB_REF_NAME#v}-alpha-${arch}-release.apk"
-            [ -f "$src" ] && cp "$src" "../upload/vergen-${GITHUB_REF_NAME#v}-android-$arch.apk"
+            src="cmfa-${RELEASE_TAG#v}-alpha-${arch}-release.apk"
+            [ -f "$src" ] && cp "$src" "../upload/vergen-${RELEASE_TAG#v}-android-$arch.apk"
           done
       - name: Upload to the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "$GITHUB_REF_NAME" \
+          gh release upload "$RELEASE_TAG" \
             android/app/build/outputs/apk/alpha/release/upload/*.apk \
             --clobber --repo "$GITHUB_REPOSITORY"
 
@@ -179,7 +190,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          gh release upload "$GITHUB_REF_NAME" "$output" --clobber --repo "$GITHUB_REPOSITORY"
+          gh release upload "$RELEASE_TAG" "$output" --clobber --repo "$GITHUB_REPOSITORY"
 
   deploy:
     name: Deploy ops server
@@ -231,7 +242,7 @@ jobs:
           DEPLOY_ARCH: ${{ vars.DEPLOY_ARCH }}
         run: |
           ARCH="${DEPLOY_ARCH:-amd64}"
-          gh release download "$GITHUB_REF_NAME" \
+          gh release download "$RELEASE_TAG" \
             --pattern "vergen-server-linux-$ARCH" --dir . --repo "$GITHUB_REPOSITORY"
           mv "vergen-server-linux-$ARCH" vergen-server
           chmod +x vergen-server
