@@ -60,17 +60,30 @@ jobs:
   server:
     name: Server checks
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: server
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: server/go.mod
+      # The server embeds the admin panel with go:embed all:dist; the
+      # panel must be built before any go build.
+      - uses: pnpm/action-setup@v4
+        with:
+          prefix: server/web
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: server/web/pnpm-lock.yaml
+      - name: Build the admin panel
+        run: pnpm install --frozen-lockfile && pnpm build
+        working-directory: server/web
       - name: Build
         run: go build ./...
+        working-directory: server
       - name: Vet
         run: go vet ./...
+        working-directory: server
       - name: Tests
         run: go test ./...
+        working-directory: server
