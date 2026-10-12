@@ -11,4 +11,5 @@
     <item name="dingtalk_error" type="id" />
     <item name="dingtalk_fallback" type="id" />
     <item name="enterprise_dingtalk" type="id" />
+    <item name="enterprise_login_or" type="id" />
 </resources>

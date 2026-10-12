@@ -31,9 +31,24 @@ class EnterpriseLoginActivity : AppCompatActivity() {
         val submit = findViewById<View>(R.id.enterprise_submit)
         val progress = findViewById<View>(R.id.enterprise_progress)
         val error = findViewById<TextView>(R.id.enterprise_error)
+        val dingtalk = findViewById<View>(R.id.enterprise_dingtalk)
+        val orDivider = findViewById<View>(R.id.enterprise_login_or)
 
-        findViewById<View>(R.id.enterprise_dingtalk).setOnClickListener {
+        // The QR entry stays hidden until the server advertises it; otherwise
+        // tapping leads into a confirm page that cannot exist.
+        dingtalk.setOnClickListener {
             startActivity(EnterpriseDingtalkActivity::class.intent)
+        }
+        lifecycleScope.launch(Dispatchers.IO) {
+            val ready = EnterpriseKit.apiOrNull()?.let { api ->
+                runCatching { api.capabilities() }.getOrNull()?.dingtalkQr == true
+            } ?: false
+            if (ready) {
+                withContext(Dispatchers.Main) {
+                    dingtalk.visibility = View.VISIBLE
+                    orDivider.visibility = View.VISIBLE
+                }
+            }
         }
 
         submit.setOnClickListener {
