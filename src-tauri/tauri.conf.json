@@ -31,7 +31,7 @@
   "identifier": "io.github.vergen.vergen",
   "plugins": {
     "updater": {
-      "pubkey": "ZFc1MGNuVnpkR1ZrSUdOdmJXMWxiblE2SUcxcGJtbHphV2R1SUhCMVlteHBZeUJyWlhrNklEQXhSVUkxUlVNd1FrTTFOakl4TVRFS1VsZFJVa2xXWVRoM1JqZHlRVmR5UkRZeWJsRlhaU3QzTXpac09GQjJOMFZMVDBKMGJuWjZlV1JaWVdKME0yNVBURzAzVVhGRE5XRUs=",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDAxRUI1RUMwQkM1NjIxMTEKUldRUklWYTh3RjdyQVdyRDYyblFXZSt3MzZsOFB2N0VLT0J0bnZ6eWRZYWJ0M25PTG03UXFDNWEK",
       "endpoints": ["https://106.52.87.40/api/v1/client/updater"],
       "windows": {
         "installMode": "passive"
