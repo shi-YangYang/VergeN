@@ -24,7 +24,7 @@
     "title": "公告"
   },
   "feedback": {
-    "welcome": "欢迎回来，{name}",
+    "welcome": "欢迎回来，{{name}}",
     "logout": "已退出登录"
   },
   "account": {

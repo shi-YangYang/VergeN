@@ -441,14 +441,14 @@ const ProfileItemBase = (props: ProfileItemProps) => {
     delete: 'shared.actions.delete',
   } as const
 
-  // 受管订阅的写操作全部上锁(查看/Open/Home/切换/复制不受限)
+  // 公司统一下发的订阅:右键菜单只放行【使用】,其余全部禁用
   const urlModeMenu: ContextMenuItem[] = [
     ...(hasHome
       ? [
           {
             label: menuLabels.home,
             handler: onOpenHome,
-            disabled: false,
+            disabled: locked,
           } satisfies ContextMenuItem,
         ]
       : []),
@@ -460,7 +460,7 @@ const ProfileItemBase = (props: ProfileItemProps) => {
     {
       label: menuLabels.shareQrCode,
       handler: onShareQrCode,
-      disabled: false,
+      disabled: locked,
     },
     {
       label: menuLabels.editInfo,
@@ -500,7 +500,7 @@ const ProfileItemBase = (props: ProfileItemProps) => {
     {
       label: menuLabels.openFile,
       handler: onOpenFile,
-      disabled: false,
+      disabled: locked,
     },
     {
       label: menuLabels.update,
@@ -739,7 +739,7 @@ const ProfileItemBase = (props: ProfileItemProps) => {
             </Typography>
           </Box>
 
-          {hasUrl && (
+          {hasUrl && !locked && (
             <IconButton
               title={t('shared.actions.refresh')}
               sx={{
@@ -776,7 +776,8 @@ const ProfileItemBase = (props: ProfileItemProps) => {
                   {description}
                 </Typography>
               ) : (
-                hasUrl && (
+                hasUrl &&
+                !locked && (
                   <Typography
                     noWrap
                     title={`${t('shared.labels.from')} ${from}`}
@@ -831,7 +832,9 @@ const ProfileItemBase = (props: ProfileItemProps) => {
             <span title={t('shared.labels.usedTotal')}>
               {parseTraffic(upload + download)} / {parseTraffic(total)}
             </span>
-            <span title={t('shared.labels.expireTime')}>{expire}</span>
+            {!locked && (
+              <span title={t('shared.labels.expireTime')}>{expire}</span>
+            )}
           </Box>
         ) : (
           <Box sx={{ ...boxStyle, fontSize: 12, justifyContent: 'flex-end' }}>

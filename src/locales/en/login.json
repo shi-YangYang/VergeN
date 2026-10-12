@@ -24,7 +24,7 @@
     "title": "Notice"
   },
   "feedback": {
-    "welcome": "Welcome, {name}",
+    "welcome": "Welcome, {{name}}",
     "logout": "Signed out"
   },
   "account": {

@@ -132,23 +132,22 @@ const ProfileDetails = ({
   return (
     <Box>
       <Stack spacing={2}>
-        {current.updated && (
+        {current.updated && !locked && (
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
             <UpdateOutlined
               fontSize="small"
               color="action"
               sx={{
-                cursor: locked ? 'not-allowed' : 'pointer',
-                opacity: locked ? 0.4 : 1,
+                cursor: 'pointer',
                 animation: updating ? `${round} 1.5s linear infinite` : 'none',
               }}
-              onClick={locked ? undefined : onUpdateProfile}
+              onClick={onUpdateProfile}
             />
             <Typography
               variant="body2"
               color="text.secondary"
-              sx={{ cursor: locked ? 'not-allowed' : 'pointer' }}
-              onClick={locked ? undefined : onUpdateProfile}
+              sx={{ cursor: 'pointer' }}
+              onClick={onUpdateProfile}
             >
               {t('shared.labels.updateTime')}:{' '}
               <Box component="span" sx={{ fontWeight: 'medium' }}>
