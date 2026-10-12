@@ -160,8 +160,9 @@ pub fn path_to_str(path: &Path) -> Result<&str> {
 static ENCRYPTION_KEY_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 pub fn get_encryption_key() -> Result<Vec<u8>> {
-    let _guard =
-        ENCRYPTION_KEY_LOCK.lock().map_err(|_| anyhow::anyhow!("encryption key lock poisoned"))?;
+    let _guard = ENCRYPTION_KEY_LOCK
+        .lock()
+        .map_err(|_| anyhow::anyhow!("encryption key lock poisoned"))?;
     let app_dir = app_home_dir()?;
     let key_path = app_dir.join(".encryption_key");
 
