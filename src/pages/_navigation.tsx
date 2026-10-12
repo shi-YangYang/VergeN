@@ -1,3 +1,4 @@
+import DnsOutlinedIcon from '@mui/icons-material/DnsOutlined'
 import HomeOutlinedIcon from '@mui/icons-material/HomeOutlined'
 import LanguageOutlinedIcon from '@mui/icons-material/LanguageOutlined'
 import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined'
@@ -6,12 +7,14 @@ import { type ComponentType, type ReactNode } from 'react'
 
 import ConnectionsSvg from '@/assets/image/itemicon/connections.svg?react'
 import HomeSvg from '@/assets/image/itemicon/home.svg?react'
+import ProfilesSvg from '@/assets/image/itemicon/profiles.svg?react'
 import ProxiesSvg from '@/assets/image/itemicon/proxies.svg?react'
 import SettingsSvg from '@/assets/image/itemicon/settings.svg?react'
 
 import { navigationItems } from './_navigation-meta'
 import ConnectionsPage from './connections'
 import HomePage from './home'
+import ProfilePage from './profiles'
 import ProxyPage from './proxies'
 import SettingPage from './settings'
 
@@ -32,6 +35,11 @@ export const navItems: NavigationItem[] = [
     ...navigationItems.proxies,
     icon: [<WifiOutlinedIcon key="mui" />, <ProxiesSvg key="svg" />],
     Component: ProxyPage,
+  },
+  {
+    ...navigationItems.profiles,
+    icon: [<DnsOutlinedIcon key="mui" />, <ProfilesSvg key="svg" />],
+    Component: ProfilePage,
   },
   {
     ...navigationItems.connections,

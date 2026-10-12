@@ -270,9 +270,6 @@ export interface TranslationResources {
       announcement: {
         title: string
       }
-      banner: {
-        managed: string
-      }
       dingtalk: {
         expired: string
         failed: string
@@ -287,7 +284,6 @@ export interface TranslationResources {
       }
       form: {
         password: string
-        server: string
         submit: string
         username: string
       }

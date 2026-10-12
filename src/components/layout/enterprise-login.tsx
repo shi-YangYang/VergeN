@@ -403,21 +403,6 @@ export const EnterpriseLogin = ({
             {t('login.page.subtitle')}
           </Typography>
 
-          {serverUrl && (
-            <Typography
-              variant="caption"
-              sx={{
-                display: 'block',
-                color: 'text.disabled',
-                textAlign: 'center',
-                mb: 1,
-                overflowWrap: 'anywhere',
-              }}
-            >
-              {`${t('login.form.server')} · ${serverUrl}`}
-            </Typography>
-          )}
-
           <Tabs
             value={Math.min(tab, tabs.length - 1)}
             onChange={(_, next: number) => setTab(next)}
@@ -432,17 +417,6 @@ export const EnterpriseLogin = ({
           {tabs[Math.min(tab, tabs.length - 1)].key === 'password' ? (
             <>
               <PasswordForm serverUrl={serverUrl} />
-              <Typography
-                variant="caption"
-                sx={{
-                  color: 'text.secondary',
-                  display: 'block',
-                  textAlign: 'center',
-                  mt: 2,
-                }}
-              >
-                {t('login.banner.managed')}
-              </Typography>
               {session.announcement && (
                 <Box
                   sx={{
