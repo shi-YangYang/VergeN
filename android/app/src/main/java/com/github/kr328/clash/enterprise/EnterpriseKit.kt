@@ -20,7 +20,7 @@ import kotlinx.coroutines.withContext
 import java.util.UUID
 
 // 服务地址随构建注入(CI 用 -PvergenServerAddr=… / 本地默认局域网地址)。
-const val VERGEN_SERVER_URL = "http://192.168.0.100:8080"
+const val VERGEN_SERVER_URL = "http://192.168.3.30:8080"
 
 /**
  * App-facing bridge to the enterprise layer: lazily wires the session, the
