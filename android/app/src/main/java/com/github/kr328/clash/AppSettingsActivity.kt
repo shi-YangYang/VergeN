@@ -1,15 +1,22 @@
 package com.github.kr328.clash
 
 import android.content.ComponentName
+import android.content.Intent
 import android.content.pm.PackageManager
 import com.github.kr328.clash.common.util.componentName
+import com.github.kr328.clash.common.util.intent
 import com.github.kr328.clash.design.AppSettingsDesign
 import com.github.kr328.clash.design.model.Behavior
 import com.github.kr328.clash.design.store.UiStore.Companion.mainActivityAlias
+import com.github.kr328.clash.enterprise.EnterpriseKit
 import com.github.kr328.clash.service.store.ServiceStore
 import com.github.kr328.clash.util.ApplicationObserver
+import com.github.kr328.clash.util.stopClashService
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
+import com.github.kr328.clash.design.R
 
 class AppSettingsActivity : BaseActivity<AppSettingsDesign>(), Behavior {
     override suspend fun main() {
@@ -34,12 +41,40 @@ class AppSettingsActivity : BaseActivity<AppSettingsDesign>(), Behavior {
                     }
                 }
                 design.requests.onReceive {
-                    ApplicationObserver.createdActivities.forEach {
-                        it.recreate()
+                    when (it) {
+                        AppSettingsDesign.Request.SignOut -> confirmSignOut()
+                        AppSettingsDesign.Request.ReCreateAllActivities ->
+                            ApplicationObserver.createdActivities.forEach {
+                                it.recreate()
+                            }
                     }
                 }
             }
         }
+    }
+
+    private fun confirmSignOut() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.enterprise_logout)
+            .setMessage(R.string.enterprise_logout_confirm)
+            .setPositiveButton(R.string.enterprise_logout) { _, _ ->
+                launch { signOut() }
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private suspend fun signOut() {
+        if (clashRunning)
+            stopClashService()
+
+        EnterpriseKit.coordinator.signOut()
+
+        startActivity(
+            com.github.kr328.clash.enterprise.EnterpriseLoginActivity::class.intent
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        )
+        finishAffinity()
     }
 
     override var autoRestart: Boolean

@@ -16,6 +16,7 @@
         <import type="android.view.View" />
         <import type="com.github.kr328.clash.design.util.I18nKt" />
         <import type="com.github.kr328.clash.design.util.IntervalKt" />
+        <import type="com.github.kr328.clash.design.util.ProfileLock" />
     </data>
 
     <RelativeLayout
@@ -75,7 +76,7 @@
                     android:textSize="12sp"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:visibility="@{profile.download &lt;2 ? View.GONE : View.VISIBLE}"
+                    android:visibility="@{profile.download &lt;2 || ProfileLock.isManaged(profile) ? View.GONE : View.VISIBLE}"
                     android:text='@{profile.download >1  ?I18nKt.toBytesString(profile.download+profile.upload)+"/" :""}'
                     android:textAppearance="@style/TextAppearance.MaterialComponents.Body1" />
 
@@ -83,7 +84,7 @@
                     android:textSize="12sp"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:visibility="@{profile.download &lt;2 ? View.GONE : View.VISIBLE}"
+                    android:visibility="@{profile.total &lt;2 || ProfileLock.isManaged(profile) ? View.GONE : View.VISIBLE}"
                     android:text='@{profile.total >1 ?I18nKt.toBytesString(profile.total) : ""}'
                     android:textAppearance="@style/TextAppearance.MaterialComponents.Body1" />
             </LinearLayout>
@@ -91,7 +92,7 @@
                 android:textSize="12sp"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:visibility="@{profile.expire==0 ? View.GONE : View.VISIBLE}"
+                android:visibility="@{profile.expire==0 || ProfileLock.isManaged(profile) ? View.GONE : View.VISIBLE}"
                 android:text='@{profile.expire>0 ? I18nKt.toDateStr(profile.expire):""}'
                 android:textAppearance="@style/TextAppearance.MaterialComponents.Body1" />
             <ProgressBar
@@ -99,7 +100,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:max="1000"
-                android:visibility="@{profile.total &lt; 2 ? View.GONE : View.VISIBLE}"
+                android:visibility="@{profile.total &lt; 2 || ProfileLock.isManaged(profile) ? View.GONE : View.VISIBLE}"
                 android:progress="@{profile.total>1 ?I18nKt.toProgress ((profile.download+profile.upload)/(profile.total/1000)) :0}"
                 />
         </LinearLayout>

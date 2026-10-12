@@ -22,7 +22,8 @@ class AppSettingsDesign(
     onHideIconChange: (hide: Boolean) -> Unit,
 ) : Design<AppSettingsDesign.Request>(context) {
     enum class Request {
-        ReCreateAllActivities
+        ReCreateAllActivities,
+        SignOut
     }
 
     private val binding = DesignSettingsCommonBinding
@@ -39,6 +40,18 @@ class AppSettingsDesign(
         binding.scrollRoot.bindAppBarElevation(binding.activityBarLayout)
 
         val screen = preferenceScreen(context) {
+            // Signing out revokes the stored tokens and restarts the intent
+            // into the login gate; it belongs before the local preferences.
+            category(R.string.enterprise_account)
+
+            clickable(
+                icon = R.drawable.ic_baseline_logout,
+                title = R.string.enterprise_logout,
+                summary = R.string.enterprise_logout_summary,
+            ) {
+                clicked { requests.trySend(Request.SignOut) }
+            }
+
             category(R.string.behavior)
 
             switch(

@@ -117,6 +117,10 @@
     <string name="always_dark">总是暗黑模式</string>
     <string name="always_light">总是明亮模式</string>
     <string name="service">服务</string>
+    <string name="enterprise_account">账号</string>
+    <string name="enterprise_logout">退出登录</string>
+    <string name="enterprise_logout_summary">撤销本机授权，返回登录页</string>
+    <string name="enterprise_logout_confirm">确定退出登录？VPN 将停止并清除本机登录状态。</string>
     <string name="accept_http_content">仅接受 http(s) 和 content 类型</string>
     <string name="at_least_15_minutes">至少 15 分钟</string>
     <string name="override">覆写</string>
