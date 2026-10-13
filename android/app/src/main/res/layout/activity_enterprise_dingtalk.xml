@@ -9,10 +9,28 @@
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
+        <TextView
+            android:id="@+id/dingtalk_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:padding="16dp"
+            android:text="@string/enterprise_login_connecting"
+            android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+        <Button
+            android:id="@+id/dingtalk_web_login"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_margin="16dp"
+            android:text="@string/enterprise_dingtalk_web_login"
+            android:visibility="gone" />
+
         <WebView
             android:id="@id/dingtalk_web"
             android:layout_width="match_parent"
-            android:layout_height="480dp" />
+            android:layout_height="480dp"
+            android:visibility="gone" />
 
         <TextView
             android:id="@id/dingtalk_error"
@@ -30,7 +48,6 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_margin="16dp"
-            android:text="@string/enterprise_dingtalk_fallback"
-            android:visibility="gone" />
+            android:text="@string/enterprise_dingtalk_fallback" />
     </LinearLayout>
 </ScrollView>

@@ -16,7 +16,7 @@ VergeN 是基于 [clash-verge-rev](https://github.com/clash-verge-rev/clash-verg
 - 可视化节点和规则编辑
 - WebDav 配置备份和同步
 - 企业模式:
-  - 钉钉扫码登录,账号由组织统一管理
+  - 钉钉登录优先打开本机应用，无法唤起时使用网页登录
   - 订阅等敏感配置 AES-256-GCM 加密落盘
   - 公司下发的订阅锁定为只读:不可编辑、复制、二维码分享;卡片不暴露流量/到期信息
   - 心跳保活(在线人数/版本分布看板),服务器变更订阅后自动重新拉取
@@ -26,7 +26,7 @@ VergeN 是基于 [clash-verge-rev](https://github.com/clash-verge-rev/clash-verg
 ## Android 客户端
 
 - 基于 [Clash Meta for Android](https://github.com/MetaCubeX/ClashMetaForAndroid) fork,应用名 `io.github.vergen.android`
-- 企业能力:登录闸门(密码/钉钉扫码)、订阅 bootstrap(自动创建+激活)、5 分钟心跳、AndroidKeyStore 加密会话、崩溃兜底落盘
+- 企业能力:登录闸门(密码/钉钉登录，优先本机应用、网页兜底)、订阅 bootstrap(自动创建+激活)、5 分钟心跳、AndroidKeyStore 加密会话、崩溃兜底落盘
 - 受管订阅由服务端统一推送;本地仅可删除或启动,更新由系统按 config_version 自动完成
 - 本地构建(JDK 21):
 

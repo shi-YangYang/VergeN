@@ -13,7 +13,7 @@
     "dingtalk": "DingTalk"
   },
   "dingtalk": {
-    "hint": "Confirm your account in the DingTalk login window, or scan its QR code with your phone",
+    "hint": "Open DingTalk to authorize first. If it is unavailable, use web sign-in in the login window.",
     "waiting": "The client will sign in automatically after confirmation",
     "starting": "Opening DingTalk login…",
     "expired": "The login window was closed or the QR code expired",

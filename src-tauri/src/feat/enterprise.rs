@@ -4,6 +4,7 @@ use crate::config::{
 };
 use crate::core::notify::{Refresh, announce};
 use anyhow::{Result, anyhow};
+use base64::{Engine, engine::general_purpose::STANDARD};
 use clash_verge_draft::DraftTransaction;
 use clash_verge_logging::{Type, logging};
 use serde::{Deserialize, Serialize};
@@ -717,6 +718,58 @@ fn dingtalk_callback_matches(url: &reqwest::Url, callback: &reqwest::Url, state:
         && dingtalk_query_value(url, "state").as_deref() == Some(state)
 }
 
+fn dingtalk_native_url(login: &reqwest::Url) -> Result<reqwest::Url> {
+    let mut native = reqwest::Url::parse("dingtalk://dingtalkclient/page/link")?;
+    native
+        .query_pairs_mut()
+        .extend_pairs([("url", login.as_str()), ("pc_slide", "true")]);
+    Ok(native)
+}
+
+fn dingtalk_waiting_url(login: &reqwest::Url) -> Result<reqwest::Url> {
+    let link = login
+        .as_str()
+        .replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;");
+    let html = include_str!("dingtalk-waiting.html").replace("{{LOGIN_URL}}", &link);
+    Ok(reqwest::Url::parse(&format!(
+        "data:text/html;base64,{}",
+        STANDARD.encode(html)
+    ))?)
+}
+
+fn dingtalk_navigation_allowed(
+    url: &reqwest::Url,
+    waiting: &reqwest::Url,
+    callback: &reqwest::Url,
+    state: &str,
+) -> bool {
+    url == waiting || is_dingtalk_origin(url) || dingtalk_callback_matches(url, callback, state)
+}
+
+async fn open_dingtalk_client(native: reqwest::Url) -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        // A detached xdg-open launch succeeds even when no protocol handler exists.
+        let query = tokio::task::spawn_blocking(|| {
+            std::process::Command::new("xdg-mime")
+                .args(["query", "default", "x-scheme-handler/dingtalk"])
+                .output()
+        });
+        let Ok(Ok(Ok(output))) = tokio::time::timeout(std::time::Duration::from_secs(2), query).await else {
+            return false;
+        };
+        if !output.status.success() || String::from_utf8_lossy(&output.stdout).trim().is_empty() {
+            return false;
+        }
+    }
+    tokio::task::spawn_blocking(move || tauri_plugin_opener::open_url(native.as_str(), None::<&str>))
+        .await
+        .is_ok_and(|result| result.is_ok())
+}
+
 #[cfg(test)]
 mod dingtalk_tests {
     use super::*;
@@ -762,6 +815,41 @@ mod dingtalk_tests {
         );
         Ok(())
     }
+
+    #[test]
+    fn native_login_preserves_authorization_and_waiting_page_boundary() -> Result<()> {
+        let server = "http://127.0.0.1:8080";
+        let mut login = reqwest::Url::parse("https://login.dingtalk.com/oauth2/auth")?;
+        login.query_pairs_mut().extend_pairs([
+            ("redirect_uri", "http://127.0.0.1:8080/api/v1/auth/dingtalk/callback"),
+            ("state", "session&<\"钉钉>"),
+            ("scope", "openid corpid"),
+        ]);
+        let (login, callback, state) = dingtalk_login_urls(server, login.as_str())?;
+        let native = dingtalk_native_url(&login)?;
+        assert_eq!(native.scheme(), "dingtalk");
+        assert_eq!(native.host_str(), Some("dingtalkclient"));
+        assert_eq!(native.path(), "/page/link");
+        assert_eq!(dingtalk_query_value(&native, "url").as_deref(), Some(login.as_str()));
+        assert_eq!(dingtalk_query_value(&native, "pc_slide").as_deref(), Some("true"));
+
+        let waiting = dingtalk_waiting_url(&login)?;
+        assert!(dingtalk_navigation_allowed(&waiting, &waiting, &callback, &state));
+        assert!(dingtalk_navigation_allowed(&login, &waiting, &callback, &state));
+        for rejected in [
+            reqwest::Url::parse("data:text/html,<script>alert(1)</script>")?,
+            reqwest::Url::parse("https://login.dingtalk.com.example.com/")?,
+            native,
+            callback.clone(),
+        ] {
+            assert!(!dingtalk_navigation_allowed(&rejected, &waiting, &callback, &state));
+        }
+        let html = String::from_utf8(STANDARD.decode(waiting.as_str().split_once(',').unwrap().1)?)?;
+        assert!(html.contains("default-src 'none'"));
+        assert!(!html.contains("<script"));
+        assert!(html.contains(&login.as_str().replace('&', "&amp;")));
+        Ok(())
+    }
 }
 
 pub async fn dingtalk_qr_start(app: &tauri::AppHandle, server_url: &str) -> Result<DingtalkQrStart> {
@@ -783,18 +871,21 @@ pub async fn dingtalk_qr_start(app: &tauri::AppHandle, server_url: &str) -> Resu
     }
     let window = (|| -> Result<_> {
         let (login, callback, state) = dingtalk_login_urls(&server, &parsed.qr_url)?;
-        Ok(WebviewWindowBuilder::new(
+        let native = dingtalk_native_url(&login)?;
+        let waiting = dingtalk_waiting_url(&login)?;
+        let window = WebviewWindowBuilder::new(
             app,
             dingtalk_window_label(&server, &parsed.session_id),
-            WebviewUrl::External(login),
+            WebviewUrl::External(waiting.clone()),
         )
         .title("VergeN - DingTalk")
         .inner_size(860.0, 720.0)
         .center()
-        .on_navigation(move |url| is_dingtalk_origin(url) || dingtalk_callback_matches(url, &callback, &state))
-        .build()?)
+        .on_navigation(move |url| dingtalk_navigation_allowed(url, &waiting, &callback, &state))
+        .build()?;
+        Ok((window, login, native))
     })();
-    let window = match window {
+    let (window, login, native) = match window {
         Ok(window) => window,
         Err(error) => {
             let _ = cancel_dingtalk_session(&server, &parsed.session_id).await;
@@ -802,15 +893,23 @@ pub async fn dingtalk_qr_start(app: &tauri::AppHandle, server_url: &str) -> Resu
         }
     };
     let session_id = parsed.session_id.clone();
+    let window_server = server.clone();
     window.on_window_event(move |event| {
         if matches!(event, tauri::WindowEvent::Destroyed) {
-            let server = server.clone();
+            let server = window_server.clone();
             let session_id = session_id.clone();
             tauri::async_runtime::spawn(async move {
                 let _ = cancel_dingtalk_session(&server, &session_id).await;
             });
         }
     });
+    if !open_dingtalk_client(native).await {
+        if let Err(error) = window.navigate(login) {
+            let _ = window.close();
+            let _ = cancel_dingtalk_session(&server, &parsed.session_id).await;
+            return Err(error.into());
+        }
+    }
     Ok(parsed)
 }
 
