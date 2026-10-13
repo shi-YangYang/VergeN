@@ -145,9 +145,14 @@ jobs:
         run: |
           mkdir -p ../upload
           for arch in arm64-v8a armeabi-v7a x86 x86_64 universal; do
-            src="cmfa-${RELEASE_TAG#v}-alpha-${arch}-release.apk"
-            [ -f "$src" ] && cp "$src" "../upload/vergen-${RELEASE_TAG#v}-android-$arch.apk"
+            src=$(find . -maxdepth 1 -name "*-${arch}-release.apk" -print -quit)
+            if [ -n "$src" ]; then
+              cp "$src" "../upload/vergen-${RELEASE_TAG#v}-android-$arch.apk"
+            else
+              echo "::warning::no APK matched *-${arch}-release.apk"
+            fi
           done
+          ls -la ../upload
       - name: Upload to the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -181,6 +186,19 @@ jobs:
             goarch: amd64
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          prefix: server/web
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: server/web/pnpm-lock.yaml
+      # The server embeds the admin panel with go:embed all:dist; the
+      # panel must be built before any go build.
+      - name: Build the admin panel
+        working-directory: server/web
+        run: pnpm install --frozen-lockfile && pnpm build
       - uses: actions/setup-go@v5
         with:
           go-version-file: server/go.mod
