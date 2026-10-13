@@ -840,28 +840,58 @@ pub async fn updater_autoinstall(
     let client = http_client()?;
     let access = match ensure_access(&client, &server).await? {
         AccessOutcome::Access(access) => access,
-        AccessOutcome::NeedsLogin => return Ok(false),
+        AccessOutcome::NeedsLogin => return Err(anyhow!("登录已失效，请重新登录后更新")),
     };
     let manifest_url = release_url(&server, "updater").map_err(|e| anyhow!("更新地址无效: {e}"))?;
-    let updater = app
+    let updater_builder = app
         .updater_builder()
         .endpoints(vec![manifest_url])
         .map_err(|e| anyhow!("更新端点无效: {e}"))?
         .header("Authorization", format!("Bearer {access}"))
-        .map_err(|e| anyhow!("更新头无效: {e}"))?
-        .build()?;
+        .map_err(|e| anyhow!("更新头无效: {e}"))?;
+    // Windows reclaims resources on process exit; retain IPC so installer launch
+    // or UAC failure can report an error instead of the plugin destroying it first.
+    #[cfg(windows)]
+    let updater_builder = updater_builder.on_before_exit(|| {});
+    let updater = updater_builder.build()?;
     let Some(update) = updater.check().await.map_err(|e| anyhow!("检查更新失败: {e}"))? else {
         logging!(info, Type::Cmd, "company update: already latest");
         return Ok(false);
     };
     let version = update.version.clone();
     logging!(info, Type::Cmd, "company update: downloading {}", version);
-    update
-        .download_and_install(on_progress, || {})
+    let bytes = update
+        .download(on_progress, || {})
         .await
-        .map_err(|e| anyhow!("下载或安装更新失败: {e}"))?;
+        .map_err(|e| anyhow!("下载或验证更新失败: {e}"))?;
+
+    // Windows exits directly after launching NSIS and never reaches Tauri's exit handler.
+    #[cfg(windows)]
+    {
+        crate::core::handle::Handle::global().set_is_exiting();
+        Config::apply_all_and_save_file().await;
+        let cleanup = super::clean_async().await;
+        if !cleanup.core_stopped {
+            crate::core::handle::Handle::global().clear_is_exiting();
+            return Err(anyhow!(
+                "无法停止代理内核，已取消更新: {}",
+                cleanup.stop_error.unwrap_or_default()
+            ));
+        }
+    }
+
+    let installed = tokio::task::spawn_blocking(move || update.install(bytes))
+        .await
+        .map_err(anyhow::Error::from)
+        .and_then(|result| result.map_err(anyhow::Error::from));
+    if let Err(error) = installed {
+        #[cfg(windows)]
+        crate::core::handle::Handle::global().clear_is_exiting();
+        return Err(anyhow!("安装更新失败: {error}"));
+    }
     logging!(info, Type::Cmd, "company update {} installed; restarting", version);
-    app.restart();
+    super::restart_app().await;
+    Ok(true)
 }
 
 #[derive(Debug, Deserialize, Default)]

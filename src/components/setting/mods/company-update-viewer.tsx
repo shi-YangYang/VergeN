@@ -68,6 +68,14 @@ export const CompanyUpdateViewer = ({ ref }: Props) => {
     }
     await mutate(() => enterpriseUpdaterInstall(onDownloadEvent), {
       id: 'enterprise-updater-install',
+      onFulfilled: (installed) => {
+        if (!installed) {
+          setOpen(false)
+          showNotice.success(
+            'settings.components.verge.advanced.notifications.latestVersion',
+          )
+        }
+      },
     })
       .catch(() => {})
       .finally(() => setInstalling(false))
