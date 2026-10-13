@@ -1,204 +1,19 @@
 name: Release
 
 on:
-  # Manual CD only: run from the Actions tab against the main branch and
-  # provide the release tag. Pushing a tag does NOT start this pipeline.
+  # Manual server deployment only; client packaging runs separately.
   workflow_dispatch:
-    inputs:
-      tag:
-        description: "Client version, e.g. v0.1.1"
-        required: true
-        type: string
 
 permissions:
   contents: read
 
-env:
-  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
-
 jobs:
-  client:
-    name: Client ${{ matrix.label }}
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - label: macos-arm64
-            runner: macos-latest
-            target: aarch64-apple-darwin
-          - label: windows-x64
-            runner: windows-latest
-            target: x86_64-pc-windows-msvc
-          - label: linux-x64
-            runner: ubuntu-24.04
-            target: x86_64-unknown-linux-gnu
-    env:
-      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
-      CARGO_PROFILE_RELEASE_DEBUG: "0"
-      CARGO_PROFILE_RELEASE_STRIP: debuginfo
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-      # Baked into the client at build time; set it in repo variables.
-      VITE_ENTERPRISE_SERVER_URL: ${{ vars.VITE_ENTERPRISE_SERVER_URL }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-      - name: Install desktop dependencies (linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          target: ${{ matrix.target }}
-          cache: false
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.target }}-${{ hashFiles('Cargo.toml') }}
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Set the client version
-        shell: bash
-        run: pnpm release-version "$RELEASE_TAG"
-      - name: Fetch mihomo sidecars and service release
-        run: pnpm prebuild ${{ matrix.target }}
-      - name: Build the desktop app
-        id: desktop
-        uses: tauri-apps/tauri-action@v0
-        with:
-          args: --target ${{ matrix.target }}
-      - name: Collect desktop packages
-        env:
-          ARTIFACT_PATHS: ${{ steps.desktop.outputs.artifactPaths }}
-        shell: bash
-        run: |
-          node --input-type=module <<'NODE'
-          import fs from 'node:fs';
-          import path from 'node:path';
-          const installer = /\.(exe|msi|dmg|pkg|deb|rpm|AppImage)$/i;
-          fs.mkdirSync('client-artifacts');
-          fs.mkdirSync('updater-artifacts');
-          for (const file of JSON.parse(process.env.ARTIFACT_PATHS)) {
-            if (fs.statSync(file, { throwIfNoEntry: false })?.isFile()) {
-              const directory = installer.test(file) ? 'client-artifacts' : 'updater-artifacts';
-              fs.copyFileSync(file, path.join(directory, path.basename(file)));
-            }
-          }
-          if (fs.readdirSync('client-artifacts').length === 0) {
-            throw new Error('No desktop installer was produced');
-          }
-          NODE
-      - name: Store desktop packages for deployment
-        uses: actions/upload-artifact@v4
-        with:
-          name: client-${{ matrix.label }}
-          path: client-artifacts/
-          if-no-files-found: error
-          compression-level: 0
-      - name: Store updater files for manual release management
-        uses: actions/upload-artifact@v4
-        with:
-          name: updater-${{ matrix.label }}
-          path: updater-artifacts/
-          if-no-files-found: ignore
-          compression-level: 0
-
-  android:
-    name: Android client
-    runs-on: ubuntu-24.04
-    env:
-      JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk_21_latest_x64
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 21
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: android/core/src/foss/golang/clash/go.mod
-      - name: Install Android SDK pieces
-        env:
-          ANDROID_HOME: /usr/local/lib/android/sdk
-        run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null 2>&1 || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
-            "platforms;android-35" \
-            "build-tools;35.0.0" \
-            "platform-tools" \
-            "ndk;29.0.14206865" \
-            "cmake;3.22.1" >/dev/null
-      # remove.suffix keeps the applicationId a bare io.github.vergen.android
-      # so upgrades install over the same package instead of a .alpha twin.
-      - name: Configure the flavor identity
-        working-directory: android
-        env:
-          ANDROID_HOME: /usr/local/lib/android/sdk
-        run: printf 'sdk.dir=%s\nremove.suffix=true\n' \
-          "$ANDROID_HOME" > local.properties
-      - name: Wire signing config
-        working-directory: android
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          VERGEN_STORE_PASSWORD: ${{ secrets.ANDROID_SIGN_STORE_PASSWORD }}
-          VERGEN_KEY_PASSWORD: ${{ secrets.ANDROID_SIGN_KEY_PASSWORD }}
-        run: |
-          if [[ -n "${ANDROID_KEYSTORE_BASE64:-}" ]]; then
-            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > release.keystore
-            echo "Decoded the production keystore from ANDROID_KEYSTORE_BASE64"
-          else
-            # No production keystore yet: remove the stale local file so the
-            # build falls back to the debug signing config instead of failing.
-            rm -f release.keystore signing.properties.bak
-            echo "ANDROID_KEYSTORE_BASE64 not set; falling back to debug signing"
-          fi
-          # The repo carries a dev keystore; production overrides via secrets.
-          store="${VERGEN_STORE_PASSWORD:-vergen1234}"
-          printf 'keystore.password=%s\nkey.alias=vergen\nkey.password=%s\n' \
-            "$store" "${VERGEN_KEY_PASSWORD:-$store}" > signing.properties
-      - name: Build the Android client
-        working-directory: android
-        run: |
-          ./gradlew :app:assembleAlphaRelease --no-daemon --console=plain \
-            -PvergenVersionName="${RELEASE_TAG#v}" \
-            -PvergenVersionCode="$GITHUB_RUN_NUMBER"
-      - name: Prepare the Android package
-        working-directory: android/app/build/outputs/apk/alpha/release
-        run: |
-          mkdir -p ../upload
-          src=$(find . -maxdepth 1 -name '*-arm64-v8a-release.apk' -print -quit)
-          if [ -z "$src" ]; then
-            echo "::error::no arm64-v8a APK was produced"
-            exit 1
-          fi
-          cp "$src" "../upload/vergen-${RELEASE_TAG#v}-android-arm64-v8a.apk"
-      - name: Store the Android package for deployment
-        uses: actions/upload-artifact@v4
-        with:
-          name: client-android
-          path: android/app/build/outputs/apk/alpha/upload/*-android-arm64-v8a.apk
-          if-no-files-found: error
-          compression-level: 0
-
   server:
     name: Server linux-amd64
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          prefix: server/web
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -212,6 +27,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
       - name: Build the vergen server
         working-directory: server
         env:
@@ -234,7 +50,7 @@ jobs:
     # Required configuration: secrets DEPLOY_HOST / DEPLOY_USER /
     # DEPLOY_SSH_KEY, optional secrets DEPLOY_PORT (service port, default
     # 8080) and DEPLOY_SSH_PORT.
-    needs: [client, android, server]
+    needs: server
     runs-on: ubuntu-latest
     steps:
       - name: Skip when deployment is not configured
@@ -287,13 +103,6 @@ jobs:
         with:
           name: server-linux-amd64
           path: server-artifacts/
-      - name: Download client packages
-        if: env.SKIP_DEPLOY != '1'
-        uses: actions/download-artifact@v4
-        with:
-          pattern: client-*
-          merge-multiple: true
-          path: client-artifacts/
       - name: Prepare the server binary
         if: env.SKIP_DEPLOY != '1'
         shell: bash
@@ -357,8 +166,9 @@ jobs:
             sudo -n mv /tmp/vergen-server.new /usr/local/bin/vergen-server
             sudo -n chmod 755 /usr/local/bin/vergen-server
           fi
-          sudo -n mkdir -p /var/lib/vergen
-          sudo -n chown vergen:vergen /var/lib/vergen
+          sudo -n mkdir -p /var/lib/vergen/downloads
+          sudo -n chown vergen:vergen /var/lib/vergen /var/lib/vergen/downloads
+          sudo -n chmod 755 /var/lib/vergen/downloads
           for file in /var/lib/vergen/vergen.db{,-wal,-shm}; do
             if [ -e "$file" ]; then
               sudo -n chown vergen:vergen "$file"
@@ -387,105 +197,4 @@ jobs:
           done
           echo "::error::health check failed after deploy"
           exit 1
-          REMOTE
-      - name: Publish client downloads
-        if: env.SKIP_DEPLOY != '1'
-        timeout-minutes: 60
-        shell: bash
-        run: |
-          set -x
-          export LC_ALL=C
-          du -ch client-artifacts/*
-          batch_hash=$(sha256sum client-artifacts/* | sha256sum | cut -d ' ' -f 1)
-          staging="/tmp/vergen-client-upload-${GITHUB_RUN_ID}-${batch_hash}"
-          ssh -T vergen-target "bash -se -- '$staging'" <<'REMOTE'
-          mkdir -p "$1"
-          REMOTE
-          upload_package() {
-            local file=$1 local_hash=$2 remote_name state upload_command started elapsed bytes
-            printf -v remote_name '%q' "$(basename "$file")"
-            state=$(ssh -T vergen-target "bash -se -- '$staging' $remote_name '$local_hash'" <<'REMOTE'
-          if [ -f "/var/lib/vergen/downloads/$2" ]; then
-            checksum=$(sha256sum "/var/lib/vergen/downloads/$2")
-            if [ "${checksum%% *}" = "$3" ]; then
-              rm -f "$1/$2"
-              echo published
-              exit 0
-            fi
-          fi
-          if [ -f "$1/$2" ]; then
-            checksum=$(sha256sum "$1/$2")
-            if [ "${checksum%% *}" = "$3" ]; then
-              echo staged
-              exit 0
-            fi
-          fi
-          echo upload
-          REMOTE
-            )
-            case "$state" in
-              published) echo "Package unchanged; skipping upload: $file"; return ;;
-              staged) echo "Reusing completed upload: $file"; return ;;
-              upload) ;;
-              *) echo "::error::Unexpected upload state for $file: $state"; return 1 ;;
-            esac
-            started=$SECONDS
-            printf -v upload_command 'scp -v %q %q' "$file" "vergen-target:$staging/"
-            script -q -e -c "$upload_command" /dev/null </dev/null
-            elapsed=$((SECONDS - started))
-            if [ "$elapsed" -eq 0 ]; then elapsed=1; fi
-            bytes=$(stat -c %s "$file")
-            echo "Uploaded $file: $bytes bytes in ${elapsed}s ($((bytes / elapsed / 1024)) KiB/s)"
-          }
-          wait_for_uploads() {
-            local pid result=0
-            for pid in "$@"; do
-              wait "$pid" || result=1
-            done
-            return "$result"
-          }
-          max_parallel=2
-          pids=()
-          publish_args=
-          for file in client-artifacts/*; do
-            local_hash=$(sha256sum "$file" | cut -d ' ' -f 1)
-            printf -v file_args ' %q %q' "$(basename "$file")" "$local_hash"
-            publish_args+="$file_args"
-            upload_package "$file" "$local_hash" &
-            pids+=("$!")
-            if [ "${#pids[@]}" -eq "$max_parallel" ]; then
-              wait_for_uploads "${pids[@]}"
-              pids=()
-            fi
-          done
-          wait_for_uploads "${pids[@]}"
-          ssh -T vergen-target "bash -se -- '$staging'$publish_args" <<'REMOTE'
-          set -x
-          staging=$1
-          shift
-          files=()
-          while [ "$#" -gt 0 ]; do
-            name=$1
-            expected=$2
-            shift 2
-            file="$staging/$name"
-            if [ -f "$file" ]; then
-              files+=("$file")
-            else
-              file="/var/lib/vergen/downloads/$name"
-            fi
-            checksum=$(sha256sum "$file")
-            if [ "${checksum%% *}" != "$expected" ]; then
-              echo "::error::Package checksum mismatch: $name"
-              exit 1
-            fi
-          done
-          sudo -n mkdir -p /var/lib/vergen/downloads
-          sudo -n chmod 755 /var/lib/vergen/downloads
-          for file in "${files[@]}"; do
-            sudo -n chmod 644 "$file"
-            sudo -n chown vergen:vergen "$file"
-            sudo -n mv -f "$file" /var/lib/vergen/downloads/
-          done
-          rmdir "$staging"
           REMOTE

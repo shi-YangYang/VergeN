@@ -266,6 +266,8 @@ func (a *Server) handleAdminGetSettings(w http.ResponseWriter, _ *http.Request) 
 }
 
 func (a *Server) handleAdminSetSettings(w http.ResponseWriter, r *http.Request) {
+	a.publicationMu.Lock()
+	defer a.publicationMu.Unlock()
 	req, ok := readJSON[settingsPatch](w, r)
 	if !ok {
 		return
@@ -568,13 +570,16 @@ func (a *Server) handleAdminDeleteAnnouncement(w http.ResponseWriter, r *http.Re
 // --- Client releases (multi-version, per-platform) ---
 
 type releasePayload struct {
-	Version    string `json:"version"`
-	Notes      string `json:"notes"`
-	WinURL     string `json:"win_url"`
-	LinuxURL   string `json:"linux_url"`
-	MacURL     string `json:"mac_url"`
-	AndroidURL string `json:"android_url"`
-	PubDate    int64  `json:"pub_date"`
+	Version    string                    `json:"version"`
+	Notes      string                    `json:"notes"`
+	WinURL     string                    `json:"win_url"`
+	LinuxURL   string                    `json:"linux_url"`
+	MacURL     string                    `json:"mac_url"`
+	AndroidURL string                    `json:"android_url"`
+	PubDate    int64                     `json:"pub_date"`
+	BaseURL    string                    `json:"base_url"`
+	Packages   map[string]string         `json:"packages"`
+	Updater    map[string]updaterPackage `json:"updater"`
 }
 
 func (a *Server) handleAdminListReleases(w http.ResponseWriter, _ *http.Request) {
@@ -589,8 +594,14 @@ func (a *Server) handleAdminListReleases(w http.ResponseWriter, _ *http.Request)
 }
 
 func (a *Server) handleAdminCreateRelease(w http.ResponseWriter, r *http.Request) {
+	a.publicationMu.Lock()
+	defer a.publicationMu.Unlock()
 	req, ok := readJSON[releasePayload](w, r)
 	if !ok {
+		return
+	}
+	if req.Packages != nil || req.Updater != nil {
+		a.publishRelease(w, req)
 		return
 	}
 	if req.Version == "" {
@@ -622,6 +633,8 @@ func (a *Server) handleAdminCreateRelease(w http.ResponseWriter, r *http.Request
 }
 
 func (a *Server) handleAdminDeleteRelease(w http.ResponseWriter, r *http.Request) {
+	a.publicationMu.Lock()
+	defer a.publicationMu.Unlock()
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		fail(w, http.StatusBadRequest, "bad_request", "invalid release id")

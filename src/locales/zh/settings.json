@@ -653,6 +653,7 @@
       }
     },
     "companyUpdate": {
+      "manualInstall": "此版本未提供适用于当前系统的在线更新包，请下载安装包后手动安装。",
       "installNow": "立即更新",
       "updating": "正在更新，应用将自动重启…",
       "download": "前往下载"

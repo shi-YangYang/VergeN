@@ -14,46 +14,60 @@ Feature of [Clash.Meta](https://github.com/MetaCubeX/Clash.Meta)
 
 - Android 5.0+ (minimum)
 - Android 7.0+ (recommend)
-- `armeabi-v7a` , `arm64-v8a`, `x86` or `x86_64` Architecture
+- `arm64-v8a` Architecture (VergeN packages only this ABI)
 
-### Build
+### Build VergeN locally
 
-1. Update submodules
+From the repository root, initialize the core submodule with
+`git submodule update --init --recursive`. Install JDK 21, Go (the version in
+`core/src/foss/golang/clash/go.mod` or newer), and these Android SDK components:
 
-   ```bash
-   git submodule update --init --recursive
-   ```
+- `platforms;android-35`
+- `build-tools;35.0.0`
+- `ndk;29.0.14206865`
+- `cmake;3.22.1`
 
-2. Install **OpenJDK 11**, **Android SDK**, **CMake** and **Golang**
+Set the local build paths in `.env.build.local` at the repository root. This file
+is ignored by Git and affects packaging commands only:
 
-3. Create `local.properties` in project root with
+```properties
+JAVA_HOME=/path/to/jdk-21
+ANDROID_HOME=/path/to/android-sdk
+```
 
-   ```properties
-   sdk.dir=/path/to/android-sdk
-   ```
+Keep `android/local.properties` configured with:
 
-4. (Optional) Custom app package name. Add the following configuration to `local.properties`.
+```properties
+sdk.dir=/path/to/android-sdk
+remove.suffix=true
+```
 
-   ```properties
-   # config your ownn applicationId, or it will be 'com.github.metacubex.clash'
-   custom.application.id=com.my.compile.clash
-   # remove application id suffix, or the applicaion id will be 'com.github.metacubex.clash.alpha'
-   remove.suffix=true
+Preserve the signing key used by previously distributed APKs as
+`android/release.keystore`, together with `android/signing.properties`:
 
-5. Create `signing.properties` in project root with
+```properties
+keystore.password=<existing key store password>
+key.alias=<existing key alias>
+key.password=<existing key password>
+```
 
-   ```properties
-   keystore.path=/path/to/keystore/file
-   keystore.password=<key store password>
-   key.alias=<key alias>
-   key.password=<key password>
-   ```
+Do not generate a replacement key for an existing installation: Android upgrades
+require the same signing certificate. The packaging command refuses to silently
+fall back to debug signing if these files are missing. The configured key must
+still be checked against the certificate of previously distributed APKs.
 
-6. Build
+Build one arm64 APK, specifying a version and a strictly increasing Android
+versionCode (the example assumes the last published versionCode was below 9):
 
-   ```bash
-   ./gradlew app:assembleAlphaRelease
-   ```
+```bash
+pnpm package:android 0.1.1 9
+```
+
+The upload-ready installer is
+`release-local/0.1.1/android/vergen-0.1.1-android-arm64-v8a.apk`.
+The package identity remains `io.github.vergen.android`.
+The server address is currently defined in
+`app/src/main/java/com/github/kr328/clash/enterprise/EnterpriseKit.kt`.
 
 ### Automation
 

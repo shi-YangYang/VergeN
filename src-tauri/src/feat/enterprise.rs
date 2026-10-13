@@ -104,6 +104,8 @@ pub struct CompanyRelease {
     pub url: std::string::String,
     #[serde(default)]
     pub pub_date: i64,
+    #[serde(default)]
+    pub updater_available: bool,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -760,6 +762,29 @@ pub async fn heartbeat() -> bool {
     }
 }
 
+fn release_url(server: &str, endpoint: &str) -> Result<reqwest::Url> {
+    use tauri::utils::{config::BundleType, platform::bundle_type};
+
+    let mut url = reqwest::Url::parse(&format!("{server}/api/v1/client/{endpoint}"))?;
+    let mut query = url.query_pairs_mut();
+    query.append_pair("platform", std::env::consts::OS);
+    query.append_pair("arch", std::env::consts::ARCH);
+    let installer = match bundle_type() {
+        Some(BundleType::Nsis) => Some("nsis"),
+        Some(BundleType::Msi) => Some("msi"),
+        Some(BundleType::App) => Some("app"),
+        Some(BundleType::Deb) => Some("deb"),
+        Some(BundleType::Rpm) => Some("rpm"),
+        Some(BundleType::AppImage) => Some("appimage"),
+        _ => None,
+    };
+    if let Some(installer) = installer {
+        query.append_pair("bundle_type", installer);
+    }
+    drop(query);
+    Ok(url)
+}
+
 /// Poll the company release manifest; None when ops has not published one
 /// or the session needs a login.
 pub async fn release_check() -> Result<Option<CompanyRelease>> {
@@ -776,13 +801,13 @@ pub async fn release_check() -> Result<Option<CompanyRelease>> {
         AccessOutcome::NeedsLogin => return Ok(None),
     };
     let response = client
-        .get(format!("{server}/api/v1/client/update"))
+        .get(release_url(&server, "update")?)
         .bearer_auth(&access)
         .send()
         .await
         .map_err(|e| anyhow!("无法连接服务器 {server}: {e}"))?;
     let status = response.status();
-    if status == reqwest::StatusCode::NOT_FOUND {
+    if status == reqwest::StatusCode::NOT_FOUND || status == reqwest::StatusCode::NO_CONTENT {
         return Ok(None);
     }
     let body = response.text().await.unwrap_or_default();
@@ -815,29 +840,58 @@ pub async fn updater_autoinstall(
     let client = http_client()?;
     let access = match ensure_access(&client, &server).await? {
         AccessOutcome::Access(access) => access,
-        AccessOutcome::NeedsLogin => return Ok(false),
+        AccessOutcome::NeedsLogin => return Err(anyhow!("登录已失效，请重新登录后更新")),
     };
-    let manifest_url =
-        reqwest::Url::parse(&format!("{server}/api/v1/client/updater")).map_err(|e| anyhow!("更新地址无效: {e}"))?;
-    let updater = app
+    let manifest_url = release_url(&server, "updater").map_err(|e| anyhow!("更新地址无效: {e}"))?;
+    let updater_builder = app
         .updater_builder()
         .endpoints(vec![manifest_url])
         .map_err(|e| anyhow!("更新端点无效: {e}"))?
         .header("Authorization", format!("Bearer {access}"))
-        .map_err(|e| anyhow!("更新头无效: {e}"))?
-        .build()?;
+        .map_err(|e| anyhow!("更新头无效: {e}"))?;
+    // Windows reclaims resources on process exit; retain IPC so installer launch
+    // or UAC failure can report an error instead of the plugin destroying it first.
+    #[cfg(windows)]
+    let updater_builder = updater_builder.on_before_exit(|| {});
+    let updater = updater_builder.build()?;
     let Some(update) = updater.check().await.map_err(|e| anyhow!("检查更新失败: {e}"))? else {
         logging!(info, Type::Cmd, "company update: already latest");
         return Ok(false);
     };
     let version = update.version.clone();
     logging!(info, Type::Cmd, "company update: downloading {}", version);
-    update
-        .download_and_install(on_progress, || {})
+    let bytes = update
+        .download(on_progress, || {})
         .await
-        .map_err(|e| anyhow!("下载或安装更新失败: {e}"))?;
+        .map_err(|e| anyhow!("下载或验证更新失败: {e}"))?;
+
+    // Windows exits directly after launching NSIS and never reaches Tauri's exit handler.
+    #[cfg(windows)]
+    {
+        crate::core::handle::Handle::global().set_is_exiting();
+        Config::apply_all_and_save_file().await;
+        let cleanup = super::clean_async().await;
+        if !cleanup.core_stopped {
+            crate::core::handle::Handle::global().clear_is_exiting();
+            return Err(anyhow!(
+                "无法停止代理内核，已取消更新: {}",
+                cleanup.stop_error.unwrap_or_default()
+            ));
+        }
+    }
+
+    let installed = tokio::task::spawn_blocking(move || update.install(bytes))
+        .await
+        .map_err(anyhow::Error::from)
+        .and_then(|result| result.map_err(anyhow::Error::from));
+    if let Err(error) = installed {
+        #[cfg(windows)]
+        crate::core::handle::Handle::global().clear_is_exiting();
+        return Err(anyhow!("安装更新失败: {error}"));
+    }
     logging!(info, Type::Cmd, "company update {} installed; restarting", version);
-    app.restart();
+    super::restart_app().await;
+    Ok(true)
 }
 
 #[derive(Debug, Deserialize, Default)]

@@ -16,6 +16,7 @@ type FileRow struct {
 	Name     string `json:"name"`
 	Size     string `json:"size"`
 	Platform string `json:"platform"`
+	Kind     string `json:"kind"`
 }
 
 // Files serves a published package by exact name. The name is matched
@@ -28,7 +29,7 @@ func Files(downloadsDir string) http.HandlerFunc {
 			return
 		}
 		found := false
-		for _, row := range Packages(downloadsDir) {
+		for _, row := range PackageFiles(downloadsDir) {
 			if row.Name == name {
 				found = true
 				break
@@ -45,14 +46,24 @@ func Files(downloadsDir string) http.HandlerFunc {
 			contentType = "application/octet-stream"
 		}
 		w.Header().Set("Content-Type", contentType)
-		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, name))
+		w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": name}))
 		http.ServeFile(w, r, filepath.Join(downloadsDir, name))
 	}
 }
 
 // Packages lists the package files currently published in the directory.
-// It is the only directory accessor shared with the api layer.
 func Packages(dir string) []FileRow {
+	var rows []FileRow
+	for _, row := range PackageFiles(dir) {
+		if row.Kind == "installer" {
+			rows = append(rows, row)
+		}
+	}
+	return rows
+}
+
+// PackageFiles includes the macOS archive used by the desktop updater.
+func PackageFiles(dir string) []FileRow {
 	if dir == "" {
 		return nil
 	}
@@ -62,19 +73,34 @@ func Packages(dir string) []FileRow {
 	}
 	var rows []FileRow
 	for _, entry := range entries {
-		name := entry.Name()
-		platform := packagePlatform(name)
-		if entry.IsDir() || platform == "" {
-			continue
-		}
 		info, err := entry.Info()
-		if err != nil {
+		if err != nil || !info.Mode().IsRegular() {
 			continue
 		}
-		rows = append(rows, FileRow{Name: name, Size: formatSize(info.Size()), Platform: platform})
+		if row, ok := PackageFile(entry.Name(), info.Size()); ok {
+			rows = append(rows, row)
+		}
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].Name < rows[j].Name })
 	return rows
+}
+
+// PackageFile validates a published installer name and describes its platform.
+func PackageFile(name string, size int64) (FileRow, bool) {
+	if name == "" || strings.HasPrefix(name, ".") || strings.ContainsAny(name, "/\\") || strings.Contains(name, "..") {
+		return FileRow{}, false
+	}
+	for _, c := range name {
+		if c < 32 || c == 127 {
+			return FileRow{}, false
+		}
+	}
+	platform := packagePlatform(name)
+	kind := "installer"
+	if strings.HasSuffix(strings.ToLower(name), ".app.tar.gz") {
+		platform, kind = "macos", "updater"
+	}
+	return FileRow{Name: name, Size: formatSize(size), Platform: platform, Kind: kind}, platform != ""
 }
 
 func packagePlatform(name string) string {

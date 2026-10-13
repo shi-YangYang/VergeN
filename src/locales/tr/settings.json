@@ -653,6 +653,7 @@
       }
     },
     "companyUpdate": {
+      "manualInstall": "Online updating is unavailable for this version on your system. Download the installer and install it manually.",
       "installNow": "Update now",
       "updating": "Updating, the app will restart…",
       "download": "Download"

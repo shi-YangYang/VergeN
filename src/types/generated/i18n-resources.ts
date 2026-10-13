@@ -1022,6 +1022,7 @@ export interface TranslationResources {
         companyUpdate: {
           download: string
           installNow: string
+          manualInstall: string
           updating: string
         }
         dns: {

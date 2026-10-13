@@ -232,6 +232,7 @@ export interface CompanyRelease {
   notes: string
   url: string
   pub_date: number
+  updater_available: boolean
 }
 
 export async function enterpriseReleaseCurrent() {

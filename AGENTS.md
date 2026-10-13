@@ -71,13 +71,19 @@ the ownership evidence the AI-slop review evaluates (see
 - Pull requests run the CI checks automatically
   ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)); green CI is
   expected before merge.
-- Releasing — CD — is a manual step, never an automatic one: run the
-  Release workflow from the Actions tab with branch `main` and an
-  explicit `vX.Y.Z` tag input
+- Deploying — CD — is a manual step, never an automatic one: run the
+  Release workflow from the Actions tab with branch `main`; it builds
+  and deploys only the ops server and its embedded admin panel
   ([`.github/workflows/release.yml`](.github/workflows/release.yml);
   the trigger needs the workflow definition on `main`, which only a
   merge supplies). Pushing a `v*` tag does not trigger the pipeline;
-  manual dispatch is the only release entry point.
+  manual dispatch is the only deployment entry point.
+- Client packaging is separate: manually run `Client packages (draft)`
+  from `main` with a new `vX.Y.Z` version and an increasing Android
+  versionCode ([client-packages.yml](.github/workflows/client-packages.yml)).
+  Installers go directly to an unpublished draft release, never to public
+  Actions artifacts. Download them as a maintainer and upload through the
+  admin panel. Local packaging remains available.
 
 ## Pull Request Shape
 

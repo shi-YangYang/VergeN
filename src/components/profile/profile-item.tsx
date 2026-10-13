@@ -250,7 +250,7 @@ const ProfileItemBase = (props: ProfileItemProps) => {
 
   const { upload = 0, download = 0, total = 0 } = extra ?? {}
   const from = parseUrl(itemData.url)
-  const description = itemData.desc
+  const description = locked ? '祝你天天开心' : itemData.desc
   const expire = parseExpire(extra?.expire)
   const progress = Math.min(
     Math.round(((download + upload) * 100) / (total + 0.01)) + 1,
@@ -786,7 +786,7 @@ const ProfileItemBase = (props: ProfileItemProps) => {
                   </Typography>
                 )
               )}
-              {hasUrl && (
+              {hasUrl && !locked && (
                 <Box
                   sx={{
                     display: 'flex',

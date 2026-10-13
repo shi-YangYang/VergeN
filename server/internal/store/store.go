@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -389,21 +391,22 @@ func (s *Store) SetSetting(key, value string) error {
 // Release is a published client version with per-platform download URLs;
 // the newest row is what /client/update and the updater feed reference.
 type Release struct {
-	Version    string `json:"version"`
-	Notes      string `json:"notes"`
-	WinURL     string `json:"win_url"`
-	LinuxURL   string `json:"linux_url"`
-	MacURL     string `json:"mac_url"`
-	AndroidURL string `json:"android_url"`
-	PubDate    int64  `json:"pub_date"`
-	CreatedAt  int64  `json:"created_at"`
-	ID         int64  `json:"id"`
+	Version          string   `json:"version"`
+	Notes            string   `json:"notes"`
+	WinURL           string   `json:"win_url"`
+	LinuxURL         string   `json:"linux_url"`
+	MacURL           string   `json:"mac_url"`
+	AndroidURL       string   `json:"android_url"`
+	PubDate          int64    `json:"pub_date"`
+	CreatedAt        int64    `json:"created_at"`
+	ID               int64    `json:"id"`
+	UpdaterPlatforms []string `json:"updater_platforms"`
 }
 
 const releaseCols = `id, version, notes, win_url, linux_url, mac_url, android_url, pub_date, created_at`
 
 func scanRelease(row interface{ Scan(dest ...any) error }) (*Release, error) {
-	var r Release
+	r := Release{UpdaterPlatforms: []string{}}
 	err := row.Scan(&r.ID, &r.Version, &r.Notes, &r.WinURL, &r.LinuxURL, &r.MacURL, &r.AndroidURL, &r.PubDate, &r.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -429,7 +432,18 @@ func (s *Store) ListReleases() ([]*Release, error) {
 		}
 		list = append(list, r)
 	}
-	return list, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	for _, r := range list {
+		raw, _, err := s.GetSetting(releaseUpdaterKey(r.ID))
+		if err != nil {
+			return nil, err
+		}
+		r.UpdaterPlatforms = updaterPlatforms(raw)
+	}
+	return list, nil
 }
 
 // GetRelease resolves the manifest the employee client sees (newest row);
@@ -471,6 +485,88 @@ func (s *Store) CreateRelease(r *Release, now time.Time) (*Release, error) {
 	return scanRelease(s.db.QueryRow(`SELECT `+releaseCols+` FROM releases WHERE id = ?`, id))
 }
 
+func releaseUpdaterKey(id int64) string {
+	return "release_updater_" + strconv.FormatInt(id, 10)
+}
+
+func updaterPlatforms(raw string) []string {
+	var manifest struct {
+		Platforms map[string]json.RawMessage `json:"platforms"`
+	}
+	_ = json.Unmarshal([]byte(raw), &manifest)
+	platforms := make([]string, 0, len(manifest.Platforms))
+	for target := range manifest.Platforms {
+		platforms = append(platforms, target)
+	}
+	sort.Strings(platforms)
+	return platforms
+}
+
+// PublishRelease commits the download links and updater feed as one version.
+func (s *Store) PublishRelease(r *Release, manifest string, now time.Time) (*Release, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	var count int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM releases WHERE version = ?`, r.Version).Scan(&count); err != nil {
+		return nil, err
+	}
+	if count > 0 {
+		return nil, ErrConflict
+	}
+	// Preserve an existing manually configured feed when an older release is restored.
+	var priorID int64
+	var priorVersion string
+	if err := tx.QueryRow(`SELECT id, version FROM releases ORDER BY id DESC LIMIT 1`).Scan(&priorID, &priorVersion); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	if priorID != 0 {
+		var raw string
+		err := tx.QueryRow(`SELECT value FROM settings WHERE key = 'updater_manifest'`).Scan(&raw)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
+		var previous struct {
+			Version string `json:"version"`
+		}
+		_ = json.Unmarshal([]byte(raw), &previous)
+		if previous.Version != priorVersion {
+			raw = ""
+		}
+		if _, err := tx.Exec(`INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING`, releaseUpdaterKey(priorID), raw); err != nil {
+			return nil, err
+		}
+	}
+	res, err := tx.Exec(`INSERT INTO releases (version, notes, win_url, linux_url, mac_url, android_url, pub_date, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.Version, r.Notes, r.WinURL, r.LinuxURL, r.MacURL, r.AndroidURL, r.PubDate, now.Unix())
+	if err != nil {
+		return nil, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+	for _, key := range []string{releaseUpdaterKey(id), "updater_manifest"} {
+		if _, err := tx.Exec(`INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, manifest); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	created := *r
+	created.ID, created.CreatedAt = id, now.Unix()
+	created.UpdaterPlatforms = updaterPlatforms(manifest)
+	return &created, nil
+}
+
+func (s *Store) ReleaseUpdater(id int64) (string, error) {
+	raw, _, err := s.GetSetting(releaseUpdaterKey(id))
+	return raw, err
+}
+
 func time_now_or(stored, now int64) int64 {
 	if stored > 0 {
 		return stored
@@ -479,12 +575,37 @@ func time_now_or(stored, now int64) int64 {
 }
 
 func (s *Store) DeleteRelease(id int64) (bool, error) {
-	res, err := s.db.Exec(`DELETE FROM releases WHERE id = ?`, id)
+	tx, err := s.db.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	var latestID int64
+	if err := tx.QueryRow(`SELECT COALESCE(MAX(id), 0) FROM releases`).Scan(&latestID); err != nil {
+		return false, err
+	}
+	res, err := tx.Exec(`DELETE FROM releases WHERE id = ?`, id)
 	if err != nil {
 		return false, err
 	}
 	n, err := res.RowsAffected()
-	return n > 0, err
+	if err != nil || n == 0 {
+		return false, err
+	}
+	if _, err := tx.Exec(`DELETE FROM settings WHERE key = ?`, releaseUpdaterKey(id)); err != nil {
+		return false, err
+	}
+	if id == latestID {
+		var raw string
+		err := tx.QueryRow(`SELECT value FROM settings WHERE key = 'release_updater_' || (SELECT MAX(id) FROM releases)`).Scan(&raw)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return false, err
+		}
+		if _, err := tx.Exec(`INSERT INTO settings (key, value) VALUES ('updater_manifest', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, raw); err != nil {
+			return false, err
+		}
+	}
+	return true, tx.Commit()
 }
 
 // UpdaterManifest is the raw tauri-format update.json fed to the updater
