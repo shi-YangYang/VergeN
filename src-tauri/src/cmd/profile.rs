@@ -24,9 +24,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 static CURRENT_SWITCHING_PROFILE: AtomicBool = AtomicBool::new(false);
 
-// 公司统一下发的订阅 abc 对应 profile 只能由服务器经 config_version 推送;
-// 本地一切写路径(更新/编辑/删除/保存文件)在命令入口被拒绝,防止任何 UI 或
-// 开发环境下直接 invoke 绕过锁定。
+// Managed profiles can refresh their stored source, but local edits remain blocked.
 pub(crate) async fn guard_managed_profile(index: &str) -> anyhow::Result<()> {
     let verge = Config::verge().await;
     if verge.data_arc().enterprise_profile_uid.as_deref() == Some(index) {
@@ -143,9 +141,11 @@ pub async fn create_profile(item: PrfItem, file_data: Option<String>) -> CmdResu
 
 #[tauri::command]
 pub async fn update_profile(index: String, option: Option<PrfOption>) -> CmdResult {
-    guard_managed_profile(&index)
-        .await
-        .with_error_code("PROFILE_UPDATE_FAILED")?;
+    if option.is_some() {
+        guard_managed_profile(&index)
+            .await
+            .with_error_code("PROFILE_UPDATE_FAILED")?;
+    }
     match feat::update_profile(&index, option.as_ref(), true).await {
         Ok(_) => Ok(()),
         Err(e) => {

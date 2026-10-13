@@ -81,7 +81,7 @@ export interface ProfileItemProps {
 
 const ProfileItemBase = (props: ProfileItemProps) => {
   const { verge } = useVerge()
-  // 公司统一下发的订阅:只允许查看与激活,任何修改类操作被锁定
+  // Managed subscriptions can refresh, but their local settings stay locked.
   const { itemData, ...restOfProps } = props
   const locked = verge?.enterprise_profile_uid === itemData.uid
   const {
@@ -739,9 +739,10 @@ const ProfileItemBase = (props: ProfileItemProps) => {
             </Typography>
           </Box>
 
-          {hasUrl && !locked && (
+          {hasUrl && (
             <IconButton
               title={t('shared.actions.refresh')}
+              aria-label={t('shared.actions.refresh')}
               sx={{
                 position: 'absolute',
                 p: '3px',

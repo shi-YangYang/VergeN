@@ -133,6 +133,8 @@ go build -o vergen-server ./cmd/server
 ./vergen-server --add-admin 用户名:密码
 ```
 
+创建账号及重置密码时，密码至少 4 位。
+
 ## Contributions
 
 Issue and PR welcome!

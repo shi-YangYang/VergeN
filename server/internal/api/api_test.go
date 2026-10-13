@@ -232,9 +232,35 @@ func TestAdminSettingsValidation(t *testing.T) {
 	}
 
 	code, _ = doJSON(t, h, "POST", "/api/v1/admin/users", adminToken,
-		map[string]any{"username": "x", "password": "short"})
+		map[string]any{"username": "employee", "password": "123"})
 	if code != http.StatusBadRequest {
-		t.Fatalf("weak password: status=%d", code)
+		t.Fatalf("three-character password accepted when creating user: status=%d", code)
+	}
+	code, body = doJSON(t, h, "POST", "/api/v1/admin/users", adminToken,
+		map[string]any{"username": "employee", "password": "1234"})
+	if code != http.StatusCreated {
+		t.Fatalf("four-character password rejected when creating user: status=%d body=%v", code, body)
+	}
+	userID := int64(body["user"].(map[string]any)["id"].(float64))
+	passwordPath := "/api/v1/admin/users/" + itoa(userID) + "/password"
+	code, _ = doJSON(t, h, "POST", passwordPath, adminToken,
+		map[string]any{"password": "123"})
+	if code != http.StatusBadRequest {
+		t.Fatalf("three-character password accepted when resetting password: status=%d", code)
+	}
+	if code, _ := login(t, h, "employee", "1234"); code != http.StatusOK {
+		t.Fatalf("initial four-character password login after rejected reset: status=%d", code)
+	}
+	code, _ = doJSON(t, h, "POST", passwordPath, adminToken,
+		map[string]any{"password": "4321"})
+	if code != http.StatusNoContent {
+		t.Fatalf("four-character password rejected when resetting password: status=%d", code)
+	}
+	if code, _ := login(t, h, "employee", "4321"); code != http.StatusOK {
+		t.Fatalf("reset four-character password login: status=%d", code)
+	}
+	if code, _ := login(t, h, "employee", "1234"); code != http.StatusUnauthorized {
+		t.Fatalf("previous password accepted after reset: status=%d", code)
 	}
 }
 

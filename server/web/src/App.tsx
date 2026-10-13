@@ -1585,8 +1585,8 @@ function UsersPanel() {
       setError('请输入用户名')
       return
     }
-    if (newPassword.length < 8) {
-      setError('密码至少 8 位')
+    if (newPassword.length < 4) {
+      setError('密码至少 4 位')
       return
     }
     setBusy(true)
@@ -1616,8 +1616,8 @@ function UsersPanel() {
   }
 
   const reset = async (id: number) => {
-    if (resetPassword.length < 8) {
-      setError('密码至少 8 位')
+    if (resetPassword.length < 4) {
+      setError('密码至少 4 位')
       return
     }
     try {
@@ -1651,7 +1651,7 @@ function UsersPanel() {
           onChange={(e) => setNewName(e.target.value)}
         />
         <input
-          placeholder="初始密码(至少 8 位)"
+          placeholder="初始密码(至少 4 位)"
           type="password"
           value={newPassword}
           onChange={(e) => setNewPassword(e.target.value)}
@@ -1757,7 +1757,7 @@ function UsersPanel() {
           <span>为 #{resetId} 设置新密码</span>
           <input
             type="password"
-            placeholder="新密码(至少 8 位)"
+            placeholder="新密码(至少 4 位)"
             value={resetPassword}
             onChange={(e) => setResetPassword(e.target.value)}
           />
