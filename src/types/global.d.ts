@@ -949,6 +949,7 @@ interface IVergeConfig {
   enable_external_controller?: boolean
   enterprise_server_url?: string
   enterprise_username?: string
+  enterprise_profile_uid?: string
 }
 
 interface IWebDavFile {

@@ -4,8 +4,6 @@ import android.content.Context
 import android.net.Uri
 import android.view.View
 import com.github.kr328.clash.design.databinding.DesignSettingsCommonBinding
-import com.github.kr328.clash.design.preference.category
-import com.github.kr328.clash.design.preference.clickable
 import com.github.kr328.clash.design.preference.preferenceScreen
 import com.github.kr328.clash.design.preference.tips
 import com.github.kr328.clash.design.util.applyFrom
@@ -31,47 +29,8 @@ class HelpDesign(
         binding.scrollRoot.bindAppBarElevation(binding.activityBarLayout)
 
         val screen = preferenceScreen(context) {
+            // 企业分发版本:文档与源码由所属组织提供,不再链接上游项目。
             tips(R.string.tips_help)
-
-            category(R.string.document)
-
-            clickable(
-                title = R.string.clash_wiki,
-                summary = R.string.clash_wiki_url
-            ) {
-                clicked {
-                    openLink(Uri.parse(context.getString(R.string.clash_wiki_url)))
-                }
-            }
-
-            clickable(
-                title = R.string.clash_meta_wiki,
-                summary = R.string.clash_meta_wiki_url
-            ) {
-                clicked {
-                    openLink(Uri.parse(context.getString(R.string.clash_meta_wiki_url)))
-                }
-            }
-
-            category(R.string.sources)
-
-            clickable(
-                title = R.string.clash_meta_core,
-                summary = R.string.clash_meta_core_url
-            ) {
-                clicked {
-                    openLink(Uri.parse(context.getString(R.string.clash_meta_core_url)))
-                }
-            }
-
-            clickable(
-                title = R.string.clash_meta_for_android,
-                summary = R.string.meta_github_url
-            ) {
-                clicked {
-                    openLink(Uri.parse(context.getString(R.string.meta_github_url)))
-                }
-            }
         }
 
         binding.content.addView(screen.root)

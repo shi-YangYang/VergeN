@@ -31,9 +31,12 @@ type Server struct {
 	// and the client simply starts a new scan.
 	qrSessions  *dingtalkQrSessions
 	pollLimiter *auth.Limiter
+	// Directory of published client package files served from /files and
+	// listed on the root landing page; empty disables that section.
+	downloads string
 }
 
-func NewServer(s *store.Store) (*Server, error) {
+func NewServer(s *store.Store, downloadsDir string) (*Server, error) {
 	secret, err := s.Secret()
 	if err != nil {
 		return nil, err
@@ -41,6 +44,7 @@ func NewServer(s *store.Store) (*Server, error) {
 	return &Server{
 		store:       s,
 		secret:      secret,
+		downloads:   downloadsDir,
 		limiter:     auth.NewLimiter(15*time.Minute, 5),
 		accessTTL:   accessTTLDefault,
 		refreshTTL:  refreshTTLDefault,
@@ -55,6 +59,14 @@ func (a *Server) Handler() (http.Handler, error) {
 		return nil, err
 	}
 	mux := http.NewServeMux()
+	// The embedded admin SPA owns the public surfaces: "/" (gateway),
+	// "/login" and "/download" are its client-side routes, so those paths
+	// serve the app shell; "/admin" keeps the ops prefix. Only /files is
+	// a plain server route.
+	mux.Handle("GET /{$}", adminPanel)
+	mux.Handle("GET /login", adminPanel)
+	mux.Handle("GET /download", adminPanel)
+	mux.HandleFunc("GET /files/{name}", web.Files(a.downloads))
 	mux.Handle("GET /admin", adminPanel)
 	mux.Handle("GET /admin/{path...}", adminPanel)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -78,7 +90,7 @@ func (a *Server) Handler() (http.Handler, error) {
 	mux.Handle("GET /api/v1/client/updater", a.authed(a.handleClientUpdater))
 	mux.Handle("POST /api/v1/admin/users", a.admin(a.handleAdminCreateUser))
 	mux.Handle("GET /api/v1/admin/users", a.admin(a.handleAdminListUsers))
-	mux.Handle("POST /api/v1/admin/users/{id}/status", a.admin(a.handleAdminSetUserStatus))
+	mux.Handle("DELETE /api/v1/admin/users/{id}", a.admin(a.handleAdminDeleteUser))
 	mux.Handle("POST /api/v1/admin/users/{id}/password", a.admin(a.handleAdminSetUserPassword))
 	mux.Handle("POST /api/v1/admin/users/{id}/dingtalk", a.admin(a.handleAdminSetUserDingtalk))
 	mux.Handle("GET /api/v1/admin/subscriptions", a.admin(a.handleAdminListSubscriptions))

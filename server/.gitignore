@@ -1,1 +1,7 @@
 internal/web/dist/
+vergen-server
+logs/
+vergen.db
+vergen.db-shm
+vergen.db-wal
+downloads/

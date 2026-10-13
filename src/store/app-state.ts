@@ -4,7 +4,7 @@ import type {
   SidecarFailureSnapshot,
 } from '@/services/cmds'
 
-interface ProfileUpdatesState {
+export interface ProfileUpdatesState {
   readonly loading: ReadonlySet<string>
   readonly updateRevisions: ReadonlyMap<string, number>
   readonly timerRevisions: ReadonlyMap<string, number>

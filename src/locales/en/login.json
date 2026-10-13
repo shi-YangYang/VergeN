@@ -4,7 +4,6 @@
     "subtitle": "Sign in with your company account to continue"
   },
   "form": {
-    "server": "Server address",
     "username": "Username",
     "password": "Password",
     "submit": "Sign in"
@@ -21,14 +20,11 @@
     "failed": "QR sign-in failed",
     "retry": "Request a new QR code"
   },
-  "banner": {
-    "managed": "Managed by your company"
-  },
   "announcement": {
     "title": "Notice"
   },
   "feedback": {
-    "welcome": "Welcome, {name}",
+    "welcome": "Welcome, {{name}}",
     "logout": "Signed out"
   },
   "account": {

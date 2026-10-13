@@ -86,21 +86,30 @@ type setStatusReq struct {
 	Status string `json:"status"`
 }
 
-func (a *Server) handleAdminSetUserStatus(w http.ResponseWriter, r *http.Request) {
-	req, ok := readJSON[setStatusReq](w, r)
-	if !ok {
-		return
-	}
-	if req.Status != "active" && req.Status != "disabled" {
-		fail(w, http.StatusBadRequest, "bad_request", "status must be 'active' or 'disabled'")
-		return
-	}
+func (a *Server) handleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		fail(w, http.StatusBadRequest, "bad_request", "invalid user id")
 		return
 	}
-	found, err := a.store.SetUserStatus(id, req.Status, time.Now())
+	if userFrom(r).ID == id {
+		fail(w, http.StatusBadRequest, "self_delete", "cannot delete your own account")
+		return
+	}
+	target, err := a.store.GetUser(id)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			fail(w, http.StatusNotFound, "user_not_found", "user does not exist")
+			return
+		}
+		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
+		return
+	}
+	if target.Role == "admin" {
+		fail(w, http.StatusBadRequest, "admin_delete", "cannot delete an administrator account")
+		return
+	}
+	found, err := a.store.DeleteUser(id)
 	if err != nil {
 		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
@@ -109,6 +118,7 @@ func (a *Server) handleAdminSetUserStatus(w http.ResponseWriter, r *http.Request
 		fail(w, http.StatusNotFound, "user_not_found", "user does not exist")
 		return
 	}
+	_ = a.store.BumpConfigVersion()
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -25,7 +25,7 @@ import {
   patchSettings,
   setUserDingtalk,
   setUserPassword,
-  setUserStatus,
+  deleteUser,
   updateAnnouncement,
   updateSubscription,
   type AdminAnnouncement,
@@ -1021,12 +1021,12 @@ function UsersPanel() {
     }
   }
 
-  const toggle = async (user: AdminUser) => {
+  const remove = async (id: number, username: string) => {
+    if (!window.confirm(`删除账号「${username}」后不可恢复,继续?`)) {
+      return
+    }
     try {
-      await setUserStatus(
-        user.id,
-        user.status === 'active' ? 'disabled' : 'active',
-      )
+      await deleteUser(id)
       await reload()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -1093,7 +1093,6 @@ function UsersPanel() {
             <th>用户名</th>
             <th>钉钉</th>
             <th>角色</th>
-            <th>状态</th>
             <th>最近在线</th>
             <th>客户端</th>
             <th>操作</th>
@@ -1101,10 +1100,7 @@ function UsersPanel() {
         </thead>
         <tbody>
           {users.map((user) => (
-            <tr
-              key={user.id}
-              className={user.status === 'disabled' ? 'off' : ''}
-            >
+            <tr key={user.id}>
               <td>{user.id}</td>
               <td>{user.username}</td>
               <td>
@@ -1121,7 +1117,6 @@ function UsersPanel() {
                 )}
               </td>
               <td>{user.role === 'admin' ? '管理员' : '员工'}</td>
-              <td>{user.status === 'active' ? '启用' : '已停用'}</td>
               <td title={user.last_os || ''}>
                 {timeOf(user.last_seen_at)}
                 {user.last_version ? ` · v${user.last_version}` : ''}
@@ -1132,8 +1127,11 @@ function UsersPanel() {
                   .join(' / ') || '-'}
               </td>
               <td className="actions">
-                <button className="ghost" onClick={() => void toggle(user)}>
-                  {user.status === 'active' ? '停用' : '启用'}
+                <button
+                  className="ghost"
+                  onClick={() => void remove(user.id, user.username)}
+                >
+                  删除
                 </button>
                 <button
                   className="ghost"
@@ -1227,7 +1225,6 @@ function DashboardPanel() {
     ['总账号', stats.total_users],
     ['在线(5 分钟内)', stats.online],
     ['24h 活跃', stats.active_24h],
-    ['已停用', stats.disabled_users],
   ]
 
   return (

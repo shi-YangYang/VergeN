@@ -1,4 +1,7 @@
-use crate::config::{Config, IVerge, PrfItem, PrfOption, profiles::profiles_save_file_safe, profiles_append_item_safe};
+use crate::config::{
+    Config, IVerge, PrfItem, PrfOption, profiles::PROFILE_WRITE_LOCK, profiles::profiles_save_file_safe,
+    profiles_append_item_safe,
+};
 use crate::core::notify::{Refresh, announce};
 use anyhow::{Result, anyhow};
 use clash_verge_draft::DraftTransaction;
@@ -409,47 +412,96 @@ async fn bootstrap_fetch(client: &reqwest::Client, server: &str, access: &str) -
     Ok(response.json::<BootstrapResponse>().await?)
 }
 
+/// Canonical form for comparing subscription urls: trailing slash variations
+/// must not spawn a second managed profile.
+fn normalize_subscription_url(url: &str) -> String {
+    url.trim().trim_end_matches('/').to_string()
+}
+
+fn is_managed_subscription_item(item: &PrfItem, subscription_url: &str) -> bool {
+    item.itype.as_deref() == Some("remote")
+        && item
+            .url
+            .as_deref()
+            .map(|u| normalize_subscription_url(u) == subscription_url)
+            .unwrap_or(false)
+}
+
 /// Ensure a profile item for the managed subscription exists and is activated.
 /// Activation failures are logged, not fatal: authentication already succeeded.
 pub async fn ensure_managed_profile(subscription_url: &str) -> Result<()> {
-    let profiles = Config::profiles().await;
+    let subscription_url = normalize_subscription_url(subscription_url);
     let display_name = subscriptions_from_config()
         .await
         .into_iter()
-        .find(|o| o.url == subscription_url)
+        .find(|o| normalize_subscription_url(&o.url) == subscription_url)
         .filter(|o| !o.name.trim().is_empty())
         .map(|o| format!("公司订阅·{}", o.name.trim()));
-    let existing = profiles.data_arc().items.as_ref().and_then(|items| {
-        items
+    // The match/create/collect phase must run serialized: concurrent bootstrap
+    // and subscription-switch calls would both miss the existing entry and
+    // import it twice (observed with two items dated the same second).
+    let (uid, duplicates) = {
+        let _write_guard = PROFILE_WRITE_LOCK.lock().await;
+        let profiles = Config::profiles().await;
+        let managed_pointer = Config::verge().await.data_arc().enterprise_profile_uid.clone();
+        let matched: Vec<SmartString> = profiles
+            .data_arc()
+            .items
+            .as_ref()
+            .map(|items| {
+                items
+                    .iter()
+                    .filter(|it| is_managed_subscription_item(it, &subscription_url))
+                    .filter_map(|it| it.uid.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let uid = matched
             .iter()
-            .find(|it| it.itype.as_deref() == Some("remote") && it.url.as_deref() == Some(subscription_url))
-            .and_then(|it| it.uid.clone())
-    });
-    let uid = match existing {
-        Some(uid) => uid,
-        None => {
-            let name: SmartString = display_name.map(SmartString::from).unwrap_or_else(|| "公司订阅".into());
-            let option = PrfOption {
-                update_interval: Some(MANAGED_UPDATE_INTERVAL_MINUTES),
-                allow_auto_update: Some(true),
-                with_proxy: Some(false),
-                timeout_seconds: Some(30),
-                ..PrfOption::default()
-            };
-            let mut item = PrfItem::from_url(subscription_url, Some(&name), None, Some(&option)).await?;
-            profiles_append_item_safe(&mut item).await?;
-            profiles_save_file_safe().await?;
-            match item.uid.clone() {
-                Some(uid) => uid,
-                None => return Err(anyhow!("导入公司订阅失败: 未生成配置 ID")),
+            .find(|u| managed_pointer.as_deref() == Some(u.as_str()))
+            .cloned()
+            .or_else(|| matched.first().cloned());
+        match uid {
+            Some(uid) => {
+                let duplicates = matched
+                    .into_iter()
+                    .filter(|candidate| candidate != &uid)
+                    .collect::<Vec<_>>();
+                (uid, duplicates)
+            }
+            None => {
+                let name: SmartString = display_name.map(SmartString::from).unwrap_or_else(|| "公司订阅".into());
+                let option = PrfOption {
+                    update_interval: Some(MANAGED_UPDATE_INTERVAL_MINUTES),
+                    allow_auto_update: Some(true),
+                    with_proxy: Some(false),
+                    timeout_seconds: Some(30),
+                    ..PrfOption::default()
+                };
+                let mut item = PrfItem::from_url(&subscription_url, Some(&name), None, Some(&option)).await?;
+                profiles_append_item_safe(&mut item).await?;
+                profiles_save_file_safe().await?;
+                match item.uid.clone() {
+                    Some(uid) => (uid, Vec::new()),
+                    None => return Err(anyhow!("导入公司订阅失败: 未生成配置 ID")),
+                }
             }
         }
     };
-    let provisioned = uid.clone();
-    persist_verge_edit(|d| d.enterprise_profile_uid = Some(uid.clone())).await?;
+    // The pointer moves before any deletion so the managed guard never
+    // rejects removing stale duplicates.
+    let managed_pointer = Config::verge().await.data_arc().enterprise_profile_uid.clone();
+    if managed_pointer.as_deref() != Some(uid.as_str()) {
+        persist_verge_edit(|d| d.enterprise_profile_uid = Some(uid.clone())).await?;
+    }
+    for duplicate in duplicates {
+        if let Err(e) = crate::cmd::profile::delete_profile(duplicate).await {
+            logging!(warn, Type::Config, "公司订阅重复项清理失败: {e:#}");
+        }
+    }
     let current = Config::profiles().await.data_arc().current.clone();
-    if current.as_ref() != Some(&provisioned) {
-        crate::cmd::patch_profiles_config_by_profile_index(provisioned)
+    if current.as_ref() != Some(&uid) {
+        crate::cmd::patch_profiles_config_by_profile_index(uid.clone())
             .await
             .map_err(|failure| anyhow!("切换公司订阅失败: {failure}"))?;
     }

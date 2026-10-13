@@ -680,3 +680,61 @@ export async function checkMediaUnlock(onComplete: Channel<UnlockItem>) {
 export async function checkMediaUnlockItem(name: string) {
   return invoke<UnlockItem>('check_media_unlock_item', { name })
 }
+
+// 以下为订阅页(Profiles)使用的命令包装,历史上随企业闸门改造一同被移除,
+// 现随订阅页一并恢复;命令本身一直保留在 src-tauri/src/cmd/profile.rs。
+export async function createProfile(
+  item: Partial<IProfileItem>,
+  fileData?: string | null,
+) {
+  return invoke<void>('create_profile', { item, fileData })
+}
+
+export async function deleteProfile(index: string) {
+  return invoke<void>('delete_profile', { index })
+}
+
+export async function importProfile(url: string, option?: IProfileOption) {
+  return invoke<void>('import_profile', {
+    url,
+    option: option || { with_proxy: true },
+  })
+}
+
+export async function reorderProfile(activeId: string, overId: string) {
+  return invoke<void>('reorder_profile', {
+    activeId,
+    overId,
+  })
+}
+
+export async function getRuntimeLogs() {
+  return invoke<Record<string, [string, string][]>>('get_runtime_logs')
+}
+
+export async function viewProfile(index: string) {
+  return invoke<void>('view_profile', { index })
+}
+
+export async function readProfileFile(index: string) {
+  return invoke<string>('read_profile_file', { index })
+}
+
+export async function saveProfileFile(index: string, fileData: string) {
+  return (
+    (
+      await invoke<ValidationOutcome>('save_profile_file', {
+        index,
+        fileData,
+      })
+    ).status === 'valid'
+  )
+}
+
+export async function getNextUpdateTime(uid: string) {
+  return invoke<number | null>('get_next_update_time', { uid })
+}
+
+export async function getNetworkInterfaces() {
+  return invoke<string[]>('get_network_interfaces')
+}

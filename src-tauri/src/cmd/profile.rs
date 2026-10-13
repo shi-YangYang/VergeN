@@ -24,6 +24,17 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 static CURRENT_SWITCHING_PROFILE: AtomicBool = AtomicBool::new(false);
 
+// 公司统一下发的订阅 abc 对应 profile 只能由服务器经 config_version 推送;
+// 本地一切写路径(更新/编辑/删除/保存文件)在命令入口被拒绝,防止任何 UI 或
+// 开发环境下直接 invoke 绕过锁定。
+pub(crate) async fn guard_managed_profile(index: &str) -> anyhow::Result<()> {
+    let verge = Config::verge().await;
+    if verge.data_arc().enterprise_profile_uid.as_deref() == Some(index) {
+        return Err(anyhow::anyhow!("公司统一下发的订阅由服务器管理,无法修改"));
+    }
+    Ok(())
+}
+
 fn profile_import_error(err: &anyhow::Error) -> std::string::String {
     if let Some(cause) = err.chain().find(|cause| cause.to_string().contains("TLS 1.0/1.1")) {
         return cause.to_string();
@@ -132,6 +143,9 @@ pub async fn create_profile(item: PrfItem, file_data: Option<String>) -> CmdResu
 
 #[tauri::command]
 pub async fn update_profile(index: String, option: Option<PrfOption>) -> CmdResult {
+    guard_managed_profile(&index)
+        .await
+        .with_error_code("PROFILE_UPDATE_FAILED")?;
     match feat::update_profile(&index, option.as_ref(), true).await {
         Ok(_) => Ok(()),
         Err(e) => {
@@ -143,6 +157,9 @@ pub async fn update_profile(index: String, option: Option<PrfOption>) -> CmdResu
 
 #[tauri::command]
 pub async fn delete_profile(index: String) -> CmdResult {
+    guard_managed_profile(&index)
+        .await
+        .with_error_code("PROFILE_DELETE_FAILED")?;
     let profile_write_guard = PROFILE_WRITE_LOCK.lock().await;
 
     let profiles = Config::profiles().await;
@@ -346,6 +363,9 @@ pub async fn patch_profiles_config_by_profile_index(profile_index: String) -> Cm
 
 #[tauri::command]
 pub async fn patch_profile(index: String, profile: PrfItem) -> CmdResult {
+    guard_managed_profile(&index)
+        .await
+        .with_error_code("PROFILE_PATCH_FAILED")?;
     let profiles = Config::profiles().await;
     let should_refresh_timer = if let Ok(old_profile) = profiles.latest_arc().get_item(&index)
         && let Some(new_option) = profile.option.as_ref()

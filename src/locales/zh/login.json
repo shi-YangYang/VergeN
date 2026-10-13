@@ -4,7 +4,6 @@
     "subtitle": "使用公司账号登录后使用"
   },
   "form": {
-    "server": "服务器地址",
     "username": "账号",
     "password": "密码",
     "submit": "登录"
@@ -21,14 +20,11 @@
     "failed": "扫码登录失败",
     "retry": "重新获取二维码"
   },
-  "banner": {
-    "managed": "此设备由公司统一管理"
-  },
   "announcement": {
     "title": "公告"
   },
   "feedback": {
-    "welcome": "欢迎回来，{name}",
+    "welcome": "欢迎回来，{{name}}",
     "logout": "已退出登录"
   },
   "account": {

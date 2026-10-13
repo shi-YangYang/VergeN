@@ -21,6 +21,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useEnterpriseSession } from '@/hooks/use-enterprise'
+import { useVerge } from '@/hooks/use-verge'
 import { useAppRefreshers, useProxiesData } from '@/providers/app-data-context'
 import { updateProfile } from '@/services/cmds'
 import { mutate } from '@/services/mutate'
@@ -73,10 +74,12 @@ const ProfileDetails = ({
   current,
   onUpdateProfile,
   updating,
+  locked,
 }: {
   current: ProfileItem
   onUpdateProfile: () => void
   updating: boolean
+  locked: boolean
 }) => {
   const session = useEnterpriseSession()
 
@@ -129,7 +132,7 @@ const ProfileDetails = ({
   return (
     <Box>
       <Stack spacing={2}>
-        {current.updated && (
+        {current.updated && !locked && (
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
             <UpdateOutlined
               fontSize="small"
@@ -253,13 +256,18 @@ export const HomeProfileCard = ({
 }: HomeProfileCardProps) => {
   const { t } = useTranslation()
   const { refreshAll } = useAppRefreshers()
+  const { verge } = useVerge()
+  const profileLocked = verge?.enterprise_profile_uid === current?.uid
 
   // 更新当前订阅
   const [updating, setUpdating] = useState(false)
 
   const onUpdateProfile = useLockFn(async () => {
     if (!current?.uid) return
-
+    if (profileLocked) {
+      showNotice.error('公司统一下发的订阅由服务器管理,无法手动更新', 3000)
+      return
+    }
     setUpdating(true)
     try {
       await mutate(() => updateProfile(current.uid, current.option), {
@@ -333,6 +341,7 @@ export const HomeProfileCard = ({
           current={current}
           onUpdateProfile={onUpdateProfile}
           updating={updating}
+          locked={profileLocked}
         />
       ) : (
         <EmptyProfile />

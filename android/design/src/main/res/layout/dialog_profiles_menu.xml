@@ -23,42 +23,43 @@
         android:orientation="vertical">
 
         <com.github.kr328.clash.design.view.LargeActionLabel
+            android:enabled="@{!ProfileLock.isManaged(profile)}"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:onClick="@{() -> master.requestUpdate(self, profile)}"
             android:padding="@dimen/bottom_sheet_menu_items_padding"
-            android:visibility="@{profile.imported &amp;&amp; profile.type != Type.File &amp;&amp; !ProfileLock.isManaged(profile) ? View.VISIBLE : View.GONE}"
             app:icon="@drawable/ic_baseline_update"
             app:text="@string/update" />
 
         <com.github.kr328.clash.design.view.LargeActionLabel
+            android:enabled="@{!ProfileLock.isManaged(profile)}"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:onClick="@{() -> master.requestEdit(self, profile)}"
             android:padding="@dimen/bottom_sheet_menu_items_padding"
-            android:visibility="@{!ProfileLock.isManaged(profile) ? View.VISIBLE : View.GONE}"
             app:icon="@drawable/ic_baseline_edit"
             app:text="@string/edit" />
 
         <com.github.kr328.clash.design.view.LargeActionLabel
+            android:enabled="@{!ProfileLock.isManaged(profile)}"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:onClick="@{() -> master.requestDuplicate(self, profile)}"
             android:padding="@dimen/bottom_sheet_menu_items_padding"
-            android:visibility="@{profile.imported &amp;&amp; !ProfileLock.isManaged(profile) ? View.VISIBLE : View.GONE}"
             app:icon="@drawable/ic_baseline_content_copy"
             app:text="@string/duplicate" />
 
         <com.github.kr328.clash.design.view.LargeActionLabel
+            android:enabled="@{!ProfileLock.isManaged(profile)}"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:onClick="@{() -> master.requestShareQrCode(self, profile)}"
             android:padding="@dimen/bottom_sheet_menu_items_padding"
-            android:visibility="@{profile.imported &amp;&amp; profile.type == Type.Url &amp;&amp; !profile.source.isEmpty() &amp;&amp; !ProfileLock.isManaged(profile) ? View.VISIBLE : View.GONE}"
             app:icon="@drawable/baseline_qr_code_scanner"
             app:text="@string/share_qr_code" />
 
         <com.github.kr328.clash.design.view.LargeActionLabel
+            android:enabled="@{!ProfileLock.isManaged(profile)}"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:onClick="@{() -> master.requestDelete(self, profile)}"

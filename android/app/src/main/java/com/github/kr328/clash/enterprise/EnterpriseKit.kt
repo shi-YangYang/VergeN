@@ -16,6 +16,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.util.UUID
 
@@ -33,6 +35,7 @@ object EnterpriseKit {
     private lateinit var session: EnterpriseSession
     private lateinit var managedProfiles: SharedPreferences
     private val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val syncLock = Mutex()
 
     lateinit var coordinator: EnterpriseCoordinator
         private set
@@ -95,41 +98,52 @@ object EnterpriseKit {
      * automated yet — admins disable subscriptions instead.
      */
     suspend fun syncProfiles(): Boolean = withContext(Dispatchers.IO) {
-        // 服务进程绑定是异步的;刚装完/冷启动时 binder 未就绪,重试直至可用。
-        repeat(SYNC_ATTEMPTS) { attempt ->
-            try {
-                // syncNow 走 author():401 时自动用 refresh token 换新再重试。
-                val subscriptions = coordinator.syncNow()
-                if (subscriptions.isEmpty()) return@withContext true
+        // 匹配/创建/清理必须串行:并发 sync 都看到条目不存在会各自导入
+        // (桌面端的 ensure managed profile 出现过同一秒导入两条的情况)。
+        syncLock.withLock {
+            // 服务进程绑定是异步的;刚装完/冷启动时 binder 未就绪,重试直至可用。
+            repeat(SYNC_ATTEMPTS) { attempt ->
+                try {
+                    // syncNow 走 author():401 时自动用 refresh token 换新再重试。
+                    val subscriptions = coordinator.syncNow()
+                    if (subscriptions.isEmpty()) return@withContext true
 
-                withProfile {
-                    val existing = queryAll()
-                    subscriptions.forEach { subscription ->
-                        val profile = existing.firstOrNull { it.source == subscription.url }
-                        val uuid = profile?.uuid
-                            ?: create(Profile.Type.Url, subscription.name, subscription.url)
-                                .also { Log.d("managed profile created: ${subscription.name}") }
-                        if (profile == null || profile.pending) {
-                            commit(uuid, null)
-                            Log.d("managed profile committed: ${subscription.name}")
-                        } else if (System.currentTimeMillis() - profile.updatedAt > REFETCH_MILLIS) {
-                            update(uuid)
-                            Log.d("managed profile refetched: ${subscription.name}")
+                    withProfile {
+                        val existing = queryAll()
+                        subscriptions.forEach { subscription ->
+                            // 重复项清理:保留已登记过的那个,其余删除。
+                            val matches = existing.filter { it.source == subscription.url }
+                            val keep = matches.firstOrNull { isManaged(it) } ?: matches.firstOrNull()
+                            matches.filter { it.uuid != keep?.uuid }.forEach { duplicate ->
+                                delete(duplicate.uuid)
+                                Log.d("managed duplicate removed: ${subscription.name}")
+                            }
+                            val profile = keep
+                            val uuid = profile?.uuid
+                                ?: create(Profile.Type.Url, subscription.name, subscription.url)
+                                    .also { Log.d("managed profile created: ${subscription.name}") }
+                            if (profile == null || profile.pending) {
+                                commit(uuid, null)
+                                Log.d("managed profile committed: ${subscription.name}")
+                            } else if (System.currentTimeMillis() - profile.updatedAt > REFETCH_MILLIS) {
+                                update(uuid)
+                                Log.d("managed profile refetched: ${subscription.name}")
+                            }
+                            markManaged(uuid)
                         }
-                        markManaged(uuid)
                     }
+                    return@withContext true
+                } catch (e: Throwable) {
+                    Log.w("sync attempt ${attempt + 1} failed", e)
+                    // 只有网络故障值得重试;账停/解析失败直接放弃等用户重进。
+                    if (e !is kotlinx.coroutines.CancellationException &&
+                        !isTransient(e) || attempt == SYNC_ATTEMPTS - 1
+                    ) return@withContext false
+                    delay(SYNC_RETRY_MILLIS)
                 }
-                return@withContext true
-            } catch (e: Throwable) {
-                Log.w("sync attempt ${attempt + 1} failed", e)
-                // 只有网络故障值得重试;账停/解析失败直接放弃等用户重进。
-                if (e !is kotlinx.coroutines.CancellationException &&
-                    !isTransient(e) || attempt == SYNC_ATTEMPTS - 1
-                ) return@withContext false
-                delay(SYNC_RETRY_MILLIS)
             }
+            false
         }
-        false
     }
 }
 

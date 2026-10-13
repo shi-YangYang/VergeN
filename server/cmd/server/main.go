@@ -21,6 +21,7 @@ func main() {
 	addr := flag.String("addr", ":8080", "listen address")
 	dbPath := flag.String("db", "vergen.db", "sqlite database path")
 	addAdmin := flag.String("add-admin", "", `create an admin account "username:password", then exit`)
+	downloads := flag.String("downloads", "", "directory of published client package files exposed on the root landing page")
 	flag.Parse()
 
 	s, err := store.Open(*dbPath)
@@ -54,7 +55,7 @@ func main() {
 		return
 	}
 
-	sv, err := api.NewServer(s)
+	sv, err := api.NewServer(s, *downloads)
 	if err != nil {
 		slog.Error("init server", "err", err)
 		os.Exit(1)
