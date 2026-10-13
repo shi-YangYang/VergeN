@@ -1,7 +1,7 @@
 name: Release
 
 on:
-  # Manual server deployment only; client installers are built locally.
+  # Manual server deployment only; client packaging runs separately.
   workflow_dispatch:
 
 permissions:

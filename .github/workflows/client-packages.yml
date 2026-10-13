@@ -1,0 +1,194 @@
+name: Client packages (draft)
+run-name: Client packages ${{ inputs.tag }} (draft)
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Client version, e.g. v0.1.1"
+        required: true
+        type: string
+      android_version_code:
+        description: "Android versionCode, higher than all distributed APKs"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: client-packages-${{ inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ inputs.tag }}
+  ANDROID_VERSION_CODE: ${{ inputs.android_version_code }}
+
+jobs:
+  prepare:
+    name: Prepare draft release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    outputs:
+      release_id: ${{ steps.draft.outputs.release_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Check build configuration
+        env:
+          VITE_ENTERPRISE_SERVER_URL: ${{ vars.VITE_ENTERPRISE_SERVER_URL }}
+          ANDROID_SIGNING_READY: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_SIGN_STORE_PASSWORD != '' && secrets.ANDROID_SIGN_KEY_PASSWORD != '' }}
+        shell: bash
+        run: |
+          if [ "$GITHUB_REF" != refs/heads/main ]; then
+            echo "::error::Run this workflow from main after merging the client changes."
+            exit 1
+          fi
+          if [[ ! "$VITE_ENTERPRISE_SERVER_URL" =~ ^https?:// ]]; then
+            echo "::error::Set the VITE_ENTERPRISE_SERVER_URL repository variable."
+            exit 1
+          fi
+          if [ "$ANDROID_SIGNING_READY" != true ]; then
+            echo "::error::Set ANDROID_KEYSTORE_BASE64, ANDROID_SIGN_STORE_PASSWORD and ANDROID_SIGN_KEY_PASSWORD using the existing release key."
+            exit 1
+          fi
+      - name: Create or reuse an unpublished draft
+        id: draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/draft-release.mjs prepare
+
+  desktop:
+    name: Client ${{ matrix.label }}
+    needs: prepare
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: macos-arm64
+            runner: macos-15
+            target: aarch64-apple-darwin
+          - label: windows-x64
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+          - label: linux-x64
+            runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+    env:
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+      CARGO_PROFILE_RELEASE_STRIP: debuginfo
+      VITE_ENTERPRISE_SERVER_URL: ${{ vars.VITE_ENTERPRISE_SERVER_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install desktop dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: ${{ matrix.target }}
+          cache: false
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}-${{ hashFiles('Cargo.toml') }}
+          cache-workspace-crates: false
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Set the client version
+        shell: bash
+        run: pnpm release-version "$RELEASE_TAG"
+      - name: Build the desktop installer
+        shell: bash
+        run: pnpm package:desktop "$RELEASE_TAG"
+      # Upload directly: artifacts in a public repository are not private.
+      - name: Upload installers to the draft
+        timeout-minutes: 10
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
+        shell: bash
+        run: node scripts/draft-release.mjs upload "release-local/${RELEASE_TAG#v}/desktop"
+
+  android:
+    name: Android arm64
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+          cache-dependency-path: |
+            android/**/*.gradle*
+            android/gradle/wrapper/gradle-wrapper.properties
+            android/gradle/libs.versions.toml
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: android/core/src/foss/golang/clash/go.mod
+          cache-dependency-path: android/core/src/foss/golang/clash/go.sum
+      - name: Install Android SDK pieces
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null 2>&1 || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "platform-tools" \
+            "ndk;29.0.14206865" \
+            "cmake;3.22.1" >/dev/null
+      - name: Configure Android identity and signing
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          VERGEN_STORE_PASSWORD: ${{ secrets.ANDROID_SIGN_STORE_PASSWORD }}
+          VERGEN_KEY_PASSWORD: ${{ secrets.ANDROID_SIGN_KEY_PASSWORD }}
+        run: |
+          umask 077
+          printf 'sdk.dir=%s\nremove.suffix=true\n' "$ANDROID_HOME" > local.properties
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > release.keystore
+          printf 'keystore.password=%s\nkey.alias=vergen\nkey.password=%s\n' \
+            "$VERGEN_STORE_PASSWORD" "$VERGEN_KEY_PASSWORD" > signing.properties
+      - name: Build the Android installer
+        run: node scripts/local-build.mjs android "$RELEASE_TAG" "$ANDROID_VERSION_CODE"
+      - name: Upload the installer to the draft
+        timeout-minutes: 10
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
+        run: node scripts/draft-release.mjs upload "release-local/${RELEASE_TAG#v}/android"
+      - name: Remove signing files
+        if: always()
+        run: rm -f android/release.keystore android/signing.properties

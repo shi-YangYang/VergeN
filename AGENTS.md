@@ -77,8 +77,13 @@ the ownership evidence the AI-slop review evaluates (see
   ([`.github/workflows/release.yml`](.github/workflows/release.yml);
   the trigger needs the workflow definition on `main`, which only a
   merge supplies). Pushing a `v*` tag does not trigger the pipeline;
-  manual dispatch is the only deployment entry point. Build client
-  installers locally and upload them through the admin panel.
+  manual dispatch is the only deployment entry point.
+- Client packaging is separate: manually run `Client packages (draft)`
+  from `main` with a new `vX.Y.Z` version and an increasing Android
+  versionCode ([client-packages.yml](.github/workflows/client-packages.yml)).
+  Installers go directly to an unpublished draft release, never to public
+  Actions artifacts. Download them as a maintainer and upload through the
+  admin panel. Local packaging remains available.
 
 ## Pull Request Shape
 

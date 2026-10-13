@@ -59,9 +59,24 @@ VergeN 是基于 [clash-verge-rev](https://github.com/clash-verge-rev/clash-verg
 
 ## Release(CD)
 
-在 GitHub Actions 中手动运行 Release 工作流,选择 `main` 分支即可,无需填写客户端版本号。CD 只有两个任务:构建 Linux amd64 运维服务(包含管理面板),然后部署并重启服务。客户端安装包在本地构建,不再由 CD 构建或上传。推送 tag 不会触发发布,也不创建 GitHub Release。
+在 GitHub Actions 中手动运行 Release 工作流,选择 `main` 分支即可,无需填写客户端版本号。CD 只有两个任务:构建 Linux amd64 运维服务(包含管理面板),然后部署并重启服务。客户端安装包由独立工作流或本地构建,不再由 CD 构建或上传。推送 tag 不会触发部署,服务器 CD 也不创建 GitHub Release。
 
 配置 `DEPLOY_HOST`、`DEPLOY_USER`、`DEPLOY_SSH_KEY` secrets 后即可部署。部署账号需要免密 sudo;可选 secrets 为 `DEPLOY_SSH_PORT`(默认 22)、`DEPLOY_PORT`(服务监听本机端口,默认 8080)。服务通过已有 Caddy 配置对外提供访问。服务器程序 SHA256 未变时跳过上传,已有数据库、安装包和发布记录保留。
+
+## GitHub 客户端打包
+
+合并到 `main` 后,在 Actions 手动运行 `Client packages (draft)`,选择 `main`,填写:
+
+- `tag`:未使用过的版本,例如 `v0.1.1`;所有安装包内部版本统一为 `0.1.1`。
+- `android_version_code`:高于所有已分发 APK 的整数版本代码;换工作流也不能从 1 重新开始。
+
+工作流并行构建 Windows x64 EXE、macOS arm64 DMG、Linux x64 DEB/RPM 和 Android arm64 APK,直接上传到对应版本的 **Draft Release(草稿)**。每个版本保留独立草稿,不会自动发布、上传客户端 Actions artifacts 或传包到服务器。在仓库 Releases 中登录下载草稿附件,再到运维面板「客户端发布」上传即可。全部构建任务成功后再分发安装包;某个平台失败时,草稿可能只有部分附件。
+
+同一版本、相同源码提交和 Android versionCode 可以重跑,补齐或替换对应安装包。换了源码或版本代码须使用新版本,避免一份草稿混入不同批次的包。已有 Git tag、已发布 Release 或来源不一致的草稿会被拒绝,工作流不会把公开 Release 改回草稿。
+
+需要沿用仓库变量 `VITE_ENTERPRISE_SERVER_URL`,以及现有 Android 正式签名 secrets: `ANDROID_KEYSTORE_BASE64`、`ANDROID_SIGN_STORE_PASSWORD`、`ANDROID_SIGN_KEY_PASSWORD`(密钥 alias 为 `vergen`)。缺少配置会在开始构建前停止,不会退回 debug 签名。桌面仅生成安装包,不依赖 Tauri updater 私钥。
+
+草稿及附件仅供拥有仓库写入权限的维护者访问;保持草稿状态,不要点击 Publish release。公开仓库的构建日志和输入版本号仍可能公开。运维下载页 `/download` 仍是公开页面,上传到该页面即对外提供下载。
 
 ## 本地构建与安装包管理
 

@@ -34,6 +34,8 @@ jobs:
         run: pnpm arch:check
       - name: Unit tests
         run: pnpm test
+      - name: Draft release safeguards
+        run: node --test scripts/draft-release.test.mjs
 
   backend:
     name: Rust checks
