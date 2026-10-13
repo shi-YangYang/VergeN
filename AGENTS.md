@@ -76,8 +76,8 @@ the ownership evidence the AI-slop review evaluates (see
   explicit `vX.Y.Z` tag input
   ([`.github/workflows/release.yml`](.github/workflows/release.yml);
   the trigger needs the workflow definition on `main`, which only a
-  merge supplies). Pushing a `v*` tag fires the same pipeline, but the
-  manual dispatch is the expected entry point.
+  merge supplies). Pushing a `v*` tag does not trigger the pipeline;
+  manual dispatch is the only release entry point.
 
 ## Pull Request Shape
 
