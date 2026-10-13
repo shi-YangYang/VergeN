@@ -38,6 +38,8 @@ export const LayoutSidebar = (props: LayoutSidebarProps) => {
   const { t } = useTranslation()
   const { verge, mutateVerge, patchVerge } = useVerge()
   const enterpriseSession = useEnterpriseSession()
+  const enterpriseDisplayName =
+    enterpriseSession?.display_name ?? enterpriseSession?.username
   const [menuUnlocked, setMenuUnlocked] = useState(false)
   const [menuContextPosition, setMenuContextPosition] =
     useState<MenuContextPosition | null>(null)
@@ -264,9 +266,9 @@ export const LayoutSidebar = (props: LayoutSidebarProps) => {
               whiteSpace: 'nowrap',
             }}
           >
-            {enterpriseSession.username
+            {enterpriseDisplayName
               ? t('login.feedback.welcome', {
-                  name: enterpriseSession.username,
+                  name: enterpriseDisplayName,
                 })
               : ''}
           </Typography>

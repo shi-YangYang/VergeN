@@ -47,10 +47,7 @@ class ProfilesActivity : BaseActivity<ProfilesDesign>() {
                             withProfile {
                                 try {
                                     queryAll().forEach { p ->
-                                        // 受管订阅由服务器经 config_version 推送,本地不刷新
-                                        if (p.imported && p.type != Profile.Type.File &&
-                                            !EnterpriseKit.isManaged(p)
-                                        )
+                                        if (p.imported && p.type != Profile.Type.File)
                                             update(p.uuid)
                                     }
                                 }
@@ -61,10 +58,7 @@ class ProfilesActivity : BaseActivity<ProfilesDesign>() {
                                 }
                             }
                         is ProfilesDesign.Request.Update ->
-                            if (EnterpriseKit.isManaged(it.profile))
-                                design.showToast(R.string.toast_profiles_locked, ToastDuration.Long)
-                            else
-                                withProfile { update(it.profile.uuid) }
+                            withProfile { update(it.profile.uuid) }
                         is ProfilesDesign.Request.Delete ->
                             if (EnterpriseKit.isManaged(it.profile))
                                 design.showToast(R.string.toast_profiles_locked, ToastDuration.Long)

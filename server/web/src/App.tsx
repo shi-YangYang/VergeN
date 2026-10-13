@@ -48,13 +48,13 @@ import {
   type SettingsPatch,
 } from './api'
 import { PLATFORM_GLYPHS, type PlatformKey } from './assets/platform-glyphs'
+import { Select } from './components/Select'
 
 type Tab =
   | 'users'
   | 'subscription'
   | 'release'
   | 'dingtalk'
-  | 'policy'
   | 'announcement'
   | 'dashboard'
 
@@ -63,13 +63,23 @@ const TABS: [Tab, string][] = [
   ['subscription', '订阅管理'],
   ['release', '客户端发布'],
   ['dingtalk', '钉钉接入'],
-  ['policy', '策略管控'],
   ['announcement', '公告管理'],
   ['dashboard', '在线看板'],
 ]
 
 function alertContext(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
+}
+
+function LoadError({ error, onRetry }: { error: string; onRetry: () => void }) {
+  return (
+    <div className="row-form" role="alert">
+      <span className="error">加载失败：{error}</span>
+      <button type="button" className="ghost" onClick={onRetry}>
+        重试
+      </button>
+    </div>
+  )
 }
 
 const PLATFORM_LABELS = {
@@ -167,55 +177,57 @@ function SubscriptionsPage() {
         <button type="submit">添加订阅</button>
       </form>
       {error && <div className="error">{error}</div>}
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>名称</th>
-            <th>URL</th>
-            <th>状态</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {subs.map((sub) => (
-            <tr key={sub.id} className={sub.enabled ? '' : 'off'}>
-              <td>{sub.id}</td>
-              <td>{sub.name || '-'}</td>
-              <td className="url-cell" title={sub.url}>
-                {sub.url}
-              </td>
-              <td>
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    checked={sub.enabled}
-                    onChange={(e) =>
-                      void toggleEnabled(sub.id, e.target.checked)
-                    }
-                  />
-                  员工可选
-                </label>
-              </td>
-              <td className="actions">
-                <button
-                  className="ghost"
-                  onClick={() => {
-                    setEditId(editId === sub.id ? null : sub.id)
-                    setEditName(sub.name)
-                    setEditUrl(sub.url)
-                  }}
-                >
-                  编辑
-                </button>
-                <button className="ghost" onClick={() => void remove(sub)}>
-                  删除
-                </button>
-              </td>
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>名称</th>
+              <th>URL</th>
+              <th>状态</th>
+              <th>操作</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {subs.map((sub) => (
+              <tr key={sub.id} className={sub.enabled ? '' : 'off'}>
+                <td>{sub.id}</td>
+                <td>{sub.name || '-'}</td>
+                <td className="url-cell" title={sub.url}>
+                  {sub.url}
+                </td>
+                <td>
+                  <label className="check">
+                    <input
+                      type="checkbox"
+                      checked={sub.enabled}
+                      onChange={(e) =>
+                        void toggleEnabled(sub.id, e.target.checked)
+                      }
+                    />
+                    员工可选
+                  </label>
+                </td>
+                <td className="actions">
+                  <button
+                    className="ghost"
+                    onClick={() => {
+                      setEditId(editId === sub.id ? null : sub.id)
+                      setEditName(sub.name)
+                      setEditUrl(sub.url)
+                    }}
+                  >
+                    编辑
+                  </button>
+                  <button className="ghost" onClick={() => void remove(sub)}>
+                    删除
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       {editId !== null && (
         <form
           className="row-form"
@@ -246,58 +258,6 @@ function SubscriptionsPage() {
           </button>
         </form>
       )}
-    </section>
-  )
-}
-
-function PolicyPage() {
-  const [settings, setSettings] = useState<AdminSettings | null>(null)
-  const [allowChange, setAllowChange] = useState(false)
-  const [message, setMessage] = useState('')
-
-  useEffect(() => {
-    void getSettings().then((data) => {
-      setSettings(data)
-      setAllowChange(data.managed_flags.allow_change_settings)
-    })
-  }, [])
-
-  const save = async (event: FormEvent) => {
-    event.preventDefault()
-    try {
-      await patchSettings({
-        managed_flags: {
-          allow_edit_profiles:
-            settings?.managed_flags.allow_edit_profiles ?? false,
-          allow_change_settings: allowChange,
-        },
-      })
-      setMessage('已保存')
-      setTimeout(() => setMessage(''), 2000)
-    } catch (err) {
-      setMessage(alertContext(err))
-    }
-  }
-
-  return (
-    <section className="panel narrow">
-      <form className="stack" onSubmit={save}>
-        <fieldset>
-          <legend>员工端限制</legend>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={allowChange}
-              onChange={(e) => setAllowChange(e.target.checked)}
-            />
-            允许员工修改客户端设置
-          </label>
-        </fieldset>
-        <div className="row-form">
-          <button type="submit">保存</button>
-          {message && <span className="muted">{message}</span>}
-        </div>
-      </form>
     </section>
   )
 }
@@ -391,64 +351,66 @@ function AnnouncementPage() {
         <button type="submit">添加公告</button>
       </form>
       {error && <div className="error">{error}</div>}
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>标题</th>
-            <th>内容</th>
-            <th>下发</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => (
-            <tr key={item.id} className={item.enabled ? '' : 'off'}>
-              <td>{item.id}</td>
-              <td>{item.title}</td>
-              <td
-                className="url-cell"
-                title={item.content}
-                style={{
-                  maxWidth: 320,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {item.content || '-'}
-              </td>
-              <td>
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    checked={item.enabled}
-                    onChange={(e) =>
-                      void toggleEnabled(item.id, e.target.checked)
-                    }
-                  />
-                  下发
-                </label>
-              </td>
-              <td className="actions">
-                <button
-                  className="ghost"
-                  onClick={() => {
-                    setEditId(editId === item.id ? null : item.id)
-                    setEditTitle(item.title)
-                    setEditContent(item.content)
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>标题</th>
+              <th>内容</th>
+              <th>下发</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => (
+              <tr key={item.id} className={item.enabled ? '' : 'off'}>
+                <td>{item.id}</td>
+                <td>{item.title}</td>
+                <td
+                  className="url-cell"
+                  title={item.content}
+                  style={{
+                    maxWidth: 320,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
                   }}
                 >
-                  编辑
-                </button>
-                <button className="ghost" onClick={() => void remove(item)}>
-                  删除
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                  {item.content || '-'}
+                </td>
+                <td>
+                  <label className="check">
+                    <input
+                      type="checkbox"
+                      checked={item.enabled}
+                      onChange={(e) =>
+                        void toggleEnabled(item.id, e.target.checked)
+                      }
+                    />
+                    下发
+                  </label>
+                </td>
+                <td className="actions">
+                  <button
+                    className="ghost"
+                    onClick={() => {
+                      setEditId(editId === item.id ? null : item.id)
+                      setEditTitle(item.title)
+                      setEditContent(item.content)
+                    }}
+                  >
+                    编辑
+                  </button>
+                  <button className="ghost" onClick={() => void remove(item)}>
+                    删除
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       {editId !== null && (
         <form
           className="row-form"
@@ -506,8 +468,8 @@ const INSTALLER_PLATFORMS: {
   {
     key: 'linux',
     label: 'Linux · x64',
-    accept: '.deb,.rpm,.AppImage',
-    hint: 'DEB / RPM / AppImage 安装包',
+    accept: '.deb',
+    hint: 'DEB 安装包',
   },
   {
     key: 'android',
@@ -544,13 +506,6 @@ const UPDATER_TARGETS: {
     label: 'Linux · DEB',
     accept: '.deb',
     hint: '.deb 安装包及同名 .sig 文件',
-  },
-  {
-    key: 'linux-x86_64-rpm',
-    platform: 'linux',
-    label: 'Linux · RPM',
-    accept: '.rpm',
-    hint: '.rpm 安装包及同名 .sig 文件',
   },
 ]
 
@@ -912,30 +867,29 @@ function ReleasePage() {
                     {selected[platform.key] ? '已选择' : '未选择'}
                   </span>
                 </div>
-                <label>
-                  安装包
-                  <select
-                    aria-label={`${PLATFORM_LABELS[platform.key]} 安装包`}
+                <div className="ops-select-field">
+                  <span>安装包</span>
+                  <Select
+                    label={`${PLATFORM_LABELS[platform.key]} 安装包`}
                     value={selected[platform.key] ?? ''}
-                    onChange={(event) =>
-                      selectInstaller(platform.key, event.target.value)
-                    }
-                  >
-                    <option value="">暂不发布此平台</option>
-                    {packages
-                      .filter(
-                        (item) =>
-                          item.platform === platform.key &&
-                          item.kind !== 'updater' &&
-                          acceptsPackage(item.name, platform.accept),
-                      )
-                      .map((item) => (
-                        <option value={item.name} key={item.name}>
-                          {item.name} · {item.size}
-                        </option>
-                      ))}
-                  </select>
-                </label>
+                    disabled={!!busy || loading}
+                    onChange={(name) => selectInstaller(platform.key, name)}
+                    options={[
+                      { value: '', label: '暂不发布此平台' },
+                      ...packages
+                        .filter(
+                          (item) =>
+                            item.platform === platform.key &&
+                            item.kind !== 'updater' &&
+                            acceptsPackage(item.name, platform.accept),
+                        )
+                        .map((item) => ({
+                          value: item.name,
+                          label: `${item.name} · ${item.size}`,
+                        })),
+                    ]}
+                  />
+                </div>
                 <div className="release-card-footer">
                   <span className="muted">{platform.hint}</span>
                   <PackageUpload
@@ -1000,13 +954,13 @@ function ReleasePage() {
                     <p className="muted">{target.hint}</p>
                   </div>
                   <div className="stack">
-                    <label>
-                      更新文件
-                      <select
-                        aria-label={`${target.label} 更新文件`}
+                    <div className="ops-select-field">
+                      <span>更新文件</span>
+                      <Select
+                        label={`${target.label} 更新文件`}
                         value={updates[target.key] ?? ''}
-                        onChange={(event) => {
-                          const name = event.target.value
+                        disabled={!!busy || loading}
+                        onChange={(name) => {
                           setUpdates((value) => ({
                             ...value,
                             [target.key]: name,
@@ -1017,21 +971,21 @@ function ReleasePage() {
                             return next
                           })
                         }}
-                      >
-                        <option value="">此平台不启用在线更新</option>
-                        {packages
-                          .filter(
-                            (item) =>
-                              item.platform === target.platform &&
-                              acceptsPackage(item.name, target.accept),
-                          )
-                          .map((item) => (
-                            <option value={item.name} key={item.name}>
-                              {item.name}
-                            </option>
-                          ))}
-                      </select>
-                    </label>
+                        options={[
+                          { value: '', label: '此平台不启用在线更新' },
+                          ...packages
+                            .filter(
+                              (item) =>
+                                item.platform === target.platform &&
+                                acceptsPackage(item.name, target.accept),
+                            )
+                            .map((item) => ({
+                              value: item.name,
+                              label: item.name,
+                            })),
+                        ]}
+                      />
+                    </div>
                     <PackageUpload
                       label={`上传 ${target.label} 更新文件`}
                       accept={target.accept}
@@ -1219,15 +1173,24 @@ function DingtalkPage() {
   const [agentId, setAgentId] = useState('')
   const [corpId, setCorpId] = useState('')
   const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
 
-  useEffect(() => {
-    void getSettings().then((data) => {
+  const load = useCallback(async () => {
+    setError('')
+    try {
+      const data = await getSettings()
       setSettings(data)
       setAppKey(data.dingtalk_app_key ?? '')
       setAgentId(data.dingtalk_agent_id ?? '')
       setCorpId(data.dingtalk_corp_id ?? '')
-    })
+    } catch (err) {
+      setError(alertContext(err))
+    }
   }, [])
+
+  useEffect(() => {
+    void load()
+  }, [load])
 
   const save = async (patch: SettingsPatch) => {
     try {
@@ -1241,7 +1204,13 @@ function DingtalkPage() {
     }
   }
 
-  if (!settings) return <div className="muted">加载中…</div>
+  if (!settings) {
+    return error ? (
+      <LoadError error={error} onRetry={() => void load()} />
+    ) : (
+      <div className="muted">加载中…</div>
+    )
+  }
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
@@ -1260,7 +1229,7 @@ function DingtalkPage() {
     <section className="panel narrow">
       <form onSubmit={submit} className="stack">
         <fieldset>
-          <legend>钉钉扫码登录</legend>
+          <legend>钉钉登录</legend>
           <label>
             AppKey(client_id)
             <input value={appKey} onChange={(e) => setAppKey(e.target.value)} />
@@ -1288,20 +1257,21 @@ function DingtalkPage() {
           <label>
             企业 CorpId(可选)
             <input
-              placeholder="留空则不校验扫码组织"
+              placeholder="留空则不校验登录组织"
               value={corpId}
               onChange={(e) => setCorpId(e.target.value)}
             />
           </label>
           <div className="muted" style={{ fontSize: 12, lineHeight: 1.6 }}>
-            配置 CorpId 后，员工必须使用公司组织成员的钉钉账号扫码才能登录；
-            CorpId 可在钉钉管理后台"企业信息"页查看。
+            配置 CorpId 后，员工必须使用公司组织成员的钉钉账号才能登录； CorpId
+            可在钉钉管理后台"企业信息"页查看。
           </div>
           <div className="muted" style={{ fontSize: 12, lineHeight: 1.6 }}>
             回调地址(填入钉钉开放平台"登录与分享"Redirect URI):
             <code>{`${location.origin}/api/v1/auth/dingtalk/callback`}</code>
             <br />
-            员工首次使用需在"员工账号"页为其绑定钉钉 UnionID。
+            首次钉钉登录会自动创建普通员工账号，以后使用同一钉钉身份直接登录。
+            已绑定的账号继续复用，管理员可在「员工账号」页停用账号。
           </div>
         </fieldset>
         <div className="row-form">
@@ -1337,6 +1307,7 @@ function GatewayPage() {
 
 function DownloadPage({ onBack }: { onBack: () => void }) {
   const [downloads, setDownloads] = useState<PublicDownloads | null>(null)
+  const [error, setError] = useState('')
   const releases = downloads?.releases ?? null
   const publishedPaths = new Set(
     (releases ?? []).flatMap((release) =>
@@ -1358,9 +1329,18 @@ function DownloadPage({ onBack }: { onBack: () => void }) {
     (file) => !publishedPaths.has(`/files/${encodeURIComponent(file.name)}`),
   )
 
-  useEffect(() => {
-    void fetchPublicReleases().then(setDownloads)
+  const load = useCallback(async () => {
+    setError('')
+    try {
+      setDownloads(await fetchPublicReleases())
+    } catch (err) {
+      setError(alertContext(err))
+    }
   }, [])
+
+  useEffect(() => {
+    void load()
+  }, [load])
 
   return (
     <div className="download-wrap">
@@ -1370,7 +1350,9 @@ function DownloadPage({ onBack }: { onBack: () => void }) {
         </div>
       </div>
 
-      {releases === null ? (
+      {error ? (
+        <LoadError error={error} onRetry={() => void load()} />
+      ) : releases === null ? (
         <div className="muted" style={{ textAlign: 'center', padding: 32 }}>
           加载中…
         </div>
@@ -1598,15 +1580,21 @@ function UsersPanel() {
 
   const create = async (event: FormEvent) => {
     event.preventDefault()
-    if (busy || !newName || newPassword.length < 8) {
-      setError('密码至少 8 位')
+    if (busy) return
+    if (!newName.trim()) {
+      setError('请输入用户名')
+      return
+    }
+    if (newPassword.length < 4) {
+      setError('密码至少 4 位')
       return
     }
     setBusy(true)
     try {
-      await createUser(newName, newPassword)
+      await createUser(newName.trim(), newPassword, newRole)
       setNewName('')
       setNewPassword('')
+      setNewRole('user')
       await reload()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -1628,8 +1616,8 @@ function UsersPanel() {
   }
 
   const reset = async (id: number) => {
-    if (resetPassword.length < 8) {
-      setError('密码至少 8 位')
+    if (resetPassword.length < 4) {
+      setError('密码至少 4 位')
       return
     }
     try {
@@ -1663,92 +1651,101 @@ function UsersPanel() {
           onChange={(e) => setNewName(e.target.value)}
         />
         <input
-          placeholder="初始密码(至少 8 位)"
+          placeholder="初始密码(至少 4 位)"
           type="password"
           value={newPassword}
           onChange={(e) => setNewPassword(e.target.value)}
         />
-        <select
+        <Select
+          label="账号角色"
           value={newRole}
-          onChange={(e) => setNewRole(e.target.value as 'user' | 'admin')}
-        >
-          <option value="user">员工</option>
-          <option value="admin">管理员</option>
-        </select>
+          onChange={(value) => setNewRole(value as 'user' | 'admin')}
+          disabled={busy}
+          options={[
+            { value: 'user', label: '员工' },
+            { value: 'admin', label: '管理员' },
+          ]}
+        />
         <button type="submit" disabled={busy}>
           创建账号
         </button>
       </form>
       {error && <div className="error">{error}</div>}
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>用户名</th>
-            <th>钉钉</th>
-            <th>角色</th>
-            <th>最近在线</th>
-            <th>客户端</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {users.map((user) => (
-            <tr key={user.id}>
-              <td>{user.id}</td>
-              <td>{user.username}</td>
-              <td>
-                {user.dingtalk_userid ? (
-                  <span
-                    className="muted"
-                    title={user.dingtalk_userid}
-                    style={{ display: 'inline-flex', gap: 6 }}
-                  >
-                    {user.dingtalk_userid.slice(0, 10)}…
-                  </span>
-                ) : (
-                  <span className="muted">未绑定</span>
-                )}
-              </td>
-              <td>{user.role === 'admin' ? '管理员' : '员工'}</td>
-              <td title={user.last_os || ''}>
-                {timeOf(user.last_seen_at)}
-                {user.last_version ? ` · v${user.last_version}` : ''}
-              </td>
-              <td>
-                {[user.last_os, user.last_version]
-                  .filter(Boolean)
-                  .join(' / ') || '-'}
-              </td>
-              <td className="actions">
-                <button
-                  className="ghost"
-                  onClick={() => void remove(user.id, user.username)}
-                >
-                  删除
-                </button>
-                <button
-                  className="ghost"
-                  onClick={() =>
-                    setResetId(resetId === user.id ? null : user.id)
-                  }
-                >
-                  重置密码
-                </button>
-                <button
-                  className="ghost"
-                  onClick={() => {
-                    setBindId(bindId === user.id ? null : user.id)
-                    setBindDingtalk(user.dingtalk_userid)
-                  }}
-                >
-                  {user.dingtalk_userid ? '重新绑定' : '绑定钉钉'}
-                </button>
-              </td>
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>姓名 / 账号</th>
+              <th>钉钉</th>
+              <th>角色</th>
+              <th>最近在线</th>
+              <th>客户端</th>
+              <th>操作</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {users.map((user) => (
+              <tr key={user.id}>
+                <td>{user.id}</td>
+                <td title={user.username}>
+                  {user.display_name || user.username}
+                </td>
+                <td>
+                  {user.dingtalk_userid ? (
+                    <span
+                      className="muted"
+                      title={user.dingtalk_userid}
+                      style={{ display: 'inline-flex', gap: 6 }}
+                    >
+                      {user.dingtalk_userid.slice(0, 10)}…
+                    </span>
+                  ) : (
+                    <span className="muted">未绑定</span>
+                  )}
+                </td>
+                <td>{user.role === 'admin' ? '管理员' : '员工'}</td>
+                <td title={user.last_os || ''}>
+                  {timeOf(user.last_seen_at)}
+                  {user.last_version ? ` · v${user.last_version}` : ''}
+                </td>
+                <td>
+                  {[user.last_os, user.last_version]
+                    .filter(Boolean)
+                    .join(' / ') || '-'}
+                </td>
+                <td className="actions">
+                  <button
+                    className="ghost"
+                    onClick={() =>
+                      void remove(user.id, user.display_name || user.username)
+                    }
+                  >
+                    删除
+                  </button>
+                  <button
+                    className="ghost"
+                    onClick={() =>
+                      setResetId(resetId === user.id ? null : user.id)
+                    }
+                  >
+                    重置密码
+                  </button>
+                  <button
+                    className="ghost"
+                    onClick={() => {
+                      setBindId(bindId === user.id ? null : user.id)
+                      setBindDingtalk(user.dingtalk_userid)
+                    }}
+                  >
+                    {user.dingtalk_userid ? '重新绑定' : '绑定钉钉'}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       {resetId !== null && (
         <form
           className="row-form"
@@ -1760,7 +1757,7 @@ function UsersPanel() {
           <span>为 #{resetId} 设置新密码</span>
           <input
             type="password"
-            placeholder="新密码(至少 8 位)"
+            placeholder="新密码(至少 4 位)"
             value={resetPassword}
             onChange={(e) => setResetPassword(e.target.value)}
           />
@@ -1805,15 +1802,30 @@ function UsersPanel() {
 
 function DashboardPanel() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
+  const [error, setError] = useState('')
 
-  useEffect(() => {
-    const load = () => void getDashboard().then(setStats)
-    load()
-    const timer = setInterval(load, 10_000)
-    return () => clearInterval(timer)
+  const load = useCallback(async () => {
+    try {
+      setStats(await getDashboard())
+      setError('')
+    } catch (err) {
+      setError(alertContext(err))
+    }
   }, [])
 
-  if (!stats) return <div className="muted">加载中…</div>
+  useEffect(() => {
+    void load()
+    const timer = setInterval(() => void load(), 10_000)
+    return () => clearInterval(timer)
+  }, [load])
+
+  if (!stats) {
+    return error ? (
+      <LoadError error={error} onRetry={() => void load()} />
+    ) : (
+      <div className="muted">加载中…</div>
+    )
+  }
 
   const cards: [string, string | number][] = [
     ['总账号', stats.total_users],
@@ -1823,6 +1835,7 @@ function DashboardPanel() {
 
   return (
     <section className="panel">
+      {error && <LoadError error={error} onRetry={() => void load()} />}
       <div className="cards">
         {cards.map(([label, value]) => (
           <div className="card" key={label}>
@@ -1945,7 +1958,6 @@ function RouterShell() {
         {tab === 'subscription' && <SubscriptionsPage />}
         {tab === 'release' && <ReleasePage />}
         {tab === 'dingtalk' && <DingtalkPage />}
-        {tab === 'policy' && <PolicyPage />}
         {tab === 'announcement' && <AnnouncementPage />}
         {tab === 'dashboard' && <DashboardPanel />}
       </main>

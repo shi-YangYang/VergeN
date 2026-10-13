@@ -41,8 +41,8 @@ func (a *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "bad_request", "username must be 2-32 chars of letters, digits, '_', '.', '-'")
 		return
 	}
-	if len(req.Password) < 8 {
-		fail(w, http.StatusBadRequest, "bad_request", "password must be at least 8 characters")
+	if len(req.Password) < 4 {
+		fail(w, http.StatusBadRequest, "bad_request", "password must be at least 4 characters")
 		return
 	}
 	if req.Role == "" {
@@ -131,8 +131,8 @@ func (a *Server) handleAdminSetUserPassword(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	if len(req.Password) < 8 {
-		fail(w, http.StatusBadRequest, "bad_request", "password must be at least 8 characters")
+	if len(req.Password) < 4 {
+		fail(w, http.StatusBadRequest, "bad_request", "password must be at least 4 characters")
 		return
 	}
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)

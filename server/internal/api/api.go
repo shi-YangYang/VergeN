@@ -210,6 +210,7 @@ func remoteHost(r *http.Request) string {
 }
 
 type userPublic struct {
+	DisplayName    string `json:"display_name"`
 	ID             int64  `json:"id"`
 	Username       string `json:"username"`
 	DingtalkUserID string `json:"dingtalk_userid"`
@@ -223,7 +224,7 @@ type userPublic struct {
 
 func toPublic(u *store.User) userPublic {
 	p := userPublic{
-		ID: u.ID, Username: u.Username, DingtalkUserID: u.DingTalkUserID,
+		ID: u.ID, Username: u.Username, DisplayName: u.DisplayName, DingtalkUserID: u.DingTalkUserID,
 		Role: u.Role, Status: u.Status,
 		CreatedAt: u.CreatedAt, LastVersion: u.LastVersion, LastOS: u.LastOS,
 	}
@@ -367,7 +368,12 @@ func (a *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 type managedFlags struct {
-	AllowEditProfiles   bool `json:"allow_edit_profiles"`
+	AllowEditProfiles bool `json:"allow_edit_profiles"`
+}
+
+type clientManagedFlags struct {
+	managedFlags
+	// Older clients default to locking settings when this field is absent.
 	AllowChangeSettings bool `json:"allow_change_settings"`
 }
 
@@ -406,14 +412,15 @@ type bootstrapSubscription struct {
 }
 
 type bootstrapResp struct {
+	User            userPublic              `json:"user"`
 	SubscriptionURL string                  `json:"subscription_url"`
 	Subscriptions   []bootstrapSubscription `json:"subscriptions"`
-	Managed         managedFlags            `json:"managed"`
+	Managed         clientManagedFlags      `json:"managed"`
 	Announcement    *announcement           `json:"announcement"`
 }
 
 func (a *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
-	resp := bootstrapResp{Managed: managedFlags{}}
+	resp := bootstrapResp{User: toPublic(userFrom(r)), Managed: clientManagedFlags{AllowChangeSettings: true}}
 	enabled, err := a.store.EnabledSubscriptions()
 	if err != nil {
 		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
@@ -434,7 +441,7 @@ func (a *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	} else if found && raw != "" {
-		if err := json.Unmarshal([]byte(raw), &resp.Managed); err != nil {
+		if err := json.Unmarshal([]byte(raw), &resp.Managed.managedFlags); err != nil {
 			fail(w, http.StatusInternalServerError, "internal_error", "internal error")
 			return
 		}

@@ -114,6 +114,7 @@ textarea:focus {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
   font-weight: 700;
   font-size: 19px;
   letter-spacing: 0.2px;
@@ -136,9 +137,13 @@ textarea:focus {
   display: flex;
   gap: 8px;
   flex: 1;
+  min-width: 0;
+  overflow-x: auto;
 }
 
 .tab {
+  flex-shrink: 0;
+  white-space: nowrap;
   background: transparent;
   color: var(--text-secondary);
   border: 0;
@@ -161,6 +166,7 @@ textarea:focus {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0;
 }
 
 .who {
@@ -179,6 +185,7 @@ main {
   border: 1px solid var(--divider);
   border-radius: 8px;
   padding: 20px;
+  min-width: 0;
 }
 
 .panel.narrow {
@@ -189,6 +196,7 @@ main {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-width: 0;
 }
 
 .stack label,
@@ -207,6 +215,7 @@ fieldset {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-width: 0;
 }
 
 legend {
@@ -257,6 +266,20 @@ table {
   font-size: 14px;
 }
 
+.table-scroll {
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.table-scroll table {
+  min-width: 640px;
+}
+
+.url-cell {
+  max-width: 320px;
+  overflow-wrap: anywhere;
+}
+
 th,
 td {
   text-align: left;
@@ -287,8 +310,11 @@ tr.off td {
 }
 
 .actions {
-  display: flex;
-  gap: 6px;
+  white-space: nowrap;
+}
+
+.actions button + button {
+  margin-left: 6px;
 }
 
 .release-page a {
@@ -344,7 +370,7 @@ tr.off td {
 }
 .release-version-fields {
   display: grid;
-  grid-template-columns: 210px 1fr;
+  grid-template-columns: 210px minmax(0, 1fr);
   gap: 20px;
 }
 .release-version-fields textarea {
@@ -353,7 +379,7 @@ tr.off td {
 }
 .release-package-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 .release-package-card {
@@ -372,7 +398,7 @@ tr.off td {
 .release-card-heading {
   font-size: 14px;
 }
-.release-package-card select {
+.release-package-card .ops-select-trigger {
   width: 100%;
 }
 .release-card-footer {
@@ -461,6 +487,7 @@ tr.off td {
   background: var(--card);
   border: 1px solid var(--divider);
   font-size: 14px;
+  overflow-wrap: anywhere;
 }
 .release-feedback.error {
   margin: 0;
@@ -532,6 +559,7 @@ tr.off td {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  overflow-wrap: anywhere;
 }
 
 .package-progress progress {
@@ -555,7 +583,7 @@ tr.off td {
 
 .cards {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
 }
 
@@ -572,7 +600,7 @@ tr.off td {
 
 .two-col {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 20px;
   margin-top: 20px;
 }
@@ -592,6 +620,7 @@ tr.off td {
 
 .login-card {
   width: 320px;
+  max-width: calc(100% - 32px);
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -618,6 +647,7 @@ tr.off td {
 }
 .gateway-card {
   width: 340px;
+  max-width: calc(100% - 32px);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -686,6 +716,8 @@ tr.off td {
   color: var(--text);
   text-decoration: none;
   font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
   transition:
     border-color 0.15s ease,
     transform 0.15s ease;
@@ -725,4 +757,46 @@ tr.off td {
   justify-content: center;
   gap: 8px;
   font-size: 15px;
+}
+
+@media (max-width: 1000px) {
+  .shell header {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .shell nav {
+    order: 3;
+    flex-basis: 100%;
+  }
+  .header-right {
+    margin-left: auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .shell header {
+    padding: 14px 16px;
+  }
+  main {
+    padding: 16px;
+  }
+  .panel {
+    padding: 16px;
+  }
+  .row-form > input {
+    min-width: 0 !important;
+    max-width: 100%;
+  }
+  .cards,
+  .two-col {
+    grid-template-columns: 1fr;
+  }
+  .download-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .release-heading,
+  .release-section-heading,
+  .release-publish-bar {
+    flex-wrap: wrap;
+  }
 }

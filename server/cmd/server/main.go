@@ -33,8 +33,8 @@ func main() {
 
 	if *addAdmin != "" {
 		username, password, ok := strings.Cut(*addAdmin, ":")
-		if !ok || username == "" || len(password) < 8 {
-			slog.Error("add-admin expects username:password with a password of at least 8 characters")
+		if !ok || username == "" || len(password) < 4 {
+			slog.Error("add-admin expects username:password with a password of at least 4 characters")
 			os.Exit(1)
 		}
 		hash, err := auth.HashPassword(password)

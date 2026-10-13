@@ -248,6 +248,7 @@
     <string name="app">App</string>
     <string name="service">Service</string>
     <string name="enterprise_account">Account</string>
+    <string name="enterprise_signed_in_as">Signed in as</string>
     <string name="enterprise_logout">Sign out</string>
     <string name="enterprise_logout_summary">Revoke this device and return to the login screen</string>
     <string name="enterprise_logout_confirm">Sign out? The VPN stops and the stored session is cleared.</string>

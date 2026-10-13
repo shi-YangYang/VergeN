@@ -9,8 +9,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material'
-import { QRCodeSVG } from 'qrcode.react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -37,50 +36,51 @@ type QrPhase = 'starting' | 'scanning' | 'ok' | 'fail' | 'expired'
 const DingtalkQrPanel = ({ serverUrl }: { serverUrl: string }) => {
   const { t } = useTranslation()
   const [phase, setPhase] = useState<QrPhase>('starting')
-  const [qrUrl, setQrUrl] = useState('')
   const [detail, setDetail] = useState('')
   const [attempt, setAttempt] = useState(0)
-  const pollRef = useRef({ session: '', timer: 0, attempts: 0, errors: 0 })
 
   useEffect(() => {
     let active = true
-    let cancelled = false
+    let session = ''
+    let timer = 0
+    let attempts = 0
+    let errors = 0
 
     const stopPolling = () => {
-      window.clearTimeout(pollRef.current.timer)
-      pollRef.current.timer = 0
+      window.clearTimeout(timer)
+      timer = 0
     }
 
     const tick = async () => {
-      if (cancelled) return
-      const session = pollRef.current.session
-      if (!session) return
+      if (!active || !session) return
       try {
         const result = await enterpriseActions.dingtalkQrPoll(
           serverUrl,
           session,
         )
+        if (!active) return
         if (!result.ok) {
           // Busy rejection: same shape as a transient error.
-          pollRef.current.errors += 1
-          if (pollRef.current.errors >= POLL_ERROR_TOLERANCE) {
+          errors += 1
+          if (errors >= POLL_ERROR_TOLERANCE) {
             stopPolling()
+            void enterpriseActions.cancelQr(serverUrl, session)
             setPhase('fail')
             return
           }
-          pollRef.current.timer = window.setTimeout(tick, POLL_INTERVAL_MS)
+          timer = window.setTimeout(tick, POLL_INTERVAL_MS)
           return
         }
         const { status, message } = result.value
-        pollRef.current.errors = 0
+        errors = 0
         if (status === 'pending') {
-          pollRef.current.attempts += 1
-          if (pollRef.current.attempts >= POLL_MAX_ATTEMPTS) {
+          attempts += 1
+          if (attempts >= POLL_MAX_ATTEMPTS) {
             await enterpriseActions.cancelQr(serverUrl, session)
-            if (!cancelled) setPhase('expired')
+            if (active) setPhase('expired')
             return
           }
-          pollRef.current.timer = window.setTimeout(tick, POLL_INTERVAL_MS)
+          timer = window.setTimeout(tick, POLL_INTERVAL_MS)
           return
         }
         stopPolling()
@@ -96,20 +96,21 @@ const DingtalkQrPanel = ({ serverUrl }: { serverUrl: string }) => {
           setPhase('expired')
         }
       } catch {
-        pollRef.current.errors += 1
-        if (pollRef.current.errors >= POLL_ERROR_TOLERANCE) {
+        if (!active) return
+        errors += 1
+        if (errors >= POLL_ERROR_TOLERANCE) {
           stopPolling()
+          void enterpriseActions.cancelQr(serverUrl, session)
           setPhase('fail')
           return
         }
-        pollRef.current.timer = window.setTimeout(tick, POLL_INTERVAL_MS)
+        timer = window.setTimeout(tick, POLL_INTERVAL_MS)
       }
     }
 
     const start = async () => {
       stopPolling()
       setPhase('starting')
-      setQrUrl('')
       setDetail('')
       try {
         const result = await enterpriseActions.dingtalkQrStart(serverUrl)
@@ -117,20 +118,14 @@ const DingtalkQrPanel = ({ serverUrl }: { serverUrl: string }) => {
           if (active) setPhase('fail')
           return
         }
-        const { qr_url, session_id } = result.value
+        const { session_id } = result.value
         if (!active) {
           void enterpriseActions.cancelQr(serverUrl, session_id)
           return
         }
-        setQrUrl(qr_url)
-        pollRef.current = {
-          session: session_id,
-          timer: 0,
-          attempts: 0,
-          errors: 0,
-        }
+        session = session_id
         setPhase('scanning')
-        pollRef.current.timer = window.setTimeout(tick, POLL_INTERVAL_MS)
+        timer = window.setTimeout(tick, POLL_INTERVAL_MS)
       } catch {
         // mutate() already displayed the error notice
         if (active) setPhase('fail')
@@ -140,9 +135,7 @@ const DingtalkQrPanel = ({ serverUrl }: { serverUrl: string }) => {
     start()
     return () => {
       active = false
-      cancelled = true
       stopPolling()
-      const { session } = pollRef.current
       if (session) {
         void enterpriseActions.cancelQr(serverUrl, session)
       }
@@ -168,26 +161,24 @@ const DingtalkQrPanel = ({ serverUrl }: { serverUrl: string }) => {
             {t('login.dingtalk.starting')}
           </Typography>
         )}
-        {(phase === 'scanning' || phase === 'ok') && qrUrl && (
-          <Box sx={{ position: 'relative', borderRadius: 2 }}>
-            <QRCodeSVG value={qrUrl} size={196} marginSize={0} level="M" />
-            {phase === 'ok' && (
-              <Box
-                sx={{
-                  position: 'absolute',
-                  inset: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  bgcolor: 'success.main',
-                  borderRadius: 2,
-                  color: '#fff',
-                }}
-              >
-                <Typography variant="h5">✓</Typography>
-              </Box>
-            )}
+        {phase === 'scanning' && (
+          <Box sx={{ textAlign: 'center' }}>
+            <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
+              {t('login.dingtalk.hint')}
+            </Typography>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => setAttempt((n) => n + 1)}
+            >
+              {t('login.dingtalk.retry')}
+            </Button>
           </Box>
+        )}
+        {phase === 'ok' && (
+          <Typography variant="h5" sx={{ color: 'success.main' }}>
+            ✓
+          </Typography>
         )}
         {(phase === 'fail' || phase === 'expired') && (
           <Box sx={{ textAlign: 'center' }}>
@@ -215,7 +206,7 @@ const DingtalkQrPanel = ({ serverUrl }: { serverUrl: string }) => {
             whiteSpace: 'pre-line',
           }}
         >
-          {`${t('login.dingtalk.hint')}\n${t('login.dingtalk.waiting')}`}
+          {t('login.dingtalk.waiting')}
         </Typography>
       )}
       {detail && (

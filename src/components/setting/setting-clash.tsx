@@ -9,7 +9,6 @@ import { BaseDialog, DialogRef, Switch, TooltipIcon } from '@/components/base'
 import { useClash } from '@/hooks/use-clash'
 import { useClashLog } from '@/hooks/use-clash-log'
 import { useDisplayedMixedPort } from '@/hooks/use-displayed-mixed-port'
-import { useManagedLocks } from '@/hooks/use-managed-locks'
 import { useProfiles } from '@/hooks/use-profiles'
 import { useVerge } from '@/hooks/use-verge'
 import { invoke_uwp_tool, setDnsOverride } from '@/services/cmds'
@@ -40,7 +39,6 @@ const SettingClash = ({ onError }: Props) => {
   const { clash, version, mutateClash, patchClash } = useClash()
   const { verge, mutateVerge } = useVerge()
   const { current: currentProfile } = useProfiles()
-  const configLocked = useManagedLocks().lockSettings
   const dnsEnabled = currentProfile
     ? (verge?.profile_dns_settings?.[currentProfile.uid]?.enabled ??
       verge?.enable_dns_settings ??
@@ -295,43 +293,39 @@ const SettingClash = ({ onError }: Props) => {
         />
       </SettingItem>
 
-      {configLocked ? null : (
-        <>
-          <SettingItem
-            label={t('settings.sections.clash.form.fields.external')}
-            extra={
-              <TooltipIcon
-                title={t('settings.sections.externalCors.tooltips.open')}
-                icon={SettingsRounded}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  corsRef.current?.open()
-                }}
-              />
-            }
-            onClick={() => {
-              ctrlRef.current?.open()
+      <SettingItem
+        label={t('settings.sections.clash.form.fields.external')}
+        extra={
+          <TooltipIcon
+            title={t('settings.sections.externalCors.tooltips.open')}
+            icon={SettingsRounded}
+            onClick={(e) => {
+              e.stopPropagation()
+              corsRef.current?.open()
             }}
           />
+        }
+        onClick={() => {
+          ctrlRef.current?.open()
+        }}
+      />
 
-          <SettingItem
-            onClick={() => webRef.current?.open()}
-            label={t('settings.sections.clash.form.fields.webUI')}
+      <SettingItem
+        onClick={() => webRef.current?.open()}
+        label={t('settings.sections.clash.form.fields.webUI')}
+      />
+
+      <SettingItem
+        label={t('settings.sections.clash.form.fields.clashCore')}
+        extra={
+          <TooltipIcon
+            icon={SettingsRounded}
+            onClick={() => coreRef.current?.open()}
           />
-
-          <SettingItem
-            label={t('settings.sections.clash.form.fields.clashCore')}
-            extra={
-              <TooltipIcon
-                icon={SettingsRounded}
-                onClick={() => coreRef.current?.open()}
-              />
-            }
-          >
-            <Typography sx={{ py: '7px', pr: 1 }}>{version}</Typography>
-          </SettingItem>
-        </>
-      )}
+        }
+      >
+        <Typography sx={{ py: '7px', pr: 1 }}>{version}</Typography>
+      </SettingItem>
 
       {isWIN && (
         <SettingItem

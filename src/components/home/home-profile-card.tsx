@@ -2,13 +2,16 @@ import {
   CloudDownloadOutlined,
   CloudUploadOutlined,
   LaunchOutlined,
+  RefreshOutlined,
   UpdateOutlined,
 } from '@mui/icons-material'
 import {
   Box,
+  IconButton,
   LinearProgress,
   Link,
   Stack,
+  Tooltip,
   Typography,
   alpha,
   keyframes,
@@ -119,15 +122,15 @@ const ProfileDetails = ({
       return 'evening'
     })()
     const key = `shared.labels.welcome.${slot}` as TranslationKey
-    // 登录态下 username 必有;降级串不再走 i18n(键并入运行时回退)
-    const name = session?.username ?? current.name ?? 'VergeN'
+    const name =
+      session?.display_name ?? session?.username ?? current.name ?? 'VergeN'
     // 欢迎语的插值绕开 i18next 的严格键类型(仅此一处使用局部签名)
     const untypedT = i18next.t as unknown as (
       k: string,
       o?: Record<string, unknown>,
     ) => string
     return untypedT(key, { name })
-  }, [session?.username, current.name])
+  }, [session?.display_name, session?.username, current.name])
 
   return (
     <Box>
@@ -264,16 +267,19 @@ export const HomeProfileCard = ({
 
   const onUpdateProfile = useLockFn(async () => {
     if (!current?.uid) return
-    if (profileLocked) {
-      showNotice.error('公司统一下发的订阅由服务器管理,无法手动更新', 3000)
-      return
-    }
     setUpdating(true)
     try {
-      await mutate(() => updateProfile(current.uid, current.option), {
-        id: `update-profile:${current.uid}`,
-        errorNotice: false,
-      })
+      await mutate(
+        () =>
+          updateProfile(
+            current.uid,
+            profileLocked ? undefined : current.option,
+          ),
+        {
+          id: `update-profile:${current.uid}`,
+          errorNotice: false,
+        },
+      )
       onProfileUpdated?.()
 
       // 刷新首页数据
@@ -335,6 +341,28 @@ export const HomeProfileCard = ({
       title={cardTitle}
       icon={<CloudUploadOutlined />}
       iconColor="info"
+      action={
+        current && profileLocked ? (
+          <Tooltip title={t('shared.actions.refresh')}>
+            <span>
+              <IconButton
+                size="small"
+                aria-label={t('shared.actions.refresh')}
+                disabled={updating}
+                onClick={onUpdateProfile}
+              >
+                <RefreshOutlined
+                  sx={{
+                    animation: updating
+                      ? `${round} 1.5s linear infinite`
+                      : 'none',
+                  }}
+                />
+              </IconButton>
+            </span>
+          </Tooltip>
+        ) : undefined
+      }
     >
       {current ? (
         <ProfileDetails

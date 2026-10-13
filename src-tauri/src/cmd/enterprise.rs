@@ -53,28 +53,33 @@ pub async fn enterprise_login(
 }
 
 #[tauri::command]
-pub async fn enterprise_dingtalk_qr_start(server_url: std::string::String) -> CmdResult<DingtalkQrStart> {
-    enterprise::dingtalk_qr_start(&server_url)
+pub async fn enterprise_dingtalk_qr_start(
+    app: tauri::AppHandle,
+    server_url: std::string::String,
+) -> CmdResult<DingtalkQrStart> {
+    enterprise::dingtalk_qr_start(&app, &server_url)
         .await
         .map_err(|error| super::coded_error("ENTERPRISE_QR_START_FAILED", error))
 }
 
 #[tauri::command]
 pub async fn enterprise_dingtalk_qr_poll(
+    app: tauri::AppHandle,
     server_url: std::string::String,
     session_id: std::string::String,
 ) -> CmdResult<DingtalkQrPoll> {
-    enterprise::dingtalk_qr_poll(&server_url, &session_id)
+    enterprise::dingtalk_qr_poll(&app, &server_url, &session_id)
         .await
         .map_err(|error| super::coded_error("ENTERPRISE_QR_POLL_FAILED", error))
 }
 
 #[tauri::command]
 pub async fn enterprise_dingtalk_qr_cancel(
+    app: tauri::AppHandle,
     server_url: std::string::String,
     session_id: std::string::String,
 ) -> CmdResult<()> {
-    enterprise::dingtalk_qr_cancel(&server_url, &session_id)
+    enterprise::dingtalk_qr_cancel(&app, &server_url, &session_id)
         .await
         .map_err(|error| super::coded_error("ENTERPRISE_QR_CANCEL_FAILED", error))
 }

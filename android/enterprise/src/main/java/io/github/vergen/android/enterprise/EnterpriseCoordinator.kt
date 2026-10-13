@@ -69,11 +69,13 @@ class EnterpriseCoordinator(
         val api = apiHolder.api
             ?: throw ApiError(ErrorKind.NETWORK)
         val login = withContext(Dispatchers.IO) { api.login(username, password) }
+        session.updateUser(login.user ?: EnterpriseUser(username = username))
         session.update(
             accessToken = login.accessToken,
             refreshToken = login.refreshToken,
         )
         val bootstrap = withContext(Dispatchers.IO) { api.bootstrap(login.accessToken) }
+        session.updateUser(bootstrap.user)
         bootstrap.configVersion?.let { session.update(configVersion = it) }
         return bootstrap.subscriptions
     }
@@ -82,10 +84,13 @@ class EnterpriseCoordinator(
     suspend fun signInWithTokens(
         accessToken: String,
         refreshToken: String,
+        user: EnterpriseUser? = null,
     ): List<BootstrapSubscription> {
+        session.updateUser(user)
         val bootstrap = withContext(Dispatchers.IO) {
             (apiHolder.api ?: throw ApiError(ErrorKind.NETWORK)).bootstrap(accessToken)
         }
+        session.updateUser(bootstrap.user)
         session.update(
             accessToken = accessToken,
             refreshToken = refreshToken,
@@ -110,6 +115,7 @@ class EnterpriseCoordinator(
         return withContext(Dispatchers.IO) {
             author { token ->
                 val bootstrap = api.bootstrap(token)
+                session.updateUser(bootstrap.user)
                 if (stored() != bootstrap.configVersion) {
                     session.update(configVersion = bootstrap.configVersion)
                 }
@@ -120,6 +126,9 @@ class EnterpriseCoordinator(
 
     val isSignedIn: Boolean
         get() = !session.load().accessToken.isNullOrEmpty()
+
+    val accountName: String?
+        get() = session.load().let { it.displayName ?: it.username }
 
     /**
      * Authorization wrapper. All authorized calls funnel through a single
@@ -145,6 +154,7 @@ class EnterpriseCoordinator(
                     }
                 try {
                     val refreshed = withContext(Dispatchers.IO) { api.refresh(refreshToken) }
+                    session.updateUser(refreshed.user)
                     session.update(
                         accessToken = refreshed.accessToken,
                         refreshToken = refreshed.refreshToken,

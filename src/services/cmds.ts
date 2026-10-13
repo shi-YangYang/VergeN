@@ -127,7 +127,6 @@ export async function patchVergeConfig(payload: IVergeConfig) {
 
 interface EnterpriseManagedFlags {
   allow_edit_profiles: boolean
-  allow_change_settings: boolean
 }
 
 interface EnterpriseAnnouncement {
@@ -140,6 +139,7 @@ export interface EnterpriseSession {
   enabled: boolean
   authenticated: boolean
   username: string | null
+  display_name: string | null
   managed: EnterpriseManagedFlags
   announcement: EnterpriseAnnouncement | null
   subscriptions: CompanySubscription[]
@@ -190,6 +190,7 @@ export interface DingtalkQrStart {
 export interface DingtalkQrPoll {
   status: 'pending' | 'ok' | 'fail' | 'expired'
   username: string
+  user: { display_name: string | null } | null
   access_token: string
   refresh_token: string
   expires_in: number

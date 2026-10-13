@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 
 import { run } from './draft-release.mjs'
+import { packageName, releaseAssetName } from './package-name.mjs'
 
 const env = {
   RELEASE_TAG: 'v0.1.1',
@@ -137,9 +138,11 @@ test('prepare refuses a pre-existing Git tag without creating or changing a rele
   )
 })
 
-test('upload replaces only the matching draft asset and streams the actual installer', async (t) => {
+test('upload keeps the Chinese label and replaces only the matching ASCII asset', async (t) => {
   const directory = await workspace(t)
-  await writeFile(join(directory, 'VergeN.apk'), 'installer fixture')
+  const name = 'VergeN_0.1.1_安卓_ARM64_安装包.apk'
+  const assetName = 'VergeN_0.1.1_Android_ARM64_setup.apk'
+  await writeFile(join(directory, name), 'installer fixture')
   await writeFile(join(directory, 'VergeN.apk.sig'), 'not an installer')
   const methods = []
   await run(['upload', directory], env, async (url, options) => {
@@ -149,15 +152,16 @@ test('upload replaces only the matching draft asset and streams the actual insta
       return new Response(null, { status: 204 })
     }
     if (options.method === 'POST') {
-      assert.equal(new URL(url).searchParams.get('name'), 'VergeN.apk')
+      assert.equal(new URL(url).searchParams.get('name'), assetName)
+      assert.equal(new URL(url).searchParams.get('label'), name)
       assert.ok(options.body instanceof Blob)
       assert.equal(await options.body.text(), 'installer fixture')
       assert.equal(options.headers['Content-Length'], '17')
-      return json({ state: 'uploaded', size: 17 }, 201)
+      return json({ name: assetName, state: 'uploaded', size: 17 }, 201)
     }
     return url.includes('/assets?')
       ? json([
-          { id: 7, name: 'VergeN.apk' },
+          { id: 7, name: assetName },
           { id: 8, name: 'VergeN.dmg' },
         ])
       : json(draft)
@@ -190,17 +194,20 @@ test('upload refuses a published release and absent or empty installer files', a
 test('upload keeps signed desktop updates and their matching signatures', async (t) => {
   const directory = await workspace(t)
   const names = [
-    'VergeN_0.1.1_arm64.app.tar.gz',
-    'VergeN_0.1.1_arm64.app.tar.gz.sig',
-    'VergeN_0.1.1_x64-setup.exe',
-    'VergeN_0.1.1_x64-setup.exe.sig',
-    'VergeN_0.1.1_amd64.deb',
-    'VergeN_0.1.1_amd64.deb.sig',
-    'VergeN-0.1.1.x86_64.rpm',
-    'VergeN-0.1.1.x86_64.rpm.sig',
+    'VergeN_0.1.1_苹果电脑_ARM64_升级包.app.tar.gz',
+    'VergeN_0.1.1_苹果电脑_ARM64_升级包.app.tar.gz.sig',
+    'VergeN_0.1.1_Windows_x64_安装及升级包.exe',
+    'VergeN_0.1.1_Windows_x64_安装及升级包.exe.sig',
+    'VergeN_0.1.1_Linux_x64_安装及升级包.deb',
+    'VergeN_0.1.1_Linux_x64_安装及升级包.deb.sig',
+    'VergeN_0.1.1_Linux_x64_安装及升级包.rpm',
+    'VergeN_0.1.1_Linux_x64_安装及升级包.rpm.sig',
   ]
+  const contents = new Map()
   for (const name of [...names, 'private.key', 'build.log']) {
-    await writeFile(join(directory, name), 'fixture')
+    const bytes = Buffer.from(`\0${name}\nfixture\xff`, 'utf8')
+    contents.set(name, bytes)
+    await writeFile(join(directory, name), bytes)
   }
   const uploaded = []
   await run(
@@ -208,9 +215,24 @@ test('upload keeps signed desktop updates and their matching signatures', async 
     { ...env, VERGEN_BUILD_UPDATER: 'true' },
     async (url, options) => {
       if (options.method === 'POST') {
-        uploaded.push(new URL(url).searchParams.get('name'))
-        assert.equal(await options.body.text(), 'fixture')
-        return json({ state: 'uploaded', size: 7 }, 201)
+        const query = new URL(url).searchParams
+        const name = query.get('label')
+        const assetName = query.get('name')
+        uploaded.push(name)
+        assert.equal(assetName, releaseAssetName(name))
+        assert.match(assetName, /^[\x20-\x7e]+$/)
+        assert.deepEqual(
+          Buffer.from(await options.body.arrayBuffer()),
+          contents.get(name),
+        )
+        return json(
+          {
+            name: assetName,
+            state: 'uploaded',
+            size: contents.get(name).length,
+          },
+          201,
+        )
       }
       return url.includes('/assets?')
         ? json([])
@@ -221,4 +243,23 @@ test('upload keeps signed desktop updates and their matching signatures', async 
     },
   )
   assert.deepEqual(uploaded, names.sort())
+})
+
+test('package names identify the platform and keep signature pairs together', () => {
+  for (const [file, arch, name] of [
+    ['VergeN.exe', 'x64', 'Windows_x64_安装及升级包.exe'],
+    ['VergeN.dmg', 'arm64', '苹果电脑_ARM64_安装包.dmg'],
+    ['VergeN.app.tar.gz', 'arm64', '苹果电脑_ARM64_升级包.app.tar.gz'],
+    ['VergeN.deb', 'x64', 'Linux_x64_安装及升级包.deb'],
+    ['VergeN.rpm', 'x64', 'Linux_x64_安装及升级包.rpm'],
+    ['VergeN.apk', 'arm64', '安卓_ARM64_安装包.apk'],
+  ]) {
+    const expected = `VergeN_0.1.1_${name}`
+    assert.equal(packageName(file, '0.1.1', arch), expected)
+    assert.equal(packageName(`${file}.sig`, '0.1.1', arch), `${expected}.sig`)
+    assert.equal(
+      releaseAssetName(`${expected}.sig`),
+      `${releaseAssetName(expected)}.sig`,
+    )
+  }
 })

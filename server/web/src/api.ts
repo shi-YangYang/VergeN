@@ -48,6 +48,7 @@ async function refreshAccessToken(): Promise<boolean> {
 export interface AdminUser {
   id: number
   username: string
+  display_name: string
   dingtalk_userid: string
   role: string
   status: string
@@ -60,7 +61,6 @@ export interface AdminUser {
 export interface AdminSettings {
   managed_flags: {
     allow_edit_profiles: boolean
-    allow_change_settings: boolean
   }
   updater_manifest: string
   dingtalk_app_key: string
@@ -175,10 +175,14 @@ export async function login(username: string, password: string) {
 
 export const listUsers = () => request<{ users: AdminUser[] }>('/admin/users')
 
-export const createUser = (username: string, password: string) =>
+export const createUser = (
+  username: string,
+  password: string,
+  role: 'user' | 'admin',
+) =>
   request<{ user: AdminUser }>('/admin/users', {
     method: 'POST',
-    body: { username, password },
+    body: { username, password, role },
   })
 
 export const deleteUser = (id: number) =>
@@ -379,12 +383,8 @@ export interface PublicDownloads {
 }
 
 export async function fetchPublicReleases(): Promise<PublicDownloads> {
-  try {
-    const response = await fetch('/api/v1/public/releases')
-    if (!response.ok) return { releases: [], packages: [] }
-    const data = (await response.json()) as PublicDownloads
-    return { releases: data.releases ?? [], packages: data.packages ?? [] }
-  } catch {
-    return { releases: [], packages: [] }
-  }
+  const response = await fetch('/api/v1/public/releases')
+  if (!response.ok) throw new Error(`请求失败 (${response.status})`)
+  const data = (await response.json()) as PublicDownloads
+  return { releases: data.releases ?? [], packages: data.packages ?? [] }
 }

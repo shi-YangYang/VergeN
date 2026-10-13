@@ -123,7 +123,10 @@ func TestEnterpriseFlow(t *testing.T) {
 		t.Fatalf("emp login returned no tokens: %v", body)
 	}
 
-	// Bootstrap returns the ops-configured subscription URL and locked flags.
+	// Retired settings locks must not keep older clients locked.
+	if err := s.SetSetting(settingManagedFlags, `{"allow_edit_profiles":false,"allow_change_settings":false}`); err != nil {
+		t.Fatal(err)
+	}
 	code, body = doJSON(t, h, "GET", "/api/v1/client/bootstrap", empAccess, nil)
 	if code != http.StatusOK {
 		t.Fatalf("bootstrap: status=%d body=%v", code, body)
@@ -132,7 +135,7 @@ func TestEnterpriseFlow(t *testing.T) {
 		t.Fatalf("bootstrap subscription_url = %v", body["subscription_url"])
 	}
 	managed, _ := body["managed"].(map[string]any)
-	if managed == nil || managed["allow_edit_profiles"] != false || managed["allow_change_settings"] != false {
+	if managed == nil || managed["allow_edit_profiles"] != false || managed["allow_change_settings"] != true {
 		t.Fatalf("bootstrap managed flags = %v", body["managed"])
 	}
 
@@ -229,9 +232,35 @@ func TestAdminSettingsValidation(t *testing.T) {
 	}
 
 	code, _ = doJSON(t, h, "POST", "/api/v1/admin/users", adminToken,
-		map[string]any{"username": "x", "password": "short"})
+		map[string]any{"username": "employee", "password": "123"})
 	if code != http.StatusBadRequest {
-		t.Fatalf("weak password: status=%d", code)
+		t.Fatalf("three-character password accepted when creating user: status=%d", code)
+	}
+	code, body = doJSON(t, h, "POST", "/api/v1/admin/users", adminToken,
+		map[string]any{"username": "employee", "password": "1234"})
+	if code != http.StatusCreated {
+		t.Fatalf("four-character password rejected when creating user: status=%d body=%v", code, body)
+	}
+	userID := int64(body["user"].(map[string]any)["id"].(float64))
+	passwordPath := "/api/v1/admin/users/" + itoa(userID) + "/password"
+	code, _ = doJSON(t, h, "POST", passwordPath, adminToken,
+		map[string]any{"password": "123"})
+	if code != http.StatusBadRequest {
+		t.Fatalf("three-character password accepted when resetting password: status=%d", code)
+	}
+	if code, _ := login(t, h, "employee", "1234"); code != http.StatusOK {
+		t.Fatalf("initial four-character password login after rejected reset: status=%d", code)
+	}
+	code, _ = doJSON(t, h, "POST", passwordPath, adminToken,
+		map[string]any{"password": "4321"})
+	if code != http.StatusNoContent {
+		t.Fatalf("four-character password rejected when resetting password: status=%d", code)
+	}
+	if code, _ := login(t, h, "employee", "4321"); code != http.StatusOK {
+		t.Fatalf("reset four-character password login: status=%d", code)
+	}
+	if code, _ := login(t, h, "employee", "1234"); code != http.StatusUnauthorized {
+		t.Fatalf("previous password accepted after reset: status=%d", code)
 	}
 }
 
@@ -350,8 +379,10 @@ func TestDingtalkQrLoginFlow(t *testing.T) {
 	if sessionID == "" || qrURL == "" {
 		t.Fatalf("qr start incomplete: %v", body)
 	}
-	if !bytes.Contains([]byte(qrURL), []byte("login.dingtalk.com/oauth/qrcode/app-key")) ||
-		!bytes.Contains([]byte(qrURL), []byte("redirect_uri=")) {
+	parsedQR, err := url.Parse(qrURL)
+	if err != nil || parsedQR.Scheme != "https" || parsedQR.Host != "login.dingtalk.com" ||
+		parsedQR.Path != "/oauth2/auth" || parsedQR.Query().Get("client_id") != "app-key" ||
+		parsedQR.Query().Get("redirect_uri") == "" {
 		t.Fatalf("qr url unexpected: %q", qrURL)
 	}
 
