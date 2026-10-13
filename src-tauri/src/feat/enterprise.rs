@@ -21,8 +21,6 @@ const MANAGED_UPDATE_INTERVAL_MINUTES: u64 = 1440;
 pub struct ManagedFlags {
     #[serde(default)]
     pub allow_edit_profiles: bool,
-    #[serde(default)]
-    pub allow_change_settings: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -182,21 +180,6 @@ fn present(token: &Option<SmartString>) -> bool {
     token.as_ref().is_some_and(|t| !t.trim().is_empty())
 }
 
-/// Resolved managed policy for the running device; None outside managed
-/// devices. Used by patch commands to enforce ops-set locks.
-pub async fn managed_policy() -> Option<ManagedFlags> {
-    let data = Config::verge().await.data_arc();
-    if !enabled_field(&data.enterprise_server_url) {
-        return None;
-    }
-    Some(
-        data.enterprise_managed_flags
-            .as_ref()
-            .and_then(|v| serde_json::from_value(v.clone()).ok())
-            .unwrap_or_default(),
-    )
-}
-
 /// The core must not start on a managed device until the employee has logged in.
 pub async fn core_start_allowed() -> bool {
     let data = Config::verge().await.data_arc();
@@ -211,7 +194,6 @@ fn session_from(data: &IVerge, authenticated: bool) -> EnterpriseSession {
     let managed = if !enabled_field(&data.enterprise_server_url) {
         ManagedFlags {
             allow_edit_profiles: true,
-            allow_change_settings: true,
         }
     } else {
         data.enterprise_managed_flags

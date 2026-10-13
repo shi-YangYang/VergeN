@@ -55,7 +55,6 @@ type Tab =
   | 'subscription'
   | 'release'
   | 'dingtalk'
-  | 'policy'
   | 'announcement'
   | 'dashboard'
 
@@ -64,7 +63,6 @@ const TABS: [Tab, string][] = [
   ['subscription', '订阅管理'],
   ['release', '客户端发布'],
   ['dingtalk', '钉钉接入'],
-  ['policy', '策略管控'],
   ['announcement', '公告管理'],
   ['dashboard', '在线看板'],
 ]
@@ -260,75 +258,6 @@ function SubscriptionsPage() {
           </button>
         </form>
       )}
-    </section>
-  )
-}
-
-function PolicyPage() {
-  const [settings, setSettings] = useState<AdminSettings | null>(null)
-  const [allowChange, setAllowChange] = useState(false)
-  const [message, setMessage] = useState('')
-  const [error, setError] = useState('')
-
-  const load = useCallback(async () => {
-    setError('')
-    try {
-      const data = await getSettings()
-      setSettings(data)
-      setAllowChange(data.managed_flags.allow_change_settings)
-    } catch (err) {
-      setError(alertContext(err))
-    }
-  }, [])
-
-  useEffect(() => {
-    void load()
-  }, [load])
-
-  const save = async (event: FormEvent) => {
-    event.preventDefault()
-    try {
-      await patchSettings({
-        managed_flags: {
-          allow_edit_profiles:
-            settings?.managed_flags.allow_edit_profiles ?? false,
-          allow_change_settings: allowChange,
-        },
-      })
-      setMessage('已保存')
-      setTimeout(() => setMessage(''), 2000)
-    } catch (err) {
-      setMessage(alertContext(err))
-    }
-  }
-
-  if (!settings) {
-    return error ? (
-      <LoadError error={error} onRetry={() => void load()} />
-    ) : (
-      <div className="muted">加载中…</div>
-    )
-  }
-
-  return (
-    <section className="panel narrow">
-      <form className="stack" onSubmit={save}>
-        <fieldset>
-          <legend>员工端限制</legend>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={allowChange}
-              onChange={(e) => setAllowChange(e.target.checked)}
-            />
-            允许员工修改客户端设置
-          </label>
-        </fieldset>
-        <div className="row-form">
-          <button type="submit">保存</button>
-          {message && <span className="muted">{message}</span>}
-        </div>
-      </form>
     </section>
   )
 }
@@ -2029,7 +1958,6 @@ function RouterShell() {
         {tab === 'subscription' && <SubscriptionsPage />}
         {tab === 'release' && <ReleasePage />}
         {tab === 'dingtalk' && <DingtalkPage />}
-        {tab === 'policy' && <PolicyPage />}
         {tab === 'announcement' && <AnnouncementPage />}
         {tab === 'dashboard' && <DashboardPanel />}
       </main>

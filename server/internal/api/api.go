@@ -368,7 +368,12 @@ func (a *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 type managedFlags struct {
-	AllowEditProfiles   bool `json:"allow_edit_profiles"`
+	AllowEditProfiles bool `json:"allow_edit_profiles"`
+}
+
+type clientManagedFlags struct {
+	managedFlags
+	// Older clients default to locking settings when this field is absent.
 	AllowChangeSettings bool `json:"allow_change_settings"`
 }
 
@@ -410,12 +415,12 @@ type bootstrapResp struct {
 	User            userPublic              `json:"user"`
 	SubscriptionURL string                  `json:"subscription_url"`
 	Subscriptions   []bootstrapSubscription `json:"subscriptions"`
-	Managed         managedFlags            `json:"managed"`
+	Managed         clientManagedFlags      `json:"managed"`
 	Announcement    *announcement           `json:"announcement"`
 }
 
 func (a *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
-	resp := bootstrapResp{User: toPublic(userFrom(r)), Managed: managedFlags{}}
+	resp := bootstrapResp{User: toPublic(userFrom(r)), Managed: clientManagedFlags{AllowChangeSettings: true}}
 	enabled, err := a.store.EnabledSubscriptions()
 	if err != nil {
 		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
@@ -436,7 +441,7 @@ func (a *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	} else if found && raw != "" {
-		if err := json.Unmarshal([]byte(raw), &resp.Managed); err != nil {
+		if err := json.Unmarshal([]byte(raw), &resp.Managed.managedFlags); err != nil {
 			fail(w, http.StatusInternalServerError, "internal_error", "internal error")
 			return
 		}

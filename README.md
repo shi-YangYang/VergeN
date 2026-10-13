@@ -44,7 +44,6 @@ VergeN 是基于 [clash-verge-rev](https://github.com/clash-verge-rev/clash-verg
 - 员工账号管理:创建、停用、重置密码、绑定钉钉 UnionID
 - 订阅管理:增删改、启停;客户端通过心跳拉取
 - 公告管理:逐用户认领、可撤回
-- 策略管控:锁定端口/外部控制器等敏感设置
 - 版本发布:多版本管理(Windows / macOS / Linux / Android),客户端弹窗提示与一键更新
 - 公开下载页与登录/下载中转页
 - 健康检查 `/healthz`,在线人数与版本分布看板

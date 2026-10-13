@@ -61,7 +61,6 @@ export interface AdminUser {
 export interface AdminSettings {
   managed_flags: {
     allow_edit_profiles: boolean
-    allow_change_settings: boolean
   }
   updater_manifest: string
   dingtalk_app_key: string

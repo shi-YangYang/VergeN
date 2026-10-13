@@ -39,8 +39,6 @@ const SettingVergeAdvanced = ({ onError: _ }: Props) => {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const enterpriseSession = useEnterpriseSession()
-  const configLocked =
-    enterpriseSession?.managed.allow_change_settings === false
   const { checkUpdate: checkChannel } = useUpdate()
 
   const configRef = useRef<DialogRef>(null)
@@ -110,49 +108,37 @@ const SettingVergeAdvanced = ({ onError: _ }: Props) => {
       <BackupViewer ref={backupRef} />
       <LiteModeViewer ref={liteModeRef} />
 
-      {configLocked ? null : (
-        <SettingItem
-          onClick={() => backupRef.current?.open()}
-          label={t('settings.components.verge.advanced.fields.backupSetting')}
-          extra={
-            <TooltipIcon
-              title={t(
-                'settings.components.verge.advanced.tooltips.backupInfo',
-              )}
-              sx={{ opacity: '0.7' }}
-            />
-          }
-        />
-      )}
-
-      {configLocked ? null : (
-        <SettingItem
-          onClick={() => configRef.current?.open()}
-          label={t('settings.components.verge.advanced.fields.runtimeConfig')}
-        />
-      )}
-
-      {configLocked ? null : (
-        <>
-          <SettingItem
-            onClick={openAppDir}
-            label={t('settings.components.verge.advanced.fields.openConfDir')}
-            extra={
-              <TooltipIcon
-                title={t(
-                  'settings.components.verge.advanced.tooltips.openConfDir',
-                )}
-                sx={{ opacity: '0.7' }}
-              />
-            }
+      <SettingItem
+        onClick={() => backupRef.current?.open()}
+        label={t('settings.components.verge.advanced.fields.backupSetting')}
+        extra={
+          <TooltipIcon
+            title={t('settings.components.verge.advanced.tooltips.backupInfo')}
+            sx={{ opacity: '0.7' }}
           />
+        }
+      />
 
-          <SettingItem
-            onClick={openCoreDir}
-            label={t('settings.components.verge.advanced.fields.openCoreDir')}
+      <SettingItem
+        onClick={() => configRef.current?.open()}
+        label={t('settings.components.verge.advanced.fields.runtimeConfig')}
+      />
+
+      <SettingItem
+        onClick={openAppDir}
+        label={t('settings.components.verge.advanced.fields.openConfDir')}
+        extra={
+          <TooltipIcon
+            title={t('settings.components.verge.advanced.tooltips.openConfDir')}
+            sx={{ opacity: '0.7' }}
           />
-        </>
-      )}
+        }
+      />
+
+      <SettingItem
+        onClick={openCoreDir}
+        label={t('settings.components.verge.advanced.fields.openCoreDir')}
+      />
 
       <SettingItem
         onClick={() => void navigate('/logs')}
@@ -174,17 +160,15 @@ const SettingVergeAdvanced = ({ onError: _ }: Props) => {
         label={t('settings.components.verge.advanced.fields.checkUpdates')}
       />
 
-      {configLocked ? null : (
-        <SettingItem
-          onClick={() => {
-            void mutate(() => openDevTools(), {
-              id: 'open-devtools',
-              errorNotice: false,
-            }).catch(() => {})
-          }}
-          label={t('settings.components.verge.advanced.fields.openDevTools')}
-        />
-      )}
+      <SettingItem
+        onClick={() => {
+          void mutate(() => openDevTools(), {
+            id: 'open-devtools',
+            errorNotice: false,
+          }).catch(() => {})
+        }}
+        label={t('settings.components.verge.advanced.fields.openDevTools')}
+      />
 
       <SettingItem
         label={t('settings.components.verge.advanced.fields.liteModeSettings')}

@@ -127,7 +127,6 @@ export async function patchVergeConfig(payload: IVergeConfig) {
 
 interface EnterpriseManagedFlags {
   allow_edit_profiles: boolean
-  allow_change_settings: boolean
 }
 
 interface EnterpriseAnnouncement {

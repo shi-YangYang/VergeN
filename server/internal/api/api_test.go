@@ -123,7 +123,10 @@ func TestEnterpriseFlow(t *testing.T) {
 		t.Fatalf("emp login returned no tokens: %v", body)
 	}
 
-	// Bootstrap returns the ops-configured subscription URL and locked flags.
+	// Retired settings locks must not keep older clients locked.
+	if err := s.SetSetting(settingManagedFlags, `{"allow_edit_profiles":false,"allow_change_settings":false}`); err != nil {
+		t.Fatal(err)
+	}
 	code, body = doJSON(t, h, "GET", "/api/v1/client/bootstrap", empAccess, nil)
 	if code != http.StatusOK {
 		t.Fatalf("bootstrap: status=%d body=%v", code, body)
@@ -132,7 +135,7 @@ func TestEnterpriseFlow(t *testing.T) {
 		t.Fatalf("bootstrap subscription_url = %v", body["subscription_url"])
 	}
 	managed, _ := body["managed"].(map[string]any)
-	if managed == nil || managed["allow_edit_profiles"] != false || managed["allow_change_settings"] != false {
+	if managed == nil || managed["allow_edit_profiles"] != false || managed["allow_change_settings"] != true {
 		t.Fatalf("bootstrap managed flags = %v", body["managed"])
 	}
 
