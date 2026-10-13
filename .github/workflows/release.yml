@@ -34,6 +34,9 @@ jobs:
             runner: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
     env:
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+      CARGO_PROFILE_RELEASE_STRIP: debuginfo
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
       # Baked into the client at build time; set it in repo variables.
@@ -45,9 +48,6 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: server/go.mod
       - name: Install desktop dependencies (linux)
         if: runner.os == 'Linux'
         run: |
@@ -60,17 +60,15 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           target: ${{ matrix.target }}
+          cache: false
       - uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ matrix.target }}
+          key: ${{ matrix.target }}-${{ hashFiles('Cargo.toml') }}
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Set the client version
         shell: bash
         run: pnpm release-version "$RELEASE_TAG"
-      - name: Build the admin panel
-        working-directory: server/web
-        run: pnpm install --frozen-lockfile && pnpm build
       - name: Fetch mihomo sidecars and service release
         run: pnpm prebuild ${{ matrix.target }}
       - name: Build the desktop app
@@ -86,13 +84,16 @@ jobs:
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           import path from 'node:path';
+          const installer = /\.(exe|msi|dmg|pkg|deb|rpm|AppImage)$/i;
           fs.mkdirSync('client-artifacts');
+          fs.mkdirSync('updater-artifacts');
           for (const file of JSON.parse(process.env.ARTIFACT_PATHS)) {
             if (fs.statSync(file, { throwIfNoEntry: false })?.isFile()) {
-              fs.copyFileSync(file, path.join('client-artifacts', path.basename(file)));
+              const directory = installer.test(file) ? 'client-artifacts' : 'updater-artifacts';
+              fs.copyFileSync(file, path.join(directory, path.basename(file)));
             }
           }
-          if (!fs.readdirSync('client-artifacts').some(file => /\.(exe|msi|dmg|pkg|deb|rpm|AppImage)$/i.test(file))) {
+          if (fs.readdirSync('client-artifacts').length === 0) {
             throw new Error('No desktop installer was produced');
           }
           NODE
@@ -102,6 +103,13 @@ jobs:
           name: client-${{ matrix.label }}
           path: client-artifacts/
           if-no-files-found: error
+          compression-level: 0
+      - name: Store updater files for manual release management
+        uses: actions/upload-artifact@v4
+        with:
+          name: updater-${{ matrix.label }}
+          path: updater-artifacts/
+          if-no-files-found: ignore
           compression-level: 0
 
   android:
@@ -211,7 +219,7 @@ jobs:
           GOARCH: amd64
           CGO_ENABLED: 0
         shell: bash
-        run: go build -trimpath -ldflags "-s -w" -o vergen-server-linux-amd64 ./cmd/server
+        run: go build -trimpath -buildvcs=false -ldflags "-s -w" -o vergen-server-linux-amd64 ./cmd/server
       - name: Store the server binary for deployment
         uses: actions/upload-artifact@v4
         with:
@@ -326,21 +334,36 @@ jobs:
         run: |
           set -x
           ls -lh vergen-server /tmp/vergen-server.service
-          # scp hides its progress meter without a local terminal in Actions.
-          script -q -e -c 'scp -v -C vergen-server vergen-target:/tmp/vergen-server.new' /dev/null </dev/null
+          local_hash=$(sha256sum vergen-server | cut -d ' ' -f 1)
+          remote_hash=$(ssh -T vergen-target 'if [ -f /usr/local/bin/vergen-server ]; then sha256sum /usr/local/bin/vergen-server; fi' | cut -d ' ' -f 1)
+          if [ "$local_hash" = "$remote_hash" ]; then
+            echo "Server binary unchanged; skipping upload"
+            echo "SERVER_BINARY_CHANGED=false" >> "$GITHUB_ENV"
+          else
+            # scp hides its progress meter without a local terminal in Actions.
+            script -q -e -c 'scp -v -C vergen-server vergen-target:/tmp/vergen-server.new' /dev/null </dev/null
+            echo "SERVER_BINARY_CHANGED=true" >> "$GITHUB_ENV"
+          fi
           script -q -e -c 'scp -v /tmp/vergen-server.service vergen-target:/tmp/vergen-server.service' /dev/null </dev/null
       - name: Restart ops server
         if: env.SKIP_DEPLOY != '1'
         timeout-minutes: 3
         shell: bash
         run: |
-          ssh -T vergen-target 'bash -se' <<'REMOTE'
+          ssh -T vergen-target "bash -se -- '$SERVER_BINARY_CHANGED'" <<'REMOTE'
           set -x
           id vergen >/dev/null 2>&1 || sudo -n useradd -r -s /usr/sbin/nologin vergen
-          sudo -n mv /tmp/vergen-server.new /usr/local/bin/vergen-server
-          sudo -n chmod 755 /usr/local/bin/vergen-server
+          if [ "$1" = true ]; then
+            sudo -n mv /tmp/vergen-server.new /usr/local/bin/vergen-server
+            sudo -n chmod 755 /usr/local/bin/vergen-server
+          fi
           sudo -n mkdir -p /var/lib/vergen
-          sudo -n chown -R vergen:vergen /var/lib/vergen
+          sudo -n chown vergen:vergen /var/lib/vergen
+          for file in /var/lib/vergen/vergen.db{,-wal,-shm}; do
+            if [ -e "$file" ]; then
+              sudo -n chown vergen:vergen "$file"
+            fi
+          done
           sudo -n mv /tmp/vergen-server.service /etc/systemd/system/vergen-server.service
           sudo -n systemctl daemon-reload
           sudo -n systemctl enable vergen-server
@@ -375,11 +398,28 @@ jobs:
           ssh -T vergen-target "bash -se -- '$staging'" <<'REMOTE'
           mkdir -p "$1"
           REMOTE
-          script -q -e -c "scp -v client-artifacts/* 'vergen-target:$staging/'" /dev/null </dev/null
+          for file in client-artifacts/*; do
+            local_hash=$(sha256sum "$file" | cut -d ' ' -f 1)
+            printf -v remote_name '%q' "$(basename "$file")"
+            remote_hash=$(ssh -T vergen-target "bash -se -- $remote_name" <<'REMOTE'
+          file="/var/lib/vergen/downloads/$1"
+          if [ -f "$file" ]; then
+            sha256sum "$file" | cut -d ' ' -f 1
+          fi
+          REMOTE
+            )
+            if [ "$local_hash" = "$remote_hash" ]; then
+              echo "Package unchanged; skipping upload: $file"
+              continue
+            fi
+            printf -v upload_command 'scp -v %q %q' "$file" "vergen-target:$staging/"
+            script -q -e -c "$upload_command" /dev/null </dev/null
+          done
           ssh -T vergen-target "bash -se -- '$staging'" <<'REMOTE'
           set -x
           sudo -n mkdir -p /var/lib/vergen/downloads
           sudo -n chmod 755 /var/lib/vergen/downloads
+          shopt -s nullglob
           for file in "$1"/*; do
             sudo -n chmod 644 "$file"
             sudo -n chown vergen:vergen "$file"
