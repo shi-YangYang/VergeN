@@ -59,10 +59,13 @@ func (a *Server) Handler() (http.Handler, error) {
 		return nil, err
 	}
 	mux := http.NewServeMux()
-	// Handoff page on the root path: operators go to the admin panel,
-	// employees go to the client download page.
-	mux.HandleFunc("GET /{$}", web.Landing())
-	mux.HandleFunc("GET /download", a.downloadPage)
+	// The embedded admin SPA owns the public surfaces: "/" (gateway),
+	// "/login" and "/download" are its client-side routes, so those paths
+	// serve the app shell; "/admin" keeps the ops prefix. Only /files is
+	// a plain server route.
+	mux.Handle("GET /{$}", adminPanel)
+	mux.Handle("GET /login", adminPanel)
+	mux.Handle("GET /download", adminPanel)
 	mux.HandleFunc("GET /files/{name}", web.Files(a.downloads))
 	mux.Handle("GET /admin", adminPanel)
 	mux.Handle("GET /admin/{path...}", adminPanel)
@@ -373,38 +376,6 @@ type announcement struct {
 func (a *Server) handleAuthCapabilities(w http.ResponseWriter, _ *http.Request) {
 	_, _, ok := a.dingtalkReady()
 	writeJSON(w, http.StatusOK, map[string]bool{"dingtalk_qr": ok})
-}
-
-// downloadPage feeds the public download view: published release records
-// (version/notes/per-platform URLs) plus package files in the downloads
-// directory that no release record covers. A store failure degrades to
-// directory-only rendering.
-func (a *Server) downloadPage(w http.ResponseWriter, r *http.Request) {
-	var releases []web.ReleaseView
-	list, err := a.store.ListReleases()
-	if err != nil {
-		slog.Warn("list releases for download page", "err", err)
-	}
-	for _, rel := range list {
-		releases = append(releases, web.ReleaseView{
-			Version: rel.Version, Notes: rel.Notes,
-			Win: rel.WinURL, Linux: rel.LinuxURL, Mac: rel.MacURL, Android: rel.AndroidURL,
-		})
-	}
-	var files []web.FileRow
-	for _, row := range web.Packages(a.downloads) {
-		cover := false
-		for _, rel := range releases {
-			if strings.Contains(row.Name, strings.TrimPrefix(rel.Version, "v")) {
-				cover = true
-				break
-			}
-		}
-		if !cover {
-			files = append(files, row)
-		}
-	}
-	web.DownloadPage(releases, files)(w, r)
 }
 
 // handlePublicReleases exposes the published client manifest list without
