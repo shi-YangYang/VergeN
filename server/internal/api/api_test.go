@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -398,6 +401,60 @@ func TestDingtalkQrLoginFlow(t *testing.T) {
 	}
 	if _, err := s.GetUserByDingtalkID("union-1"); err != store.ErrNotFound {
 		t.Fatalf("lookup after unbind: err=%v", err)
+	}
+}
+
+func TestPublicDownloads(t *testing.T) {
+	_, s := newTestBackend(t)
+	downloads := t.TempDir()
+	sv, err := NewServer(s, downloads)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := sv.Handler()
+	if err != nil {
+		t.Fatal(err)
+	}
+	packages := map[string]string{
+		"VergeN 1.0.2_x64-setup.exe":         "windows",
+		"VergeN_1.0.2_aarch64.dmg":           "macos",
+		"VergeN_1.0.2_amd64.AppImage":        "linux",
+		"vergen-1.0.2-android-arm64-v8a.apk": "android",
+	}
+	for name := range packages {
+		if err := os.WriteFile(filepath.Join(downloads, name), []byte(name), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, name := range []string{"VergeN_1.0.2_amd64.AppImage.sig", "update.json", "vergen-server"} {
+		if err := os.WriteFile(filepath.Join(downloads, name), []byte("not an installer"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	code, body := doJSON(t, h, "GET", "/api/v1/public/releases", "", nil)
+	if code != http.StatusOK {
+		t.Fatalf("public downloads: status=%d body=%v", code, body)
+	}
+	releases, _ := body["releases"].([]any)
+	files, _ := body["packages"].([]any)
+	if len(releases) != 0 || len(files) != len(packages) {
+		t.Fatalf("downloads without a manual release: %v", body)
+	}
+	for _, file := range files {
+		row := file.(map[string]any)
+		name := row["name"].(string)
+		if platform, ok := packages[name]; !ok || row["platform"] != platform || row["size"] == "" {
+			t.Fatalf("package metadata: %v", row)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest("GET", "/files/"+url.PathEscape(name), nil))
+		if rec.Code != http.StatusOK || rec.Body.String() != name {
+			t.Fatalf("download %q: status=%d body=%q", name, rec.Code, rec.Body.String())
+		}
+		isAndroidMIME := rec.Header().Get("Content-Type") == "application/vnd.android.package-archive"
+		if isAndroidMIME != (packages[name] == "android") {
+			t.Fatalf("download %q content type: %s", name, rec.Header().Get("Content-Type"))
+		}
 	}
 }
 

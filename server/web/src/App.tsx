@@ -31,7 +31,7 @@ import {
   type AdminAnnouncement,
   type AdminRelease,
   type AdminSettings,
-  type PublicRelease,
+  type PublicDownloads,
   type AdminSubscription,
   type AdminUser,
   type DashboardStats,
@@ -801,10 +801,18 @@ function GatewayPage() {
 }
 
 function DownloadPage({ onBack }: { onBack: () => void }) {
-  const [releases, setReleases] = useState<PublicRelease[] | null>(null)
+  const [downloads, setDownloads] = useState<PublicDownloads | null>(null)
+  const releases = downloads?.releases ?? null
+  const packages = downloads?.packages ?? []
+  const platformLabels = {
+    windows: 'Windows',
+    macos: 'macOS',
+    linux: 'Linux',
+    android: 'Android',
+  }
 
   useEffect(() => {
-    void fetchPublicReleases().then(setReleases)
+    void fetchPublicReleases().then(setDownloads)
   }, [])
 
   return (
@@ -815,11 +823,35 @@ function DownloadPage({ onBack }: { onBack: () => void }) {
         </div>
       </div>
 
+      {packages.length > 0 && (
+        <div className="download-version">
+          <div className="download-version-head">
+            <strong style={{ fontSize: 19 }}>客户端安装包</strong>
+          </div>
+          <div
+            className="download-grid"
+            style={{
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            }}
+          >
+            {packages.map((file) => (
+              <PlatformCard
+                key={file.name}
+                kind={file.platform}
+                label={platformLabels[file.platform]}
+                url={`/files/${encodeURIComponent(file.name)}`}
+                fileName={file.name}
+                size={file.size}
+              />
+            ))}
+          </div>
+        </div>
+      )}
       {releases === null ? (
         <div className="muted" style={{ textAlign: 'center', padding: 32 }}>
           加载中…
         </div>
-      ) : releases.length === 0 ? (
+      ) : releases.length === 0 && packages.length === 0 ? (
         <div className="download-empty">
           <div style={{ fontSize: 40 }}>📦</div>
           管理员尚未发布客户端,敬请期待。
@@ -874,10 +906,14 @@ function PlatformCard({
   kind,
   label,
   url,
+  fileName,
+  size,
 }: {
   kind: PlatformKey
   label: string
   url: string
+  fileName?: string
+  size?: string
 }) {
   const glyph = PLATFORM_GLYPHS[kind]
   const disabled = !url
@@ -895,8 +931,19 @@ function PlatformCard({
         ))}
       </svg>
       <span>{label}</span>
+      {fileName && (
+        <span
+          style={{
+            fontSize: 12,
+            overflowWrap: 'anywhere',
+            textAlign: 'center',
+          }}
+        >
+          {fileName}
+        </span>
+      )}
       <span className="muted" style={{ fontSize: 12 }}>
-        {disabled ? '暂无安装包' : '下载'}
+        {disabled ? '暂无安装包' : size ? `下载 · ${size}` : '下载'}
       </span>
     </a>
   )

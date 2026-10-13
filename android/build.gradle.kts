@@ -62,19 +62,21 @@ subprojects {
             minSdk = 21
             targetSdk = 35
 
-            versionName = "0.1.0"
-            versionCode = 1
+            versionName = project.findProperty("vergenVersionName") as? String ?: "0.1.0"
+            versionCode = (project.findProperty("vergenVersionCode") as? String)?.toInt() ?: 1
 
             resValue("string", "release_name", "v$versionName")
             resValue("integer", "release_code", "$versionCode")
 
-            ndk {
-                abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+            if (!isApp) {
+                ndk {
+                    abiFilters += listOf("arm64-v8a")
+                }
             }
 
             externalNativeBuild {
                 cmake {
-                    abiFilters("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+                    abiFilters("arm64-v8a")
                 }
             }
 
@@ -190,9 +192,9 @@ subprojects {
             splits {
                 abi {
                     isEnable = true
-                    isUniversalApk = true
+                    isUniversalApk = false
                     reset()
-                    include("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+                    include("arm64-v8a")
                 }
             }
         }
