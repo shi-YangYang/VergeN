@@ -390,10 +390,11 @@ jobs:
           REMOTE
       - name: Publish client downloads
         if: env.SKIP_DEPLOY != '1'
-        timeout-minutes: 15
+        timeout-minutes: 60
         shell: bash
         run: |
           set -x
+          du -ch client-artifacts/*
           staging="/tmp/vergen-client-upload-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           ssh -T vergen-target "bash -se -- '$staging'" <<'REMOTE'
           mkdir -p "$1"
