@@ -1,15 +1,12 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*"
-  # Manual CD: run from Actions against the main branch and give the
-  # release tag; a tag push of the same shape does the same thing.
+  # Manual CD only: run from the Actions tab against the main branch and
+  # provide the release tag. Pushing a tag does NOT start this pipeline.
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag (e.g. v0.1.0)"
+        description: "Release tag, e.g. v0.1.1"
         required: true
         type: string
 
