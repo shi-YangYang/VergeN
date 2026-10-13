@@ -4,13 +4,13 @@ use crate::config::{
 };
 use crate::core::notify::{Refresh, announce};
 use anyhow::{Result, anyhow};
-use base64::{Engine, engine::general_purpose::STANDARD};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use clash_verge_draft::DraftTransaction;
 use clash_verge_logging::{Type, logging};
 use serde::{Deserialize, Serialize};
 use smartstring::alias::String as SmartString;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Manager as _, WebviewUrl, WebviewWindowBuilder};
 
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Refresh the access token this long before its recorded expiry.
@@ -670,7 +670,7 @@ async fn activate_session(
 }
 
 fn dingtalk_window_label(server: &str, session_id: &str) -> std::string::String {
-    use sha2::{Digest, Sha256};
+    use sha2::{Digest as _, Sha256};
     let mut digest = Sha256::new();
     digest.update(server.as_bytes());
     digest.update([0]);
@@ -844,7 +844,11 @@ mod dingtalk_tests {
         ] {
             assert!(!dingtalk_navigation_allowed(&rejected, &waiting, &callback, &state));
         }
-        let html = String::from_utf8(STANDARD.decode(waiting.as_str().split_once(',').unwrap().1)?)?;
+        let (_, encoded) = waiting
+            .as_str()
+            .split_once(',')
+            .ok_or_else(|| anyhow!("Missing waiting page data"))?;
+        let html = String::from_utf8(STANDARD.decode(encoded)?)?;
         assert!(html.contains("default-src 'none'"));
         assert!(!html.contains("<script"));
         assert!(html.contains(&login.as_str().replace('&', "&amp;")));
@@ -903,12 +907,12 @@ pub async fn dingtalk_qr_start(app: &tauri::AppHandle, server_url: &str) -> Resu
             });
         }
     });
-    if !open_dingtalk_client(native).await {
-        if let Err(error) = window.navigate(login) {
-            let _ = window.close();
-            let _ = cancel_dingtalk_session(&server, &parsed.session_id).await;
-            return Err(error.into());
-        }
+    if !open_dingtalk_client(native).await
+        && let Err(error) = window.navigate(login)
+    {
+        let _ = window.close();
+        let _ = cancel_dingtalk_session(&server, &parsed.session_id).await;
+        return Err(error.into());
     }
     Ok(parsed)
 }
