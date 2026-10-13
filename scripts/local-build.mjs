@@ -4,6 +4,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseEnv } from 'node:util'
 
+import { packageName } from './package-name.mjs'
+
 const root = fileURLToPath(new URL('..', import.meta.url))
 process.chdir(root)
 const localEnvironment = path.join(root, '.env.build.local')
@@ -20,18 +22,13 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8')
 const run = (command, args, cwd = root) =>
   execFileSync(command, args, { cwd, env, stdio: 'inherit' })
 
-function copyInstallers(files, platformName) {
+function copyInstallers(files, platformName, arch = process.arch) {
   if (!files.length) throw new Error('No installer was produced')
   const output = path.join(root, 'release-local', version, platformName)
   fs.rmSync(output, { recursive: true, force: true })
   fs.mkdirSync(output, { recursive: true })
   for (const file of files) {
-    const name = path
-      .basename(file)
-      .replace(
-        /\.app\.tar\.gz(\.sig)?$/,
-        `_${version}_${process.arch}.app.tar.gz$1`,
-      )
+    const name = packageName(path.basename(file), version, arch)
     const destination = path.join(output, name)
     fs.copyFileSync(file, destination)
     console.log(`Package: ${destination}`)
@@ -223,14 +220,7 @@ function android() {
       'APK identity or version does not match the requested release',
     )
   }
-  const output = path.join(root, 'release-local', version, 'android')
-  fs.mkdirSync(output, { recursive: true })
-  const destination = path.join(
-    output,
-    `vergen-${version}-android-arm64-v8a.apk`,
-  )
-  fs.copyFileSync(path.join(apkDirectory, apk.outputFile), destination)
-  console.log(`Installer: ${destination}`)
+  copyInstallers([path.join(apkDirectory, apk.outputFile)], 'android', 'arm64')
 }
 
 try {

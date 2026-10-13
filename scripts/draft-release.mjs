@@ -3,6 +3,8 @@ import { appendFile, readdir } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
+import { releaseAssetName } from './package-name.mjs'
+
 export async function run(args, env = process.env, fetchAPI = fetch) {
   const [command, directory] = args
   if (
@@ -152,16 +154,18 @@ export async function run(args, env = process.env, fetchAPI = fetch) {
   if (!files.length) throw new Error(`No installer files found in ${directory}`)
 
   for (const name of files) {
+    const assetName = releaseAssetName(name)
     const blob = await openAsBlob(join(directory, name))
     if (blob.size === 0) throw new Error(`Installer is empty: ${name}`)
     const release = await request(`${base}/releases/${env.RELEASE_ID}`)
     assertDraft(release)
     const assets = await list(`${base}/releases/${env.RELEASE_ID}/assets`)
-    for (const asset of assets.filter((entry) => entry.name === name)) {
+    for (const asset of assets.filter((entry) => entry.name === assetName)) {
       await request(`${base}/releases/assets/${asset.id}`, { method: 'DELETE' })
     }
     const uploadURL = new URL(release.upload_url.split('{')[0])
-    uploadURL.searchParams.set('name', name)
+    uploadURL.searchParams.set('name', assetName)
+    uploadURL.searchParams.set('label', name)
     console.log(
       `Uploading ${name} (${(blob.size / 1048576).toFixed(1)} MiB) to draft ${tag}`,
     )
@@ -173,7 +177,11 @@ export async function run(args, env = process.env, fetchAPI = fetch) {
       },
       body: blob,
     })
-    if (asset.state !== 'uploaded' || asset.size !== blob.size) {
+    if (
+      asset.name !== assetName ||
+      asset.state !== 'uploaded' ||
+      asset.size !== blob.size
+    ) {
       throw new Error(`GitHub did not confirm a complete upload for ${name}`)
     }
   }
