@@ -57,9 +57,9 @@ VergeN 是基于 [clash-verge-rev](https://github.com/clash-verge-rev/clash-verg
 - `server/` — 运维服务(Go)与面板前端(`server/web`,React,构建产物内嵌)
 - `crates/` — 客户端附属 Rust 组件(内核管理、国际化等)
 
-## Release(CI)
+## Release(CD)
 
-推送 `v*` tag 自动构建并上传发布产物(见 `.github/workflows/release.yml`):
+在 GitHub Actions 中手动运行 Release 工作流,选择 `main` 分支并填写 `vX.Y.Z` 格式的 tag。推送 tag 不会触发发布。工作流构建并上传以下产物(见 [release.yml](.github/workflows/release.yml)):
 
 - 桌面三平台(macOS / Windows / Linux,tauri-action)
 - Android 五个 ABI(arm64-v8a / armeabi-v7a / x86 / x86_64 / universal),命名 `vergen-<tag>-android-<abi>.apk`
