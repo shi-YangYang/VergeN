@@ -3,6 +3,7 @@ package web
 import (
 	"bytes"
 	"fmt"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -12,9 +13,9 @@ import (
 
 // FileRow is one published package file from the downloads directory.
 type FileRow struct {
-	Name string
-	Size string
-	Icon string
+	Name     string `json:"name"`
+	Size     string `json:"size"`
+	Platform string `json:"platform"`
 }
 
 // Files serves a published package by exact name. The name is matched
@@ -37,7 +38,13 @@ func Files(downloadsDir string) http.HandlerFunc {
 			http.NotFound(w, r)
 			return
 		}
-		w.Header().Set("Content-Type", "application/vnd.android.package-archive")
+		contentType := mime.TypeByExtension(strings.ToLower(filepath.Ext(name)))
+		if strings.EqualFold(filepath.Ext(name), ".apk") {
+			contentType = "application/vnd.android.package-archive"
+		} else if contentType == "" {
+			contentType = "application/octet-stream"
+		}
+		w.Header().Set("Content-Type", contentType)
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, name))
 		http.ServeFile(w, r, filepath.Join(downloadsDir, name))
 	}
@@ -56,42 +63,32 @@ func Packages(dir string) []FileRow {
 	var rows []FileRow
 	for _, entry := range entries {
 		name := entry.Name()
-		if entry.IsDir() || !isPackageFile(name) {
+		platform := packagePlatform(name)
+		if entry.IsDir() || platform == "" {
 			continue
 		}
 		info, err := entry.Info()
 		if err != nil {
 			continue
 		}
-		rows = append(rows, FileRow{Name: name, Size: formatSize(info.Size()), Icon: packageIcon(name)})
+		rows = append(rows, FileRow{Name: name, Size: formatSize(info.Size()), Platform: platform})
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].Name < rows[j].Name })
 	return rows
 }
 
-// packageIcon picks a platform hint for a package file name; unknown
-// extensions get a plain download glyph.
-func packageIcon(name string) string {
+func packagePlatform(name string) string {
 	switch strings.ToLower(filepath.Ext(name)) {
 	case ".apk":
-		return "🤖"
+		return "android"
 	case ".exe", ".msi":
-		return "🪟"
+		return "windows"
 	case ".dmg", ".pkg":
-		return "🍎"
+		return "macos"
 	case ".deb", ".rpm", ".appimage":
-		return "🐧"
-	default:
-		return "⬇"
+		return "linux"
 	}
-}
-
-func isPackageFile(name string) bool {
-	switch strings.ToLower(filepath.Ext(name)) {
-	case ".apk", ".exe", ".msi", ".dmg", ".pkg", ".deb", ".rpm", ".appimage":
-		return true
-	}
-	return false
+	return ""
 }
 
 func formatSize(size int64) string {

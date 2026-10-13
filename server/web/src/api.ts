@@ -301,13 +301,22 @@ export interface PublicRelease {
   created_at: number
 }
 
-export async function fetchPublicReleases(): Promise<PublicRelease[]> {
+export interface PublicDownloads {
+  releases: PublicRelease[]
+  packages: {
+    name: string
+    size: string
+    platform: 'windows' | 'macos' | 'linux' | 'android'
+  }[]
+}
+
+export async function fetchPublicReleases(): Promise<PublicDownloads> {
   try {
     const response = await fetch('/api/v1/public/releases')
-    if (!response.ok) return []
-    const data = (await response.json()) as { releases: PublicRelease[] }
-    return data.releases ?? []
+    if (!response.ok) return { releases: [], packages: [] }
+    const data = (await response.json()) as PublicDownloads
+    return { releases: data.releases ?? [], packages: data.packages ?? [] }
   } catch {
-    return []
+    return { releases: [], packages: [] }
   }
 }

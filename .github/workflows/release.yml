@@ -6,12 +6,12 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag, e.g. v0.1.1"
+        description: "Client version, e.g. v0.1.1"
         required: true
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
@@ -65,22 +65,44 @@ jobs:
           key: ${{ matrix.target }}
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Set the client version
+        shell: bash
+        run: pnpm release-version "$RELEASE_TAG"
       - name: Build the admin panel
         working-directory: server/web
         run: pnpm install --frozen-lockfile && pnpm build
       - name: Fetch mihomo sidecars and service release
         run: pnpm prebuild ${{ matrix.target }}
-      - name: Build and publish the desktop app
+      - name: Build the desktop app
+        id: desktop
         uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ env.RELEASE_TAG }}
-          releaseName: VergeN ${{ env.RELEASE_TAG }}
-          releaseBody: "See the assets to download and install this version."
-          releaseDraft: false
-          prerelease: false
           args: --target ${{ matrix.target }}
+      - name: Collect desktop packages
+        env:
+          ARTIFACT_PATHS: ${{ steps.desktop.outputs.artifactPaths }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          fs.mkdirSync('client-artifacts');
+          for (const file of JSON.parse(process.env.ARTIFACT_PATHS)) {
+            if (fs.statSync(file, { throwIfNoEntry: false })?.isFile()) {
+              fs.copyFileSync(file, path.join('client-artifacts', path.basename(file)));
+            }
+          }
+          if (!fs.readdirSync('client-artifacts').some(file => /\.(exe|msi|dmg|pkg|deb|rpm|AppImage)$/i.test(file))) {
+            throw new Error('No desktop installer was produced');
+          }
+          NODE
+      - name: Store desktop packages for deployment
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-${{ matrix.label }}
+          path: client-artifacts/
+          if-no-files-found: error
+          compression-level: 0
 
   android:
     name: Android client
@@ -102,8 +124,8 @@ jobs:
         env:
           ANDROID_HOME: /usr/local/lib/android/sdk
         run: |
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null 2>&1 || true
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install \
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null 2>&1 || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
             "platforms;android-35" \
             "build-tools;35.0.0" \
             "platform-tools" \
@@ -139,51 +161,31 @@ jobs:
             "$store" "${VERGEN_KEY_PASSWORD:-$store}" > signing.properties
       - name: Build the Android client
         working-directory: android
-        run: JAVA_HOME=$JAVA_HOME ./gradlew :app:assembleAlphaRelease --no-daemon --console=plain
-      - name: Rename artifacts
+        run: |
+          ./gradlew :app:assembleAlphaRelease --no-daemon --console=plain \
+            -PvergenVersionName="${RELEASE_TAG#v}" \
+            -PvergenVersionCode="$GITHUB_RUN_NUMBER"
+      - name: Prepare the Android package
         working-directory: android/app/build/outputs/apk/alpha/release
         run: |
           mkdir -p ../upload
-          for arch in arm64-v8a armeabi-v7a x86 x86_64 universal; do
-            src=$(find . -maxdepth 1 -name "*-${arch}-release.apk" -print -quit)
-            if [ -n "$src" ]; then
-              cp "$src" "../upload/vergen-${RELEASE_TAG#v}-android-$arch.apk"
-            else
-              echo "::warning::no APK matched *-${arch}-release.apk"
-            fi
-          done
-          ls -la ../upload
-      - name: Upload to the release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release upload "$RELEASE_TAG" \
-            android/app/build/outputs/apk/alpha/upload/*.apk \
-            --clobber --repo "$GITHUB_REPOSITORY"
+          src=$(find . -maxdepth 1 -name '*-arm64-v8a-release.apk' -print -quit)
+          if [ -z "$src" ]; then
+            echo "::error::no arm64-v8a APK was produced"
+            exit 1
+          fi
+          cp "$src" "../upload/vergen-${RELEASE_TAG#v}-android-arm64-v8a.apk"
+      - name: Store the Android package for deployment
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-android
+          path: android/app/build/outputs/apk/alpha/upload/*-android-arm64-v8a.apk
+          if-no-files-found: error
+          compression-level: 0
 
   server:
-    name: Server ${{ matrix.label }}
-    needs: client
+    name: Server linux-amd64
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - label: linux-amd64
-            goos: linux
-            goarch: amd64
-          - label: linux-arm64
-            goos: linux
-            goarch: arm64
-          - label: darwin-amd64
-            goos: darwin
-            goarch: amd64
-          - label: darwin-arm64
-            goos: darwin
-            goarch: arm64
-          - label: windows-amd64
-            goos: windows
-            goarch: amd64
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -205,23 +207,17 @@ jobs:
       - name: Build the vergen server
         working-directory: server
         env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
+          GOOS: linux
+          GOARCH: amd64
           CGO_ENABLED: 0
         shell: bash
-        run: |
-          ext=""
-          [ "$GOOS" = "windows" ] && ext=".exe"
-          output="vergen-server-${GOOS}-${GOARCH}${ext}"
-          go build -trimpath -ldflags "-s -w" -o "$output" ./cmd/server
-          echo "output=$output" >> "$GITHUB_ENV"
-      - name: Upload to the release
-        working-directory: server
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
-        run: |
-          gh release upload "$RELEASE_TAG" "$output" --clobber --repo "$GITHUB_REPOSITORY"
+        run: go build -trimpath -ldflags "-s -w" -o vergen-server-linux-amd64 ./cmd/server
+      - name: Store the server binary for deployment
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-linux-amd64
+          path: server/vergen-server-linux-amd64
+          if-no-files-found: error
 
   deploy:
     name: Deploy ops server
@@ -229,8 +225,8 @@ jobs:
     # target host; the SQLite db on the host survives binary replacements.
     # Required configuration: secrets DEPLOY_HOST / DEPLOY_USER /
     # DEPLOY_SSH_KEY, optional secrets DEPLOY_PORT (service port, default
-    # 8080) and DEPLOY_SSH_PORT, optional var DEPLOY_ARCH (default amd64).
-    needs: [client, server]
+    # 8080) and DEPLOY_SSH_PORT.
+    needs: [client, android, server]
     runs-on: ubuntu-latest
     steps:
       - name: Skip when deployment is not configured
@@ -263,22 +259,29 @@ jobs:
             echo "  Port ${DEPLOY_SSH_PORT:-22}"
             echo "  IdentityFile ~/.ssh/vergen_deploy_key"
             echo "  StrictHostKeyChecking accept-new"
+            echo "  BatchMode yes"
+            echo "  ConnectTimeout 15"
           } > ~/.ssh/config
           chmod 600 ~/.ssh/config
-      - name: Download the server binary asset
+      - name: Download the server binary
+        if: env.SKIP_DEPLOY != '1'
+        uses: actions/download-artifact@v4
+        with:
+          name: server-linux-amd64
+          path: server-artifacts/
+      - name: Download client packages
+        if: env.SKIP_DEPLOY != '1'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: client-*
+          merge-multiple: true
+          path: client-artifacts/
+      - name: Prepare the server binary
         if: env.SKIP_DEPLOY != '1'
         shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DEPLOY_ARCH: ${{ vars.DEPLOY_ARCH }}
         run: |
-          ARCH="${DEPLOY_ARCH:-amd64}"
-          gh release download "$RELEASE_TAG" \
-            --pattern "vergen-server-linux-$ARCH" --dir . --repo "$GITHUB_REPOSITORY"
-          mv "vergen-server-linux-$ARCH" vergen-server
+          mv server-artifacts/vergen-server-linux-amd64 vergen-server
           chmod +x vergen-server
-          gh release download "$RELEASE_TAG" \
-            --pattern "vergen-*.apk" --dir apk-assets --repo "$GITHUB_REPOSITORY"
       - name: Render the systemd unit
         if: env.SKIP_DEPLOY != '1'
         shell: bash
@@ -308,37 +311,35 @@ jobs:
           UNIT
       - name: Ship and restart
         if: env.SKIP_DEPLOY != '1'
+        timeout-minutes: 10
         shell: bash
         run: |
+          set -x
           scp vergen-server vergen-target:/tmp/vergen-server.new
           scp /tmp/vergen-server.service vergen-target:/tmp/vergen-server.service
-          ssh vergen-target <<'REMOTE'
-          set -e
-          id vergen >/dev/null 2>&1 || sudo useradd -r -s /usr/sbin/nologin vergen
-          sudo mv /tmp/vergen-server.new /usr/local/bin/vergen-server
-          sudo chmod 755 /usr/local/bin/vergen-server
-          sudo mkdir -p /var/lib/vergen
-          sudo chown -R vergen:vergen /var/lib/vergen
-          sudo mv /tmp/vergen-server.service /etc/systemd/system/vergen-server.service
-          sudo systemctl daemon-reload
-          sudo systemctl enable vergen-server
-          sudo systemctl restart vergen-server
+          ssh -T vergen-target 'bash -se' <<'REMOTE'
+          set -x
+          id vergen >/dev/null 2>&1 || sudo -n useradd -r -s /usr/sbin/nologin vergen
+          sudo -n mv /tmp/vergen-server.new /usr/local/bin/vergen-server
+          sudo -n chmod 755 /usr/local/bin/vergen-server
+          sudo -n mkdir -p /var/lib/vergen
+          sudo -n chown -R vergen:vergen /var/lib/vergen
+          sudo -n mv /tmp/vergen-server.service /etc/systemd/system/vergen-server.service
+          sudo -n systemctl daemon-reload
+          sudo -n systemctl enable vergen-server
+          sudo -n systemctl restart vergen-server
           REMOTE
-          ssh vergen-target 'sudo mkdir -p /var/lib/vergen/downloads && sudo chmod 755 /var/lib/vergen/downloads'
-          # Replace-with-latest: downloads always mirror the current release.
-          ssh vergen-target 'mkdir -p /tmp/vergen-apk-upload && rm -f /tmp/vergen-apk-upload/*.apk'
-          scp apk-assets/*.apk vergen-target:/tmp/vergen-apk-upload/
-          ssh vergen-target 'set -e; for f in /tmp/vergen-apk-upload/*.apk; do sudo mv -f "$f" /var/lib/vergen/downloads/; done; sudo chown vergen:vergen /var/lib/vergen/downloads/*.apk; rmdir /tmp/vergen-apk-upload'
       - name: Health check
         if: env.SKIP_DEPLOY != '1'
+        timeout-minutes: 5
         shell: bash
         env:
           DEPLOY_SERVICE_PORT: ${{ secrets.DEPLOY_PORT }}
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
         run: |
           port="${DEPLOY_SERVICE_PORT:-8080}"
+          ssh -T vergen-target "bash -se -- '$port'" <<'REMOTE'
           for _ in $(seq 1 30); do
-            if curl -fsS --max-time 5 "http://$DEPLOY_HOST:$port/healthz" | grep -q ok; then
+            if curl -fsS --max-time 5 "http://127.0.0.1:$1/healthz" | grep -q ok; then
               echo "deploy health check ok"
               exit 0
             fi
@@ -346,3 +347,26 @@ jobs:
           done
           echo "::error::health check failed after deploy"
           exit 1
+          REMOTE
+      - name: Publish client downloads
+        if: env.SKIP_DEPLOY != '1'
+        timeout-minutes: 15
+        shell: bash
+        run: |
+          set -x
+          staging="/tmp/vergen-client-upload-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          ssh -T vergen-target "bash -se -- '$staging'" <<'REMOTE'
+          mkdir -p "$1"
+          REMOTE
+          scp client-artifacts/* "vergen-target:$staging/"
+          ssh -T vergen-target "bash -se -- '$staging'" <<'REMOTE'
+          set -x
+          sudo -n mkdir -p /var/lib/vergen/downloads
+          sudo -n chmod 755 /var/lib/vergen/downloads
+          for file in "$1"/*; do
+            sudo -n chmod 644 "$file"
+            sudo -n chown vergen:vergen "$file"
+            sudo -n mv -f "$file" /var/lib/vergen/downloads/
+          done
+          rmdir "$1"
+          REMOTE

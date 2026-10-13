@@ -59,14 +59,17 @@ VergeN 是基于 [clash-verge-rev](https://github.com/clash-verge-rev/clash-verg
 
 ## Release(CD)
 
-在 GitHub Actions 中手动运行 Release 工作流,选择 `main` 分支并填写 `vX.Y.Z` 格式的 tag。推送 tag 不会触发发布。工作流构建并上传以下产物(见 [release.yml](.github/workflows/release.yml)):
+在 GitHub Actions 中手动运行 Release 工作流,选择 `main` 分支并在 tag 输入框填写 `vX.Y.Z` 格式的客户端版本号。推送 tag 不会触发发布,工作流也不创建或上传 GitHub Release。构建产物通过 Actions artifacts 传给部署任务(见 [release.yml](.github/workflows/release.yml)):
 
-- 桌面三平台(macOS / Windows / Linux,tauri-action)
-- Android 五个 ABI(arm64-v8a / armeabi-v7a / x86 / x86_64 / universal),命名 `vergen-<tag>-android-<abi>.apk`
-- 运维服务 5 个平台的 `vergen-server-<os>-<arch>`
-- 可选:配置 `DEPLOY_*` secrets 后自动部署运维服务到目标服务器
+- 桌面三平台(macOS arm64 / Windows x64 / Linux x64),包内版本与本次输入一致
+- Android 仅构建 arm64-v8a,命名 `vergen-<版本号>-android-arm64-v8a.apk`
+- 运维服务仅构建 Linux amd64,产物为 `vergen-server-linux-amd64`
 
-所需仓库配置:变量 `VITE_ENTERPRISE_SERVER_URL`(烧进客户端的公司服务地址);secrets `TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)`(桌面更新签名)、`ANDROID_SIGN_STORE_PASSWORD / ANDROID_SIGN_KEY_PASSWORD`(生产签名密码,未配置时回退到仓库 dev keystore)。
+配置 `DEPLOY_HOST`、`DEPLOY_USER`、`DEPLOY_SSH_KEY` secrets 后,CD 自动安装并重启运维服务(内嵌新面板),再将各平台安装包部署到 `/var/lib/vergen/downloads`。公开下载页 `/download` 自动列出这些安装包,显示平台、版本/架构文件名和大小,无需手动登记下载链接;已有安装包与后台手动发布记录会保留。客户端自动更新仍使用后台配置的 updater manifest。
+
+部署目标为 Linux amd64 服务器,部署账号需要免密 sudo。可选 secrets: `DEPLOY_SSH_PORT`(默认 22)、`DEPLOY_PORT`(服务监听本机端口,默认 8080)。服务通过已有 Caddy 配置对外提供访问。
+
+其他仓库配置:变量 `VITE_ENTERPRISE_SERVER_URL`(烧进桌面客户端的公司服务地址);secrets `TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)`(桌面更新签名)、`ANDROID_KEYSTORE_BASE64` 与 `ANDROID_SIGN_STORE_PASSWORD / ANDROID_SIGN_KEY_PASSWORD`(Android 生产签名,未提供 keystore 时使用 debug 签名)。
 
 本地 Android 构建如需覆盖默认服务地址,编辑 `android/app/src/main/java/com/github/kr328/clash/enterprise/EnterpriseKit.kt` 顶部的 `VERGEN_SERVER_URL`。
 

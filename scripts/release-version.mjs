@@ -116,7 +116,7 @@ async function updatePackageVersion(newVersion) {
       `$1"${versionWithoutV}"`,
     )
 
-    if (updatedData === data) {
+    if (!/^(\s*"version"\s*:\s*)"[^"]+"/m.test(data)) {
       throw new Error('version field was not found in package.json')
     }
 
@@ -172,7 +172,7 @@ async function updateCargoLockVersion(newVersion) {
       `$1"${versionWithoutV}"`,
     )
 
-    if (updatedData === data) {
+    if (!packageVersionPattern.test(data)) {
       throw new Error('vergen package entry was not found in Cargo.lock')
     }
 
@@ -204,7 +204,7 @@ async function updateTauriConfigVersion(newVersion) {
       `$1"${versionWithoutV}"`,
     )
 
-    if (updatedData === data) {
+    if (!/^(\s*"version"\s*:\s*)"[^"]+"/m.test(data)) {
       throw new Error('version field was not found in tauri.conf.json')
     }
 

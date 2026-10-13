@@ -389,7 +389,10 @@ func (a *Server) handlePublicRelease(w http.ResponseWriter, _ *http.Request) {
 	}
 	out := make([]*store.Release, 0, len(list))
 	out = append(out, list...)
-	writeJSON(w, http.StatusOK, map[string]any{"releases": out})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"releases": out,
+		"packages": web.Packages(a.downloads),
+	})
 }
 
 type bootstrapSubscription struct {
