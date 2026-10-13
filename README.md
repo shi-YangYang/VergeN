@@ -65,7 +65,11 @@ VergeN 是基于 [clash-verge-rev](https://github.com/clash-verge-rev/clash-verg
 - Android 仅构建 arm64-v8a,命名 `vergen-<版本号>-android-arm64-v8a.apk`
 - 运维服务仅构建 Linux amd64,产物为 `vergen-server-linux-amd64`
 
-配置 `DEPLOY_HOST`、`DEPLOY_USER`、`DEPLOY_SSH_KEY` secrets 后,CD 自动安装并重启运维服务(内嵌新面板),再将各平台安装包部署到 `/var/lib/vergen/downloads`。公开下载页 `/download` 自动列出这些安装包,显示平台、版本/架构文件名和大小,无需手动登记下载链接;已有安装包与后台手动发布记录会保留。客户端自动更新仍使用后台配置的 updater manifest。
+桌面 CD 使用并行代码生成并关闭调试信息,保留发布级优化和 ThinLTO;发行包的 Rust 回溯不再包含源码行号,本地开发构建配置不变。首次使用新编译配置时需要重新建立缓存。
+
+配置 `DEPLOY_HOST`、`DEPLOY_USER`、`DEPLOY_SSH_KEY` secrets 后,CD 自动安装并重启运维服务(内嵌新面板),再将各平台安装包部署到 `/var/lib/vergen/downloads`。公开下载页 `/download` 自动列出这些安装包,显示平台、版本/架构文件名和大小,无需手动登记下载链接;已有安装包与后台手动发布记录会保留。部署仅传下载页支持的安装包;更新归档与签名文件单独保存在 `updater-*` Actions artifacts,供手动发布更新使用。服务端程序及同名安装包的 SHA256 未变时跳过上传。客户端自动更新仍使用后台配置的 updater manifest。
+
+安装包最多两路并行上传,日志显示文件大小、耗时和平均速度。重新运行同一次 Actions 发布任务时,相同批次中已经完整上传的安装包会经过 SHA256 校验后复用;未传完的文件重新上传。所有安装包校验通过后再发布到下载页。
 
 部署目标为 Linux amd64 服务器,部署账号需要免密 sudo。可选 secrets: `DEPLOY_SSH_PORT`(默认 22)、`DEPLOY_PORT`(服务监听本机端口,默认 8080)。服务通过已有 Caddy 配置对外提供访问。
 
