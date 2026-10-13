@@ -1,15 +1,12 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*"
-  # Manual CD: run from Actions against the main branch and give the
-  # release tag; a tag push of the same shape does the same thing.
+  # Manual CD only: run from the Actions tab against the main branch and
+  # provide the release tag. Pushing a tag does NOT start this pipeline.
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag (e.g. v0.1.0)"
+        description: "Release tag, e.g. v0.1.1"
         required: true
         type: string
 
@@ -69,7 +66,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build the admin panel
-        run: pnpm build --prefix server/web
+        working-directory: server/web
+        run: pnpm install --frozen-lockfile && pnpm build
       - name: Fetch mihomo sidecars and service release
         run: pnpm prebuild ${{ matrix.target }}
       - name: Build and publish the desktop app
@@ -101,9 +99,11 @@ jobs:
         with:
           go-version-file: android/core/src/foss/golang/clash/go.mod
       - name: Install Android SDK pieces
+        env:
+          ANDROID_HOME: /usr/local/lib/android/sdk
         run: |
-          yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          sdkmanager --install \
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null 2>&1 || true
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install \
             "platforms;android-35" \
             "build-tools;35.0.0" \
             "platform-tools" \
@@ -113,6 +113,8 @@ jobs:
       # so upgrades install over the same package instead of a .alpha twin.
       - name: Configure the flavor identity
         working-directory: android
+        env:
+          ANDROID_HOME: /usr/local/lib/android/sdk
         run: printf 'sdk.dir=%s\nremove.suffix=true\n' \
           "$ANDROID_HOME" > local.properties
       - name: Wire signing config
