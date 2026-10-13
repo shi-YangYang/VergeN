@@ -394,37 +394,98 @@ jobs:
         shell: bash
         run: |
           set -x
+          export LC_ALL=C
           du -ch client-artifacts/*
-          staging="/tmp/vergen-client-upload-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          batch_hash=$(sha256sum client-artifacts/* | sha256sum | cut -d ' ' -f 1)
+          staging="/tmp/vergen-client-upload-${GITHUB_RUN_ID}-${batch_hash}"
           ssh -T vergen-target "bash -se -- '$staging'" <<'REMOTE'
           mkdir -p "$1"
           REMOTE
-          for file in client-artifacts/*; do
-            local_hash=$(sha256sum "$file" | cut -d ' ' -f 1)
+          upload_package() {
+            local file=$1 local_hash=$2 remote_name state upload_command started elapsed bytes
             printf -v remote_name '%q' "$(basename "$file")"
-            remote_hash=$(ssh -T vergen-target "bash -se -- $remote_name" <<'REMOTE'
-          file="/var/lib/vergen/downloads/$1"
-          if [ -f "$file" ]; then
-            sha256sum "$file" | cut -d ' ' -f 1
+            state=$(ssh -T vergen-target "bash -se -- '$staging' $remote_name '$local_hash'" <<'REMOTE'
+          if [ -f "/var/lib/vergen/downloads/$2" ]; then
+            checksum=$(sha256sum "/var/lib/vergen/downloads/$2")
+            if [ "${checksum%% *}" = "$3" ]; then
+              rm -f "$1/$2"
+              echo published
+              exit 0
+            fi
           fi
+          if [ -f "$1/$2" ]; then
+            checksum=$(sha256sum "$1/$2")
+            if [ "${checksum%% *}" = "$3" ]; then
+              echo staged
+              exit 0
+            fi
+          fi
+          echo upload
           REMOTE
             )
-            if [ "$local_hash" = "$remote_hash" ]; then
-              echo "Package unchanged; skipping upload: $file"
-              continue
-            fi
+            case "$state" in
+              published) echo "Package unchanged; skipping upload: $file"; return ;;
+              staged) echo "Reusing completed upload: $file"; return ;;
+              upload) ;;
+              *) echo "::error::Unexpected upload state for $file: $state"; return 1 ;;
+            esac
+            started=$SECONDS
             printf -v upload_command 'scp -v %q %q' "$file" "vergen-target:$staging/"
             script -q -e -c "$upload_command" /dev/null </dev/null
+            elapsed=$((SECONDS - started))
+            if [ "$elapsed" -eq 0 ]; then elapsed=1; fi
+            bytes=$(stat -c %s "$file")
+            echo "Uploaded $file: $bytes bytes in ${elapsed}s ($((bytes / elapsed / 1024)) KiB/s)"
+          }
+          wait_for_uploads() {
+            local pid result=0
+            for pid in "$@"; do
+              wait "$pid" || result=1
+            done
+            return "$result"
+          }
+          max_parallel=2
+          pids=()
+          publish_args=
+          for file in client-artifacts/*; do
+            local_hash=$(sha256sum "$file" | cut -d ' ' -f 1)
+            printf -v file_args ' %q %q' "$(basename "$file")" "$local_hash"
+            publish_args+="$file_args"
+            upload_package "$file" "$local_hash" &
+            pids+=("$!")
+            if [ "${#pids[@]}" -eq "$max_parallel" ]; then
+              wait_for_uploads "${pids[@]}"
+              pids=()
+            fi
           done
-          ssh -T vergen-target "bash -se -- '$staging'" <<'REMOTE'
+          wait_for_uploads "${pids[@]}"
+          ssh -T vergen-target "bash -se -- '$staging'$publish_args" <<'REMOTE'
           set -x
+          staging=$1
+          shift
+          files=()
+          while [ "$#" -gt 0 ]; do
+            name=$1
+            expected=$2
+            shift 2
+            file="$staging/$name"
+            if [ -f "$file" ]; then
+              files+=("$file")
+            else
+              file="/var/lib/vergen/downloads/$name"
+            fi
+            checksum=$(sha256sum "$file")
+            if [ "${checksum%% *}" != "$expected" ]; then
+              echo "::error::Package checksum mismatch: $name"
+              exit 1
+            fi
+          done
           sudo -n mkdir -p /var/lib/vergen/downloads
           sudo -n chmod 755 /var/lib/vergen/downloads
-          shopt -s nullglob
-          for file in "$1"/*; do
+          for file in "${files[@]}"; do
             sudo -n chmod 644 "$file"
             sudo -n chown vergen:vergen "$file"
             sudo -n mv -f "$file" /var/lib/vergen/downloads/
           done
-          rmdir "$1"
+          rmdir "$staging"
           REMOTE

@@ -69,6 +69,8 @@ VergeN 是基于 [clash-verge-rev](https://github.com/clash-verge-rev/clash-verg
 
 配置 `DEPLOY_HOST`、`DEPLOY_USER`、`DEPLOY_SSH_KEY` secrets 后,CD 自动安装并重启运维服务(内嵌新面板),再将各平台安装包部署到 `/var/lib/vergen/downloads`。公开下载页 `/download` 自动列出这些安装包,显示平台、版本/架构文件名和大小,无需手动登记下载链接;已有安装包与后台手动发布记录会保留。部署仅传下载页支持的安装包;更新归档与签名文件单独保存在 `updater-*` Actions artifacts,供手动发布更新使用。服务端程序及同名安装包的 SHA256 未变时跳过上传。客户端自动更新仍使用后台配置的 updater manifest。
 
+安装包最多两路并行上传,日志显示文件大小、耗时和平均速度。重新运行同一次 Actions 发布任务时,相同批次中已经完整上传的安装包会经过 SHA256 校验后复用;未传完的文件重新上传。所有安装包校验通过后再发布到下载页。
+
 部署目标为 Linux amd64 服务器,部署账号需要免密 sudo。可选 secrets: `DEPLOY_SSH_PORT`(默认 22)、`DEPLOY_PORT`(服务监听本机端口,默认 8080)。服务通过已有 Caddy 配置对外提供访问。
 
 其他仓库配置:变量 `VITE_ENTERPRISE_SERVER_URL`(烧进桌面客户端的公司服务地址);secrets `TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)`(桌面更新签名)、`ANDROID_KEYSTORE_BASE64` 与 `ANDROID_SIGN_STORE_PASSWORD / ANDROID_SIGN_KEY_PASSWORD`(Android 生产签名,未提供 keystore 时使用 debug 签名)。
