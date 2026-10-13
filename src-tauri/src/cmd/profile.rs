@@ -141,7 +141,14 @@ pub async fn create_profile(item: PrfItem, file_data: Option<String>) -> CmdResu
 
 #[tauri::command]
 pub async fn update_profile(index: String, option: Option<PrfOption>) -> CmdResult {
-    if option.is_some() {
+    if option.as_ref().is_some_and(|option| {
+        option
+            != &PrfOption {
+                with_proxy: option.with_proxy,
+                self_proxy: option.self_proxy,
+                ..PrfOption::default()
+            }
+    }) {
         guard_managed_profile(&index)
             .await
             .with_error_code("PROFILE_UPDATE_FAILED")?;

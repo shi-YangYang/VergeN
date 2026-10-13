@@ -81,7 +81,7 @@ export interface ProfileItemProps {
 
 const ProfileItemBase = (props: ProfileItemProps) => {
   const { verge } = useVerge()
-  // Managed subscriptions can refresh, but their local settings stay locked.
+  // Managed subscriptions keep their source settings locked.
   const { itemData, ...restOfProps } = props
   const locked = verge?.enterprise_profile_uid === itemData.uid
   const {
@@ -441,7 +441,6 @@ const ProfileItemBase = (props: ProfileItemProps) => {
     delete: 'shared.actions.delete',
   } as const
 
-  // 公司统一下发的订阅:右键菜单只放行【使用】,其余全部禁用
   const urlModeMenu: ContextMenuItem[] = [
     ...(hasHome
       ? [
@@ -475,7 +474,7 @@ const ProfileItemBase = (props: ProfileItemProps) => {
     {
       label: menuLabels.editRules,
       handler: onEditRules,
-      disabled: locked || !option?.rules,
+      disabled: !option?.rules,
     },
     {
       label: menuLabels.editProxies,
@@ -485,7 +484,7 @@ const ProfileItemBase = (props: ProfileItemProps) => {
     {
       label: menuLabels.editGroups,
       handler: onEditGroups,
-      disabled: locked || !option?.groups,
+      disabled: !option?.groups,
     },
     {
       label: menuLabels.extendConfig,
@@ -505,12 +504,12 @@ const ProfileItemBase = (props: ProfileItemProps) => {
     {
       label: menuLabels.update,
       handler: () => onUpdate(0),
-      disabled: locked,
+      disabled: false,
     },
     {
       label: menuLabels.updateViaProxy,
       handler: () => onUpdate(2),
-      disabled: locked,
+      disabled: false,
     },
     {
       label: menuLabels.delete,
