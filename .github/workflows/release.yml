@@ -246,6 +246,8 @@ jobs:
             --pattern "vergen-server-linux-$ARCH" --dir . --repo "$GITHUB_REPOSITORY"
           mv "vergen-server-linux-$ARCH" vergen-server
           chmod +x vergen-server
+          gh release download "$RELEASE_TAG" \
+            --pattern "vergen-*.apk" --dir apk-assets --repo "$GITHUB_REPOSITORY"
       - name: Render the systemd unit
         if: env.SKIP_DEPLOY != '1'
         shell: bash
@@ -262,7 +264,7 @@ jobs:
 
           [Service]
           User=vergen
-          ExecStart=/usr/local/bin/vergen-server --db /var/lib/vergen/vergen.db --addr 127.0.0.1:$port
+          ExecStart=/usr/local/bin/vergen-server --db /var/lib/vergen/vergen.db --addr 127.0.0.1:$port --downloads /var/lib/vergen/downloads
           Restart=always
           RestartSec=3
           NoNewPrivileges=true
@@ -291,6 +293,11 @@ jobs:
           sudo systemctl enable vergen-server
           sudo systemctl restart vergen-server
           REMOTE
+          ssh vergen-target 'sudo mkdir -p /var/lib/vergen/downloads && sudo chmod 755 /var/lib/vergen/downloads'
+          # Replace-with-latest: downloads always mirror the current release.
+          ssh vergen-target 'mkdir -p /tmp/vergen-apk-upload && rm -f /tmp/vergen-apk-upload/*.apk'
+          scp apk-assets/*.apk vergen-target:/tmp/vergen-apk-upload/
+          ssh vergen-target 'set -e; for f in /tmp/vergen-apk-upload/*.apk; do sudo mv -f "$f" /var/lib/vergen/downloads/; done; sudo chown vergen:vergen /var/lib/vergen/downloads/*.apk; rmdir /tmp/vergen-apk-upload'
       - name: Health check
         if: env.SKIP_DEPLOY != '1'
         shell: bash
