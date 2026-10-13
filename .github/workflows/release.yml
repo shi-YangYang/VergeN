@@ -258,11 +258,21 @@ jobs:
             echo "  User $DEPLOY_USER"
             echo "  Port ${DEPLOY_SSH_PORT:-22}"
             echo "  IdentityFile ~/.ssh/vergen_deploy_key"
+            echo "  IdentitiesOnly yes"
             echo "  StrictHostKeyChecking accept-new"
             echo "  BatchMode yes"
             echo "  ConnectTimeout 15"
+            echo "  ServerAliveInterval 15"
+            echo "  ServerAliveCountMax 3"
           } > ~/.ssh/config
           chmod 600 ~/.ssh/config
+      - name: Check deployment connection
+        if: env.SKIP_DEPLOY != '1'
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          timeout --kill-after=5s 45s ssh -n -v -T vergen-target \
+            'printf "%s\n" vergen-deploy-ssh-ok' | grep -Fx vergen-deploy-ssh-ok
       - name: Download the server binary
         if: env.SKIP_DEPLOY != '1'
         uses: actions/download-artifact@v4
@@ -309,14 +319,21 @@ jobs:
           [Install]
           WantedBy=multi-user.target
           UNIT
-      - name: Ship and restart
+      - name: Upload server files
         if: env.SKIP_DEPLOY != '1'
         timeout-minutes: 10
         shell: bash
         run: |
           set -x
-          scp vergen-server vergen-target:/tmp/vergen-server.new
-          scp /tmp/vergen-server.service vergen-target:/tmp/vergen-server.service
+          ls -lh vergen-server /tmp/vergen-server.service
+          # scp hides its progress meter without a local terminal in Actions.
+          script -q -e -c 'scp -v -C vergen-server vergen-target:/tmp/vergen-server.new' /dev/null </dev/null
+          script -q -e -c 'scp -v /tmp/vergen-server.service vergen-target:/tmp/vergen-server.service' /dev/null </dev/null
+      - name: Restart ops server
+        if: env.SKIP_DEPLOY != '1'
+        timeout-minutes: 3
+        shell: bash
+        run: |
           ssh -T vergen-target 'bash -se' <<'REMOTE'
           set -x
           id vergen >/dev/null 2>&1 || sudo -n useradd -r -s /usr/sbin/nologin vergen
@@ -358,7 +375,7 @@ jobs:
           ssh -T vergen-target "bash -se -- '$staging'" <<'REMOTE'
           mkdir -p "$1"
           REMOTE
-          scp client-artifacts/* "vergen-target:$staging/"
+          script -q -e -c "scp -v client-artifacts/* 'vergen-target:$staging/'" /dev/null </dev/null
           ssh -T vergen-target "bash -se -- '$staging'" <<'REMOTE'
           set -x
           sudo -n mkdir -p /var/lib/vergen/downloads
