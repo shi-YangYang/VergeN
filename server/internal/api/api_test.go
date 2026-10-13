@@ -20,7 +20,7 @@ func newTestBackend(t *testing.T) (http.Handler, *store.Store) {
 		t.Fatalf("open store: %v", err)
 	}
 	t.Cleanup(func() { s.Close() })
-	sv, err := NewServer(s)
+	sv, err := NewServer(s, "")
 	if err != nil {
 		t.Fatalf("new server: %v", err)
 	}

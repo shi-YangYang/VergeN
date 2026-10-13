@@ -31,9 +31,12 @@ type Server struct {
 	// and the client simply starts a new scan.
 	qrSessions  *dingtalkQrSessions
 	pollLimiter *auth.Limiter
+	// Directory of published client package files served from /files and
+	// listed on the root landing page; empty disables that section.
+	downloads string
 }
 
-func NewServer(s *store.Store) (*Server, error) {
+func NewServer(s *store.Store, downloadsDir string) (*Server, error) {
 	secret, err := s.Secret()
 	if err != nil {
 		return nil, err
@@ -41,6 +44,7 @@ func NewServer(s *store.Store) (*Server, error) {
 	return &Server{
 		store:       s,
 		secret:      secret,
+		downloads:   downloadsDir,
 		limiter:     auth.NewLimiter(15*time.Minute, 5),
 		accessTTL:   accessTTLDefault,
 		refreshTTL:  refreshTTLDefault,
@@ -55,6 +59,10 @@ func (a *Server) Handler() (http.Handler, error) {
 		return nil, err
 	}
 	mux := http.NewServeMux()
+	// Handoff page on the root path: operators go to the admin panel,
+	// employees pick up published client package files.
+	mux.HandleFunc("GET /{$}", web.Landing(a.downloads))
+	mux.HandleFunc("GET /files/{name}", web.Files(a.downloads))
 	mux.Handle("GET /admin", adminPanel)
 	mux.Handle("GET /admin/{path...}", adminPanel)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
