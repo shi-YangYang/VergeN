@@ -118,6 +118,7 @@
     <string name="always_light">总是明亮模式</string>
     <string name="service">服务</string>
     <string name="enterprise_account">账号</string>
+    <string name="enterprise_signed_in_as">当前登录</string>
     <string name="enterprise_logout">退出登录</string>
     <string name="enterprise_logout_summary">撤销本机授权，返回登录页</string>
     <string name="enterprise_logout_confirm">确定退出登录？VPN 将停止并清除本机登录状态。</string>

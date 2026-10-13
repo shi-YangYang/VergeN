@@ -26,6 +26,7 @@ class AppSettingsActivity : BaseActivity<AppSettingsDesign>(), Behavior {
             ServiceStore(this),
             this,
             clashRunning,
+            EnterpriseKit.coordinator.accountName,
             ::onHideIconChange,
         )
 

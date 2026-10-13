@@ -350,8 +350,10 @@ func TestDingtalkQrLoginFlow(t *testing.T) {
 	if sessionID == "" || qrURL == "" {
 		t.Fatalf("qr start incomplete: %v", body)
 	}
-	if !bytes.Contains([]byte(qrURL), []byte("login.dingtalk.com/oauth/qrcode/app-key")) ||
-		!bytes.Contains([]byte(qrURL), []byte("redirect_uri=")) {
+	parsedQR, err := url.Parse(qrURL)
+	if err != nil || parsedQR.Scheme != "https" || parsedQR.Host != "login.dingtalk.com" ||
+		parsedQR.Path != "/oauth2/auth" || parsedQR.Query().Get("client_id") != "app-key" ||
+		parsedQR.Query().Get("redirect_uri") == "" {
 		t.Fatalf("qr url unexpected: %q", qrURL)
 	}
 

@@ -22,6 +22,7 @@ var (
 type User struct {
 	ID             int64
 	Username       string
+	DisplayName    string
 	PasswordHash   string
 	DingTalkUserID string
 	Role           string
@@ -43,6 +44,7 @@ CREATE TABLE IF NOT EXISTS meta (
 CREATE TABLE IF NOT EXISTS users (
 	id              INTEGER PRIMARY KEY AUTOINCREMENT,
 	username        TEXT NOT NULL UNIQUE COLLATE NOCASE,
+	display_name    TEXT NOT NULL DEFAULT '',
 	password_hash   TEXT NOT NULL DEFAULT '',
 	dingtalk_userid TEXT NOT NULL DEFAULT '',
 	role            TEXT NOT NULL DEFAULT 'user',
@@ -107,6 +109,10 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	store := &Store{db: db}
+	if err := store.migrateUserDisplayName(); err != nil {
+		db.Close()
+		return nil, err
+	}
 	if err := store.migrateSubscription(); err != nil {
 		db.Close()
 		return nil, err
@@ -120,6 +126,16 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	return store, nil
+}
+
+func (s *Store) migrateUserDisplayName() error {
+	if _, err := s.db.Exec(`ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT ''`); err != nil {
+		if strings.Contains(err.Error(), "duplicate column") {
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 // migrateSubscription lifts the legacy single-subscription setting into the
@@ -231,12 +247,12 @@ func (s *Store) BumpConfigVersion() error {
 	return err
 }
 
-const userCols = `id, username, password_hash, dingtalk_userid, role, status,
+const userCols = `id, username, display_name, password_hash, dingtalk_userid, role, status,
 	created_at, updated_at, last_seen_at, last_version, last_os`
 
 func scanUser(row interface{ Scan(dest ...any) error }) (*User, error) {
 	var u User
-	err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.DingTalkUserID, &u.Role,
+	err := row.Scan(&u.ID, &u.Username, &u.DisplayName, &u.PasswordHash, &u.DingTalkUserID, &u.Role,
 		&u.Status, &u.CreatedAt, &u.UpdatedAt, &u.LastSeenAt, &u.LastVersion, &u.LastOS)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -319,6 +335,41 @@ func (s *Store) SetUserPassword(id int64, passwordHash string, now time.Time) (b
 
 func (s *Store) GetUserByDingtalkID(dingtalkUserID string) (*User, error) {
 	return scanUser(s.db.QueryRow(`SELECT `+userCols+` FROM users WHERE dingtalk_userid = ?`, dingtalkUserID))
+}
+
+func (s *Store) GetOrCreateDingtalkUser(unionID, displayName string, now time.Time) (*User, error) {
+	if unionID == "" {
+		return nil, errors.New("store: empty DingTalk union ID")
+	}
+	displayName = strings.TrimSpace(displayName)
+	u, err := s.GetUserByDingtalkID(unionID)
+	if errors.Is(err, ErrNotFound) {
+		buf := make([]byte, 11)
+		if _, err := rand.Read(buf); err != nil {
+			return nil, err
+		}
+		username := "dingtalk_" + hex.EncodeToString(buf)
+		_, err = s.db.Exec(
+			`INSERT INTO users (username, display_name, password_hash, dingtalk_userid, role, status, created_at, updated_at)
+			 SELECT ?, ?, '', ?, 'user', 'active', ?, ?
+			 WHERE NOT EXISTS (SELECT 1 FROM users WHERE dingtalk_userid = ?)`,
+			username, displayName, unionID, now.Unix(), now.Unix(), unionID)
+		if err != nil {
+			return nil, err
+		}
+		u, err = s.GetUserByDingtalkID(unionID)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if displayName != "" && u.DisplayName != displayName {
+		if _, err := s.db.Exec(`UPDATE users SET display_name = ?, updated_at = ? WHERE id = ?`,
+			displayName, now.Unix(), u.ID); err != nil {
+			return nil, err
+		}
+		u.DisplayName, u.UpdatedAt = displayName, now.Unix()
+	}
+	return u, nil
 }
 
 func (s *Store) SetUserDingtalkID(id int64, dingtalkUserID string, now time.Time) (bool, error) {

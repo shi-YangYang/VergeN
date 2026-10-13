@@ -9,6 +9,7 @@ use clash_verge_logging::{Type, logging};
 use serde::{Deserialize, Serialize};
 use smartstring::alias::String as SmartString;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Refresh the access token this long before its recorded expiry.
@@ -45,6 +46,7 @@ pub struct EnterpriseSession {
     pub enabled: bool,
     pub authenticated: bool,
     pub username: Option<std::string::String>,
+    pub display_name: Option<std::string::String>,
     pub managed: ManagedFlags,
     pub announcement: Option<Announcement>,
     #[serde(default)]
@@ -61,6 +63,14 @@ struct LoginResponse {
     refresh_token: std::string::String,
     #[serde(default)]
     expires_in: i64,
+    #[serde(default)]
+    user: Option<EnterpriseUser>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct EnterpriseUser {
+    #[serde(default)]
+    display_name: Option<std::string::String>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -83,6 +93,8 @@ pub struct DingtalkQrPoll {
     status: std::string::String, // pending | ok | fail | expired
     #[serde(default)]
     username: std::string::String,
+    #[serde(default)]
+    user: Option<EnterpriseUser>,
     #[serde(default)]
     access_token: std::string::String,
     #[serde(default)]
@@ -116,6 +128,8 @@ struct ServerErrorInner {
 
 #[derive(Debug, Deserialize, Default)]
 struct BootstrapResponse {
+    #[serde(default)]
+    user: Option<EnterpriseUser>,
     #[serde(default)]
     subscription_url: std::string::String,
     #[serde(default)]
@@ -222,6 +236,11 @@ fn session_from(data: &IVerge, authenticated: bool) -> EnterpriseSession {
             .clone()
             .filter(|u| !u.trim().is_empty())
             .map(|u| u.to_string()),
+        display_name: data
+            .enterprise_display_name
+            .clone()
+            .filter(|name| !name.trim().is_empty())
+            .map(|name| name.to_string()),
         managed,
         announcement,
         subscriptions,
@@ -268,6 +287,7 @@ async fn persist_verge_edit(f: impl FnOnce(&mut IVerge)) -> Result<()> {
 
 async fn clear_tokens() -> Result<()> {
     persist_verge_edit(|d| {
+        d.enterprise_display_name = None;
         d.enterprise_access_token = None;
         d.enterprise_refresh_token = None;
         d.enterprise_access_expires_at = None;
@@ -275,11 +295,27 @@ async fn clear_tokens() -> Result<()> {
     .await
 }
 
-async fn store_login(server: &str, username: &str, access: &str, refresh: &str, expires_in: i64) -> Result<()> {
+fn set_display_name(data: &mut IVerge, user: Option<&EnterpriseUser>) {
+    data.enterprise_display_name = user
+        .and_then(|user| user.display_name.as_deref())
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(Into::into);
+}
+
+async fn store_login(
+    server: &str,
+    username: &str,
+    access: &str,
+    refresh: &str,
+    expires_in: i64,
+    user: Option<&EnterpriseUser>,
+) -> Result<()> {
     let expires_at = unix_now() + expires_in.max(30);
     persist_verge_edit(|d| {
         d.enterprise_server_url = Some(server.into());
         d.enterprise_username = Some(username.into());
+        set_display_name(d, user);
         d.enterprise_access_token = Some(access.into());
         d.enterprise_refresh_token = Some(refresh.into());
         d.enterprise_access_expires_at = Some(expires_at);
@@ -287,9 +323,15 @@ async fn store_login(server: &str, username: &str, access: &str, refresh: &str, 
     .await
 }
 
-async fn store_tokens_after_refresh(access: &str, refresh: &str, expires_in: i64) -> Result<()> {
+async fn store_tokens_after_refresh(
+    access: &str,
+    refresh: &str,
+    expires_in: i64,
+    user: Option<&EnterpriseUser>,
+) -> Result<()> {
     let expires_at = unix_now() + expires_in.max(30);
     persist_verge_edit(|d| {
+        set_display_name(d, user);
         d.enterprise_access_token = Some(access.into());
         d.enterprise_refresh_token = Some(refresh.into());
         d.enterprise_access_expires_at = Some(expires_at);
@@ -332,6 +374,7 @@ async fn store_bootstrap(server: &str, bootstrap: &BootstrapResponse) -> Result<
         if enabled_field(&d.enterprise_server_url) {
             d.enterprise_server_url = Some(server.into());
         }
+        set_display_name(d, bootstrap.user.as_ref());
         d.enterprise_managed_flags = Some(flags);
         d.enterprise_announcement = Some(announcement);
         d.enterprise_subscriptions = Some(list.into());
@@ -395,7 +438,13 @@ async fn ensure_access(client: &reqwest::Client, server: &str) -> Result<AccessO
     if parsed.access_token.is_empty() || parsed.refresh_token.is_empty() {
         return Err(anyhow!("刷新登录失败: 服务器响应无效"));
     }
-    store_tokens_after_refresh(&parsed.access_token, &parsed.refresh_token, parsed.expires_in).await?;
+    store_tokens_after_refresh(
+        &parsed.access_token,
+        &parsed.refresh_token,
+        parsed.expires_in,
+        parsed.user.as_ref(),
+    )
+    .await?;
     Ok(AccessOutcome::Access(parsed.access_token))
 }
 
@@ -605,6 +654,7 @@ async fn activate_session(
         &parsed.access_token,
         &parsed.refresh_token,
         parsed.expires_in,
+        parsed.user.as_ref(),
     )
     .await?;
     logging!(info, Type::Cmd, "enterprise login ok for {}", username);
@@ -636,7 +686,103 @@ async fn activate_session(
     Ok(session_from(&data, true))
 }
 
-pub async fn dingtalk_qr_start(server_url: &str) -> Result<DingtalkQrStart> {
+fn dingtalk_window_label(server: &str, session_id: &str) -> std::string::String {
+    use sha2::{Digest, Sha256};
+    let mut digest = Sha256::new();
+    digest.update(server.as_bytes());
+    digest.update([0]);
+    digest.update(session_id.trim().as_bytes());
+    let hash: std::string::String = digest.finalize().iter().map(|byte| format!("{byte:02x}")).collect();
+    format!("dingtalk-{hash}")
+}
+
+fn dingtalk_query_value(url: &reqwest::Url, name: &str) -> Option<std::string::String> {
+    let mut values = url.query_pairs().filter(|(key, _)| key == name);
+    let (_, value) = values.next()?;
+    if value.is_empty() || values.next().is_some() {
+        return None;
+    }
+    Some(value.into_owned())
+}
+
+fn is_dingtalk_origin(url: &reqwest::Url) -> bool {
+    url.origin().ascii_serialization() == "https://login.dingtalk.com"
+        && url.username().is_empty()
+        && url.password().is_none()
+}
+
+fn dingtalk_login_urls(server: &str, login_url: &str) -> Result<(reqwest::Url, reqwest::Url, std::string::String)> {
+    let login = reqwest::Url::parse(login_url)?;
+    let callback = reqwest::Url::parse(&format!("{server}/api/v1/auth/dingtalk/callback"))?;
+    let redirect = dingtalk_query_value(&login, "redirect_uri").and_then(|value| reqwest::Url::parse(&value).ok());
+    let state = dingtalk_query_value(&login, "state").ok_or_else(|| anyhow!("Missing DingTalk authorization state"))?;
+    if !is_dingtalk_origin(&login)
+        || login.path() != "/oauth2/auth"
+        || login.fragment().is_some()
+        || redirect.as_ref() != Some(&callback)
+    {
+        return Err(anyhow!("Invalid DingTalk authorization URL"));
+    }
+    Ok((login, callback, state))
+}
+
+fn dingtalk_callback_matches(url: &reqwest::Url, callback: &reqwest::Url, state: &str) -> bool {
+    url.origin() == callback.origin()
+        && url.path() == callback.path()
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.fragment().is_none()
+        && dingtalk_query_value(url, "state").as_deref() == Some(state)
+}
+
+#[cfg(test)]
+mod dingtalk_tests {
+    use super::*;
+
+    #[test]
+    fn authorization_urls_stay_bound_to_server_and_state() -> Result<()> {
+        let server = "http://127.0.0.1:8080";
+        let mut login = reqwest::Url::parse("https://login.dingtalk.com/oauth2/auth")?;
+        login.query_pairs_mut().extend_pairs([
+            ("redirect_uri", "http://127.0.0.1:8080/api/v1/auth/dingtalk/callback"),
+            ("state", "current-session"),
+            ("scope", "openid corpid"),
+        ]);
+        let (validated, mut callback, state) = dingtalk_login_urls(server, login.as_str())?;
+        assert_eq!(
+            dingtalk_query_value(&validated, "scope").as_deref(),
+            Some("openid corpid")
+        );
+        callback
+            .query_pairs_mut()
+            .extend_pairs([("state", state.as_str()), ("authCode", "code")]);
+        let expected = reqwest::Url::parse("http://127.0.0.1:8080/api/v1/auth/dingtalk/callback")?;
+        assert!(dingtalk_callback_matches(&callback, &expected, &state));
+        assert!(!dingtalk_callback_matches(&callback, &expected, "previous-session"));
+        callback.set_path("/admin/");
+        assert!(!dingtalk_callback_matches(&callback, &expected, &state));
+        for invalid in [
+            login
+                .as_str()
+                .replace("https://login.dingtalk.com", "http://login.dingtalk.com"),
+            login
+                .as_str()
+                .replace("login.dingtalk.com", "login.dingtalk.com.example.com"),
+            login.as_str().replace("/oauth2/auth", "/oauth/qrcode/app-key"),
+            login.as_str().replace("8080", "8081"),
+            format!("{login}&state=another-session"),
+        ] {
+            assert!(dingtalk_login_urls(server, &invalid).is_err());
+        }
+        assert_ne!(
+            dingtalk_window_label(server, "first"),
+            dingtalk_window_label(server, "second")
+        );
+        Ok(())
+    }
+}
+
+pub async fn dingtalk_qr_start(app: &tauri::AppHandle, server_url: &str) -> Result<DingtalkQrStart> {
     let server = normalize_server(server_url)?;
     let client = http_client()?;
     let response = client
@@ -650,14 +796,52 @@ pub async fn dingtalk_qr_start(server_url: &str) -> Result<DingtalkQrStart> {
         return Err(anyhow!("{}", server_error_message(status, &body)));
     }
     let parsed: DingtalkQrStart = serde_json::from_str(&body)?;
-    if parsed.session_id.is_empty() || parsed.qr_url.is_empty() {
+    if parsed.session_id.is_empty() {
         return Err(anyhow!("服务器响应无效"));
     }
+    let window = (|| -> Result<_> {
+        let (login, callback, state) = dingtalk_login_urls(&server, &parsed.qr_url)?;
+        Ok(WebviewWindowBuilder::new(
+            app,
+            dingtalk_window_label(&server, &parsed.session_id),
+            WebviewUrl::External(login),
+        )
+        .title("VergeN - DingTalk")
+        .inner_size(860.0, 720.0)
+        .center()
+        .on_navigation(move |url| is_dingtalk_origin(url) || dingtalk_callback_matches(url, &callback, &state))
+        .build()?)
+    })();
+    let window = match window {
+        Ok(window) => window,
+        Err(error) => {
+            let _ = cancel_dingtalk_session(&server, &parsed.session_id).await;
+            return Err(error);
+        }
+    };
+    let session_id = parsed.session_id.clone();
+    window.on_window_event(move |event| {
+        if matches!(event, tauri::WindowEvent::Destroyed) {
+            let server = server.clone();
+            let session_id = session_id.clone();
+            tauri::async_runtime::spawn(async move {
+                let _ = cancel_dingtalk_session(&server, &session_id).await;
+            });
+        }
+    });
     Ok(parsed)
 }
 
-pub async fn dingtalk_qr_poll(server_url: &str, session_id: &str) -> Result<DingtalkQrPoll> {
+pub async fn dingtalk_qr_poll(app: &tauri::AppHandle, server_url: &str, session_id: &str) -> Result<DingtalkQrPoll> {
     let server = normalize_server(server_url)?;
+    let label = dingtalk_window_label(&server, session_id);
+    if app.get_webview_window(&label).is_none() {
+        let _ = cancel_dingtalk_session(&server, session_id).await;
+        return Ok(DingtalkQrPoll {
+            status: "expired".into(),
+            ..Default::default()
+        });
+    }
     let client = http_client()?;
     let response = client
         .post(format!("{server}/api/v1/auth/dingtalk/qr/poll"))
@@ -671,6 +855,16 @@ pub async fn dingtalk_qr_poll(server_url: &str, session_id: &str) -> Result<Ding
         return Err(anyhow!("{}", server_error_message(status, &body)));
     }
     let mut parsed: DingtalkQrPoll = serde_json::from_str(&body)?;
+    let Some(window) = app.get_webview_window(&label) else {
+        let _ = cancel_dingtalk_session(&server, session_id).await;
+        return Ok(DingtalkQrPoll {
+            status: "expired".into(),
+            ..Default::default()
+        });
+    };
+    if parsed.status != "pending" {
+        let _ = window.close();
+    }
     if parsed.status == "ok" {
         if parsed.access_token.is_empty() || parsed.refresh_token.is_empty() {
             parsed.status = "expired".into();
@@ -681,14 +875,22 @@ pub async fn dingtalk_qr_poll(server_url: &str, session_id: &str) -> Result<Ding
             access_token: std::mem::take(&mut parsed.access_token),
             refresh_token: std::mem::take(&mut parsed.refresh_token),
             expires_in: parsed.expires_in,
+            user: parsed.user.clone(),
         };
         activate_session(&client, &server, token_login, username.trim()).await?;
     }
     Ok(parsed)
 }
 
-pub async fn dingtalk_qr_cancel(server_url: &str, session_id: &str) -> Result<()> {
+pub async fn dingtalk_qr_cancel(app: &tauri::AppHandle, server_url: &str, session_id: &str) -> Result<()> {
     let server = normalize_server(server_url)?;
+    if let Some(window) = app.get_webview_window(&dingtalk_window_label(&server, session_id)) {
+        let _ = window.close();
+    }
+    cancel_dingtalk_session(&server, session_id).await
+}
+
+async fn cancel_dingtalk_session(server: &str, session_id: &str) -> Result<()> {
     let client = http_client()?;
     let _ = client
         .post(format!("{server}/api/v1/auth/dingtalk/qr/cancel"))

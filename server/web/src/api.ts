@@ -48,6 +48,7 @@ async function refreshAccessToken(): Promise<boolean> {
 export interface AdminUser {
   id: number
   username: string
+  display_name: string
   dingtalk_userid: string
   role: string
   status: string

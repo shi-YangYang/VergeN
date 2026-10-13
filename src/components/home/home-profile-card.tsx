@@ -119,15 +119,15 @@ const ProfileDetails = ({
       return 'evening'
     })()
     const key = `shared.labels.welcome.${slot}` as TranslationKey
-    // 登录态下 username 必有;降级串不再走 i18n(键并入运行时回退)
-    const name = session?.username ?? current.name ?? 'VergeN'
+    const name =
+      session?.display_name ?? session?.username ?? current.name ?? 'VergeN'
     // 欢迎语的插值绕开 i18next 的严格键类型(仅此一处使用局部签名)
     const untypedT = i18next.t as unknown as (
       k: string,
       o?: Record<string, unknown>,
     ) => string
     return untypedT(key, { name })
-  }, [session?.username, current.name])
+  }, [session?.display_name, session?.username, current.name])
 
   return (
     <Box>

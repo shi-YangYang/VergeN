@@ -10,15 +10,15 @@
   },
   "tabs": {
     "password": "账号密码",
-    "dingtalk": "钉钉扫码"
+    "dingtalk": "钉钉登录"
   },
   "dingtalk": {
-    "hint": "使用钉钉 App 扫描二维码，并在手机上确认登录",
-    "waiting": "等待手机端确认…",
-    "starting": "正在获取二维码…",
-    "expired": "二维码已过期，请重新获取",
-    "failed": "扫码登录失败",
-    "retry": "重新获取二维码"
+    "hint": "请在钉钉登录窗口中确认当前账号，或使用手机钉钉扫码登录",
+    "waiting": "确认后将自动登录客户端",
+    "starting": "正在打开钉钉登录窗口…",
+    "expired": "登录窗口已关闭或二维码已过期，请重新打开",
+    "failed": "钉钉登录失败",
+    "retry": "重新打开钉钉登录窗口"
   },
   "announcement": {
     "title": "公告"

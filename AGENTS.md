@@ -60,6 +60,10 @@ the ownership evidence the AI-slop review evaluates (see
 11. **Changelog.** Entries follow the rules in
     [`template/Changelog.md`](template/Changelog.md): one line per
     user-visible change, no internals.
+12. **All client platforms.** Client changes must cover macOS, Windows, Linux,
+    and Android together unless the user explicitly limits the platforms.
+    Review shared desktop code, platform-specific code, and the separate Android
+    implementation so behavior and UI changes are applied consistently.
 
 ## Branch Model and Release Workflow
 

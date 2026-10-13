@@ -129,6 +129,7 @@ verge_registry! {
     enable_external_controller => [RestartCore];
     enterprise_server_url => NoEffect;
     enterprise_username => NoEffect;
+    enterprise_display_name => NoEffect;
     enterprise_access_token => NoEffect;
     enterprise_refresh_token => NoEffect;
     enterprise_access_expires_at => NoEffect;

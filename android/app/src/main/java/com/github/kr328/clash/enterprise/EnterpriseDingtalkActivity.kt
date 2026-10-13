@@ -68,12 +68,12 @@ class EnterpriseDingtalkActivity : AppCompatActivity() {
             while (kotlin.coroutines.coroutineContext[kotlinx.coroutines.Job]?.isActive == true) {
                 val poll = runCatching { api.dingtalkQrPoll(start.sessionId) }.getOrNull()
                 when (poll?.status) {
-                    "authorized" -> {
+                    "ok" -> {
                         val access = poll.accessToken.orEmpty()
                         val refresh = poll.refreshToken.orEmpty()
                         if (access.isNotBlank()) {
                             val outcome = runCatching {
-                                EnterpriseKit.coordinator.signInWithTokens(access, refresh)
+                                EnterpriseKit.coordinator.signInWithTokens(access, refresh, poll.user)
                             }
                             if (outcome.isSuccess) {
                                 runCatching {
@@ -97,7 +97,7 @@ class EnterpriseDingtalkActivity : AppCompatActivity() {
                         return@launch
                     }
 
-                    "failed", "expired" -> {
+                    "fail", "expired" -> {
                         withContext(Dispatchers.Main) {
                             error.visibility = View.VISIBLE
                             fallback.visibility = View.VISIBLE

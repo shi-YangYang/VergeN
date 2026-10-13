@@ -215,6 +215,9 @@ pub struct IVerge {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enterprise_username: Option<String>,
 
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enterprise_display_name: Option<String>,
+
     #[serde(
         serialize_with = "serialize_encrypted",
         deserialize_with = "deserialize_encrypted",
@@ -557,6 +560,7 @@ impl IVerge {
 
         patch!(enterprise_server_url);
         patch!(enterprise_username);
+        patch!(enterprise_display_name);
         patch!(enterprise_access_token);
         patch!(enterprise_refresh_token);
         patch!(enterprise_access_expires_at);

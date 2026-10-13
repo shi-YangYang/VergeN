@@ -38,6 +38,7 @@ data class DingtalkQrPollResponse(
     val status: String,
     @SerialName("access_token") val accessToken: String? = null,
     @SerialName("refresh_token") val refreshToken: String? = null,
+    val user: EnterpriseUser? = null,
 )
 
 @Serializable
@@ -47,10 +48,17 @@ data class LoginRequest(val username: String, val password: String)
 data class RefreshRequest(val refresh_token: String)
 
 @Serializable
+data class EnterpriseUser(
+    val username: String? = null,
+    @SerialName("display_name") val displayName: String? = null,
+)
+
+@Serializable
 data class LoginResponse(
     @SerialName("access_token") val accessToken: String,
     @SerialName("refresh_token") val refreshToken: String,
     @SerialName("expires_in") val expiresIn: Long,
+    val user: EnterpriseUser? = null,
 )
 
 @Serializable
@@ -62,6 +70,7 @@ data class BootstrapResponse(
     // version bumps arrive through the heartbeat response instead.
     @SerialName("config_version") val configVersion: String? = null,
     val subscriptions: List<BootstrapSubscription> = emptyList(),
+    val user: EnterpriseUser? = null,
 )
 
 @Serializable
@@ -128,7 +137,7 @@ class EnterpriseApi(
     /** Kotlin 配合桌面端:开一个扫码会话拿 dingtalk qrcode link。 */
     @Throws(ApiError::class)
     fun dingtalkQrStart(): DingtalkQrStartResponse {
-        return request("POST", "/api/v1/auth/dingtalk/qr/start").use { response ->
+        return request("POST", "/api/v1/auth/dingtalk/qr/start", emptyBody()).use { response ->
             if (response.code != 200) throw ApiError(ErrorKind.HTTP, response.code)
             decode(DingtalkQrStartResponse.serializer(), response.body?.string().orEmpty(), 200)
         }

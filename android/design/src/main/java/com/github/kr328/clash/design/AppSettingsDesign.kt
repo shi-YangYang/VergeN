@@ -19,6 +19,7 @@ class AppSettingsDesign(
     srvStore: ServiceStore,
     behavior: Behavior,
     running: Boolean,
+    accountName: String?,
     onHideIconChange: (hide: Boolean) -> Unit,
 ) : Design<AppSettingsDesign.Request>(context) {
     enum class Request {
@@ -43,6 +44,14 @@ class AppSettingsDesign(
             // Signing out revokes the stored tokens and restarts the intent
             // into the login gate; it belongs before the local preferences.
             category(R.string.enterprise_account)
+
+            if (!accountName.isNullOrBlank()) {
+                clickable(title = R.string.enterprise_signed_in_as) {
+                    summary = accountName
+                    view.isClickable = false
+                    view.isFocusable = false
+                }
+            }
 
             clickable(
                 icon = R.drawable.ic_baseline_logout,

@@ -1300,7 +1300,7 @@ function DingtalkPage() {
     <section className="panel narrow">
       <form onSubmit={submit} className="stack">
         <fieldset>
-          <legend>钉钉扫码登录</legend>
+          <legend>钉钉登录</legend>
           <label>
             AppKey(client_id)
             <input value={appKey} onChange={(e) => setAppKey(e.target.value)} />
@@ -1328,20 +1328,21 @@ function DingtalkPage() {
           <label>
             企业 CorpId(可选)
             <input
-              placeholder="留空则不校验扫码组织"
+              placeholder="留空则不校验登录组织"
               value={corpId}
               onChange={(e) => setCorpId(e.target.value)}
             />
           </label>
           <div className="muted" style={{ fontSize: 12, lineHeight: 1.6 }}>
-            配置 CorpId 后，员工必须使用公司组织成员的钉钉账号扫码才能登录；
-            CorpId 可在钉钉管理后台"企业信息"页查看。
+            配置 CorpId 后，员工必须使用公司组织成员的钉钉账号才能登录； CorpId
+            可在钉钉管理后台"企业信息"页查看。
           </div>
           <div className="muted" style={{ fontSize: 12, lineHeight: 1.6 }}>
             回调地址(填入钉钉开放平台"登录与分享"Redirect URI):
             <code>{`${location.origin}/api/v1/auth/dingtalk/callback`}</code>
             <br />
-            员工首次使用需在"员工账号"页为其绑定钉钉 UnionID。
+            首次钉钉登录会自动创建普通员工账号，以后使用同一钉钉身份直接登录。
+            已绑定的账号继续复用，管理员可在「员工账号」页停用账号。
           </div>
         </fieldset>
         <div className="row-form">
@@ -1746,7 +1747,7 @@ function UsersPanel() {
           <thead>
             <tr>
               <th>ID</th>
-              <th>用户名</th>
+              <th>姓名 / 账号</th>
               <th>钉钉</th>
               <th>角色</th>
               <th>最近在线</th>
@@ -1758,7 +1759,9 @@ function UsersPanel() {
             {users.map((user) => (
               <tr key={user.id}>
                 <td>{user.id}</td>
-                <td>{user.username}</td>
+                <td title={user.username}>
+                  {user.display_name || user.username}
+                </td>
                 <td>
                   {user.dingtalk_userid ? (
                     <span
@@ -1785,7 +1788,9 @@ function UsersPanel() {
                 <td className="actions">
                   <button
                     className="ghost"
-                    onClick={() => void remove(user.id, user.username)}
+                    onClick={() =>
+                      void remove(user.id, user.display_name || user.username)
+                    }
                   >
                     删除
                   </button>
