@@ -108,19 +108,6 @@ export const CompanyUpdateViewer = ({ ref }: Props) => {
               ? t('settings.modals.update.title', { version: release.version })
               : t('shared.statuses.loading')}
           </Box>
-          {release?.url && (
-            <Typography
-              component="a"
-              href="#"
-              onClick={(event) => {
-                event.preventDefault()
-                openUrlWithNotice(release.url)
-              }}
-              sx={{ fontSize: 13, whiteSpace: 'nowrap' }}
-            >
-              {t('settings.modals.companyUpdate.download')}
-            </Typography>
-          )}
         </Box>
       }
       contentSx={{
