@@ -72,6 +72,17 @@ function alertContext(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
+function LoadError({ error, onRetry }: { error: string; onRetry: () => void }) {
+  return (
+    <div className="row-form" role="alert">
+      <span className="error">加载失败：{error}</span>
+      <button type="button" className="ghost" onClick={onRetry}>
+        重试
+      </button>
+    </div>
+  )
+}
+
 const PLATFORM_LABELS = {
   windows: 'Windows',
   macos: 'macOS',
@@ -167,55 +178,57 @@ function SubscriptionsPage() {
         <button type="submit">添加订阅</button>
       </form>
       {error && <div className="error">{error}</div>}
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>名称</th>
-            <th>URL</th>
-            <th>状态</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {subs.map((sub) => (
-            <tr key={sub.id} className={sub.enabled ? '' : 'off'}>
-              <td>{sub.id}</td>
-              <td>{sub.name || '-'}</td>
-              <td className="url-cell" title={sub.url}>
-                {sub.url}
-              </td>
-              <td>
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    checked={sub.enabled}
-                    onChange={(e) =>
-                      void toggleEnabled(sub.id, e.target.checked)
-                    }
-                  />
-                  员工可选
-                </label>
-              </td>
-              <td className="actions">
-                <button
-                  className="ghost"
-                  onClick={() => {
-                    setEditId(editId === sub.id ? null : sub.id)
-                    setEditName(sub.name)
-                    setEditUrl(sub.url)
-                  }}
-                >
-                  编辑
-                </button>
-                <button className="ghost" onClick={() => void remove(sub)}>
-                  删除
-                </button>
-              </td>
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>名称</th>
+              <th>URL</th>
+              <th>状态</th>
+              <th>操作</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {subs.map((sub) => (
+              <tr key={sub.id} className={sub.enabled ? '' : 'off'}>
+                <td>{sub.id}</td>
+                <td>{sub.name || '-'}</td>
+                <td className="url-cell" title={sub.url}>
+                  {sub.url}
+                </td>
+                <td>
+                  <label className="check">
+                    <input
+                      type="checkbox"
+                      checked={sub.enabled}
+                      onChange={(e) =>
+                        void toggleEnabled(sub.id, e.target.checked)
+                      }
+                    />
+                    员工可选
+                  </label>
+                </td>
+                <td className="actions">
+                  <button
+                    className="ghost"
+                    onClick={() => {
+                      setEditId(editId === sub.id ? null : sub.id)
+                      setEditName(sub.name)
+                      setEditUrl(sub.url)
+                    }}
+                  >
+                    编辑
+                  </button>
+                  <button className="ghost" onClick={() => void remove(sub)}>
+                    删除
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       {editId !== null && (
         <form
           className="row-form"
@@ -254,13 +267,22 @@ function PolicyPage() {
   const [settings, setSettings] = useState<AdminSettings | null>(null)
   const [allowChange, setAllowChange] = useState(false)
   const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
 
-  useEffect(() => {
-    void getSettings().then((data) => {
+  const load = useCallback(async () => {
+    setError('')
+    try {
+      const data = await getSettings()
       setSettings(data)
       setAllowChange(data.managed_flags.allow_change_settings)
-    })
+    } catch (err) {
+      setError(alertContext(err))
+    }
   }, [])
+
+  useEffect(() => {
+    void load()
+  }, [load])
 
   const save = async (event: FormEvent) => {
     event.preventDefault()
@@ -277,6 +299,14 @@ function PolicyPage() {
     } catch (err) {
       setMessage(alertContext(err))
     }
+  }
+
+  if (!settings) {
+    return error ? (
+      <LoadError error={error} onRetry={() => void load()} />
+    ) : (
+      <div className="muted">加载中…</div>
+    )
   }
 
   return (
@@ -391,64 +421,66 @@ function AnnouncementPage() {
         <button type="submit">添加公告</button>
       </form>
       {error && <div className="error">{error}</div>}
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>标题</th>
-            <th>内容</th>
-            <th>下发</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => (
-            <tr key={item.id} className={item.enabled ? '' : 'off'}>
-              <td>{item.id}</td>
-              <td>{item.title}</td>
-              <td
-                className="url-cell"
-                title={item.content}
-                style={{
-                  maxWidth: 320,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {item.content || '-'}
-              </td>
-              <td>
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    checked={item.enabled}
-                    onChange={(e) =>
-                      void toggleEnabled(item.id, e.target.checked)
-                    }
-                  />
-                  下发
-                </label>
-              </td>
-              <td className="actions">
-                <button
-                  className="ghost"
-                  onClick={() => {
-                    setEditId(editId === item.id ? null : item.id)
-                    setEditTitle(item.title)
-                    setEditContent(item.content)
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>标题</th>
+              <th>内容</th>
+              <th>下发</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => (
+              <tr key={item.id} className={item.enabled ? '' : 'off'}>
+                <td>{item.id}</td>
+                <td>{item.title}</td>
+                <td
+                  className="url-cell"
+                  title={item.content}
+                  style={{
+                    maxWidth: 320,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
                   }}
                 >
-                  编辑
-                </button>
-                <button className="ghost" onClick={() => void remove(item)}>
-                  删除
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                  {item.content || '-'}
+                </td>
+                <td>
+                  <label className="check">
+                    <input
+                      type="checkbox"
+                      checked={item.enabled}
+                      onChange={(e) =>
+                        void toggleEnabled(item.id, e.target.checked)
+                      }
+                    />
+                    下发
+                  </label>
+                </td>
+                <td className="actions">
+                  <button
+                    className="ghost"
+                    onClick={() => {
+                      setEditId(editId === item.id ? null : item.id)
+                      setEditTitle(item.title)
+                      setEditContent(item.content)
+                    }}
+                  >
+                    编辑
+                  </button>
+                  <button className="ghost" onClick={() => void remove(item)}>
+                    删除
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       {editId !== null && (
         <form
           className="row-form"
@@ -1219,15 +1251,24 @@ function DingtalkPage() {
   const [agentId, setAgentId] = useState('')
   const [corpId, setCorpId] = useState('')
   const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
 
-  useEffect(() => {
-    void getSettings().then((data) => {
+  const load = useCallback(async () => {
+    setError('')
+    try {
+      const data = await getSettings()
       setSettings(data)
       setAppKey(data.dingtalk_app_key ?? '')
       setAgentId(data.dingtalk_agent_id ?? '')
       setCorpId(data.dingtalk_corp_id ?? '')
-    })
+    } catch (err) {
+      setError(alertContext(err))
+    }
   }, [])
+
+  useEffect(() => {
+    void load()
+  }, [load])
 
   const save = async (patch: SettingsPatch) => {
     try {
@@ -1241,7 +1282,13 @@ function DingtalkPage() {
     }
   }
 
-  if (!settings) return <div className="muted">加载中…</div>
+  if (!settings) {
+    return error ? (
+      <LoadError error={error} onRetry={() => void load()} />
+    ) : (
+      <div className="muted">加载中…</div>
+    )
+  }
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
@@ -1337,6 +1384,7 @@ function GatewayPage() {
 
 function DownloadPage({ onBack }: { onBack: () => void }) {
   const [downloads, setDownloads] = useState<PublicDownloads | null>(null)
+  const [error, setError] = useState('')
   const releases = downloads?.releases ?? null
   const publishedPaths = new Set(
     (releases ?? []).flatMap((release) =>
@@ -1358,9 +1406,18 @@ function DownloadPage({ onBack }: { onBack: () => void }) {
     (file) => !publishedPaths.has(`/files/${encodeURIComponent(file.name)}`),
   )
 
-  useEffect(() => {
-    void fetchPublicReleases().then(setDownloads)
+  const load = useCallback(async () => {
+    setError('')
+    try {
+      setDownloads(await fetchPublicReleases())
+    } catch (err) {
+      setError(alertContext(err))
+    }
   }, [])
+
+  useEffect(() => {
+    void load()
+  }, [load])
 
   return (
     <div className="download-wrap">
@@ -1370,7 +1427,9 @@ function DownloadPage({ onBack }: { onBack: () => void }) {
         </div>
       </div>
 
-      {releases === null ? (
+      {error ? (
+        <LoadError error={error} onRetry={() => void load()} />
+      ) : releases === null ? (
         <div className="muted" style={{ textAlign: 'center', padding: 32 }}>
           加载中…
         </div>
@@ -1598,15 +1657,21 @@ function UsersPanel() {
 
   const create = async (event: FormEvent) => {
     event.preventDefault()
-    if (busy || !newName || newPassword.length < 8) {
+    if (busy) return
+    if (!newName.trim()) {
+      setError('请输入用户名')
+      return
+    }
+    if (newPassword.length < 8) {
       setError('密码至少 8 位')
       return
     }
     setBusy(true)
     try {
-      await createUser(newName, newPassword)
+      await createUser(newName.trim(), newPassword, newRole)
       setNewName('')
       setNewPassword('')
+      setNewRole('user')
       await reload()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -1669,6 +1734,7 @@ function UsersPanel() {
           onChange={(e) => setNewPassword(e.target.value)}
         />
         <select
+          aria-label="账号角色"
           value={newRole}
           onChange={(e) => setNewRole(e.target.value as 'user' | 'admin')}
         >
@@ -1680,75 +1746,77 @@ function UsersPanel() {
         </button>
       </form>
       {error && <div className="error">{error}</div>}
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>用户名</th>
-            <th>钉钉</th>
-            <th>角色</th>
-            <th>最近在线</th>
-            <th>客户端</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {users.map((user) => (
-            <tr key={user.id}>
-              <td>{user.id}</td>
-              <td>{user.username}</td>
-              <td>
-                {user.dingtalk_userid ? (
-                  <span
-                    className="muted"
-                    title={user.dingtalk_userid}
-                    style={{ display: 'inline-flex', gap: 6 }}
-                  >
-                    {user.dingtalk_userid.slice(0, 10)}…
-                  </span>
-                ) : (
-                  <span className="muted">未绑定</span>
-                )}
-              </td>
-              <td>{user.role === 'admin' ? '管理员' : '员工'}</td>
-              <td title={user.last_os || ''}>
-                {timeOf(user.last_seen_at)}
-                {user.last_version ? ` · v${user.last_version}` : ''}
-              </td>
-              <td>
-                {[user.last_os, user.last_version]
-                  .filter(Boolean)
-                  .join(' / ') || '-'}
-              </td>
-              <td className="actions">
-                <button
-                  className="ghost"
-                  onClick={() => void remove(user.id, user.username)}
-                >
-                  删除
-                </button>
-                <button
-                  className="ghost"
-                  onClick={() =>
-                    setResetId(resetId === user.id ? null : user.id)
-                  }
-                >
-                  重置密码
-                </button>
-                <button
-                  className="ghost"
-                  onClick={() => {
-                    setBindId(bindId === user.id ? null : user.id)
-                    setBindDingtalk(user.dingtalk_userid)
-                  }}
-                >
-                  {user.dingtalk_userid ? '重新绑定' : '绑定钉钉'}
-                </button>
-              </td>
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>用户名</th>
+              <th>钉钉</th>
+              <th>角色</th>
+              <th>最近在线</th>
+              <th>客户端</th>
+              <th>操作</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {users.map((user) => (
+              <tr key={user.id}>
+                <td>{user.id}</td>
+                <td>{user.username}</td>
+                <td>
+                  {user.dingtalk_userid ? (
+                    <span
+                      className="muted"
+                      title={user.dingtalk_userid}
+                      style={{ display: 'inline-flex', gap: 6 }}
+                    >
+                      {user.dingtalk_userid.slice(0, 10)}…
+                    </span>
+                  ) : (
+                    <span className="muted">未绑定</span>
+                  )}
+                </td>
+                <td>{user.role === 'admin' ? '管理员' : '员工'}</td>
+                <td title={user.last_os || ''}>
+                  {timeOf(user.last_seen_at)}
+                  {user.last_version ? ` · v${user.last_version}` : ''}
+                </td>
+                <td>
+                  {[user.last_os, user.last_version]
+                    .filter(Boolean)
+                    .join(' / ') || '-'}
+                </td>
+                <td className="actions">
+                  <button
+                    className="ghost"
+                    onClick={() => void remove(user.id, user.username)}
+                  >
+                    删除
+                  </button>
+                  <button
+                    className="ghost"
+                    onClick={() =>
+                      setResetId(resetId === user.id ? null : user.id)
+                    }
+                  >
+                    重置密码
+                  </button>
+                  <button
+                    className="ghost"
+                    onClick={() => {
+                      setBindId(bindId === user.id ? null : user.id)
+                      setBindDingtalk(user.dingtalk_userid)
+                    }}
+                  >
+                    {user.dingtalk_userid ? '重新绑定' : '绑定钉钉'}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       {resetId !== null && (
         <form
           className="row-form"
@@ -1805,15 +1873,30 @@ function UsersPanel() {
 
 function DashboardPanel() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
+  const [error, setError] = useState('')
 
-  useEffect(() => {
-    const load = () => void getDashboard().then(setStats)
-    load()
-    const timer = setInterval(load, 10_000)
-    return () => clearInterval(timer)
+  const load = useCallback(async () => {
+    try {
+      setStats(await getDashboard())
+      setError('')
+    } catch (err) {
+      setError(alertContext(err))
+    }
   }, [])
 
-  if (!stats) return <div className="muted">加载中…</div>
+  useEffect(() => {
+    void load()
+    const timer = setInterval(() => void load(), 10_000)
+    return () => clearInterval(timer)
+  }, [load])
+
+  if (!stats) {
+    return error ? (
+      <LoadError error={error} onRetry={() => void load()} />
+    ) : (
+      <div className="muted">加载中…</div>
+    )
+  }
 
   const cards: [string, string | number][] = [
     ['总账号', stats.total_users],
@@ -1823,6 +1906,7 @@ function DashboardPanel() {
 
   return (
     <section className="panel">
+      {error && <LoadError error={error} onRetry={() => void load()} />}
       <div className="cards">
         {cards.map(([label, value]) => (
           <div className="card" key={label}>
