@@ -104,6 +104,8 @@ pub struct CompanyRelease {
     pub url: std::string::String,
     #[serde(default)]
     pub pub_date: i64,
+    #[serde(default)]
+    pub updater_available: bool,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -760,6 +762,29 @@ pub async fn heartbeat() -> bool {
     }
 }
 
+fn release_url(server: &str, endpoint: &str) -> Result<reqwest::Url> {
+    use tauri::utils::{config::BundleType, platform::bundle_type};
+
+    let mut url = reqwest::Url::parse(&format!("{server}/api/v1/client/{endpoint}"))?;
+    let mut query = url.query_pairs_mut();
+    query.append_pair("platform", std::env::consts::OS);
+    query.append_pair("arch", std::env::consts::ARCH);
+    let installer = match bundle_type() {
+        Some(BundleType::Nsis) => Some("nsis"),
+        Some(BundleType::Msi) => Some("msi"),
+        Some(BundleType::App) => Some("app"),
+        Some(BundleType::Deb) => Some("deb"),
+        Some(BundleType::Rpm) => Some("rpm"),
+        Some(BundleType::AppImage) => Some("appimage"),
+        _ => None,
+    };
+    if let Some(installer) = installer {
+        query.append_pair("bundle_type", installer);
+    }
+    drop(query);
+    Ok(url)
+}
+
 /// Poll the company release manifest; None when ops has not published one
 /// or the session needs a login.
 pub async fn release_check() -> Result<Option<CompanyRelease>> {
@@ -776,13 +801,13 @@ pub async fn release_check() -> Result<Option<CompanyRelease>> {
         AccessOutcome::NeedsLogin => return Ok(None),
     };
     let response = client
-        .get(format!("{server}/api/v1/client/update"))
+        .get(release_url(&server, "update")?)
         .bearer_auth(&access)
         .send()
         .await
         .map_err(|e| anyhow!("无法连接服务器 {server}: {e}"))?;
     let status = response.status();
-    if status == reqwest::StatusCode::NOT_FOUND {
+    if status == reqwest::StatusCode::NOT_FOUND || status == reqwest::StatusCode::NO_CONTENT {
         return Ok(None);
     }
     let body = response.text().await.unwrap_or_default();
@@ -817,8 +842,7 @@ pub async fn updater_autoinstall(
         AccessOutcome::Access(access) => access,
         AccessOutcome::NeedsLogin => return Ok(false),
     };
-    let manifest_url =
-        reqwest::Url::parse(&format!("{server}/api/v1/client/updater")).map_err(|e| anyhow!("更新地址无效: {e}"))?;
+    let manifest_url = release_url(&server, "updater").map_err(|e| anyhow!("更新地址无效: {e}"))?;
     let updater = app
         .updater_builder()
         .endpoints(vec![manifest_url])

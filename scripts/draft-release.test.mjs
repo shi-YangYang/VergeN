@@ -9,6 +9,7 @@ import { run } from './draft-release.mjs'
 const env = {
   RELEASE_TAG: 'v0.1.1',
   ANDROID_VERSION_CODE: '9',
+  VERGEN_BUILD_UPDATER: 'false',
   GITHUB_SHA: 'a'.repeat(40),
   GITHUB_REPOSITORY: 'example/vergen',
   GITHUB_RUN_ID: '123',
@@ -19,7 +20,7 @@ const draft = {
   id: 42,
   tag_name: env.RELEASE_TAG,
   target_commitish: env.GITHUB_SHA,
-  body: `<!-- vergen-build:${env.GITHUB_SHA}:9 -->`,
+  body: `<!-- vergen-build:${env.GITHUB_SHA}:9:false -->`,
   draft: true,
   published_at: null,
   upload_url:
@@ -60,7 +61,7 @@ test('prepare creates an unpublished draft at the exact source commit', async (t
   )
 })
 
-test('prepare reuses a draft only for the same version, source, and Android code', async (t) => {
+test('prepare reuses a draft only for the same version, source, Android code, and signing mode', async (t) => {
   const directory = await workspace(t)
   const output = join(directory, 'output')
   await run(
@@ -76,7 +77,8 @@ test('prepare reuses a draft only for the same version, source, and Android code
   for (const changed of [
     { draft: false, published_at: '2026-10-13T00:00:00Z' },
     { target_commitish: 'b'.repeat(40) },
-    { body: `<!-- vergen-build:${env.GITHUB_SHA}:10 -->` },
+    { body: `<!-- vergen-build:${env.GITHUB_SHA}:10:false -->` },
+    { body: `<!-- vergen-build:${env.GITHUB_SHA}:9 -->` },
   ]) {
     await assert.rejects(
       run(
@@ -91,6 +93,32 @@ test('prepare reuses a draft only for the same version, source, and Android code
       ),
       /published release|differs/,
     )
+  }
+})
+
+test('prepare and upload refuse changed signing modes before mutating a draft', async (t) => {
+  const directory = await workspace(t)
+  await writeFile(join(directory, 'VergeN.exe'), 'installer fixture')
+  for (const existingMode of ['true', 'false']) {
+    const changedEnvironment = {
+      ...env,
+      VERGEN_BUILD_UPDATER: existingMode === 'true' ? 'false' : 'true',
+      GITHUB_OUTPUT: join(directory, 'output'),
+    }
+    const existingDraft = {
+      ...draft,
+      body: `<!-- vergen-build:${env.GITHUB_SHA}:9:${existingMode} -->`,
+    }
+    for (const args of [['prepare'], ['upload', directory]]) {
+      await assert.rejects(
+        run(args, changedEnvironment, async (url, options) => {
+          assert.equal(options.method, undefined)
+          if (url.includes('/git/ref/')) return json({}, 404)
+          return json(args[0] === 'prepare' ? [existingDraft] : existingDraft)
+        }),
+        /signing mode differs/,
+      )
+    }
   }
 })
 
@@ -157,4 +185,40 @@ test('upload refuses a published release and absent or empty installer files', a
     }),
     /published release/,
   )
+})
+
+test('upload keeps signed desktop updates and their matching signatures', async (t) => {
+  const directory = await workspace(t)
+  const names = [
+    'VergeN_0.1.1_arm64.app.tar.gz',
+    'VergeN_0.1.1_arm64.app.tar.gz.sig',
+    'VergeN_0.1.1_x64-setup.exe',
+    'VergeN_0.1.1_x64-setup.exe.sig',
+    'VergeN_0.1.1_amd64.deb',
+    'VergeN_0.1.1_amd64.deb.sig',
+    'VergeN-0.1.1.x86_64.rpm',
+    'VergeN-0.1.1.x86_64.rpm.sig',
+  ]
+  for (const name of [...names, 'private.key', 'build.log']) {
+    await writeFile(join(directory, name), 'fixture')
+  }
+  const uploaded = []
+  await run(
+    ['upload', directory],
+    { ...env, VERGEN_BUILD_UPDATER: 'true' },
+    async (url, options) => {
+      if (options.method === 'POST') {
+        uploaded.push(new URL(url).searchParams.get('name'))
+        assert.equal(await options.body.text(), 'fixture')
+        return json({ state: 'uploaded', size: 7 }, 201)
+      }
+      return url.includes('/assets?')
+        ? json([])
+        : json({
+            ...draft,
+            body: `<!-- vergen-build:${env.GITHUB_SHA}:9:true -->`,
+          })
+    },
+  )
+  assert.deepEqual(uploaded, names.sort())
 })

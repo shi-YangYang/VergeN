@@ -811,6 +811,7 @@ export const translationKeys = [
   'settings.modals.networkInterface.title',
   'settings.modals.networkInterface.fields.ipAddress',
   'settings.modals.networkInterface.fields.macAddress',
+  'settings.modals.companyUpdate.manualInstall',
   'settings.modals.companyUpdate.installNow',
   'settings.modals.companyUpdate.updating',
   'settings.modals.companyUpdate.download',

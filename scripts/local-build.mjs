@@ -23,11 +23,18 @@ const run = (command, args, cwd = root) =>
 function copyInstallers(files, platformName) {
   if (!files.length) throw new Error('No installer was produced')
   const output = path.join(root, 'release-local', version, platformName)
+  fs.rmSync(output, { recursive: true, force: true })
   fs.mkdirSync(output, { recursive: true })
   for (const file of files) {
-    const destination = path.join(output, path.basename(file))
+    const name = path
+      .basename(file)
+      .replace(
+        /\.app\.tar\.gz(\.sig)?$/,
+        `_${version}_${process.arch}.app.tar.gz$1`,
+      )
+    const destination = path.join(output, name)
     fs.copyFileSync(file, destination)
-    console.log(`Installer: ${destination}`)
+    console.log(`Package: ${destination}`)
   }
 }
 
@@ -59,6 +66,17 @@ function desktop() {
       'Set VITE_ENTERPRISE_SERVER_URL in .env.build.local before packaging',
     )
   }
+  const signedUpdates = env.VERGEN_BUILD_UPDATER === 'true'
+  if (signedUpdates && !env.TAURI_SIGNING_PRIVATE_KEY) {
+    throw new Error(
+      'Signed updates require TAURI_SIGNING_PRIVATE_KEY matching the installed client public key',
+    )
+  }
+  if (signedUpdates && !env.VITE_ENTERPRISE_SERVER_URL.startsWith('https://')) {
+    throw new Error(
+      'Signed updates require an HTTPS VITE_ENTERPRISE_SERVER_URL',
+    )
+  }
   Object.assign(env, {
     CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16',
     CARGO_PROFILE_RELEASE_DEBUG: '0',
@@ -73,19 +91,63 @@ function desktop() {
     '--target',
     target,
     '--config',
-    JSON.stringify({ bundle: { createUpdaterArtifacts: false } }),
+    JSON.stringify({ bundle: { createUpdaterArtifacts: signedUpdates } }),
   ])
   const bundle = path.resolve(
     env.CARGO_TARGET_DIR || 'target',
     target,
     'release/bundle',
   )
+  const patterns = ['dmg/*.dmg', 'nsis/*.exe', 'deb/*.deb', 'rpm/*.rpm']
+  if (signedUpdates) {
+    patterns.push(
+      'nsis/*.exe.sig',
+      'deb/*.deb.sig',
+      'rpm/*.rpm.sig',
+      'macos/*.app.tar.gz',
+      'macos/*.app.tar.gz.sig',
+    )
+  }
   const files = fs
-    .globSync(['dmg/*.dmg', 'nsis/*.exe', 'deb/*.deb', 'rpm/*.rpm'], {
-      cwd: bundle,
-    })
+    .globSync(patterns, { cwd: bundle })
     .map((file) => path.join(bundle, file))
     .filter((file) => fs.statSync(file).mtimeMs >= started - 1000)
+  if (signedUpdates) {
+    const updates = files.filter((file) =>
+      /\.(exe|deb|rpm|app\.tar\.gz)$/.test(file),
+    )
+    if (
+      !updates.length ||
+      updates.some((file) => !files.includes(`${file}.sig`))
+    ) {
+      throw new Error(
+        'Signed update packages or their matching .sig files are missing',
+      )
+    }
+    const publicKey = JSON.parse(read('src-tauri/tauri.conf.json')).plugins
+      .updater.pubkey
+    const packet = (encoded) =>
+      Buffer.from(
+        Buffer.from(encoded.trim(), 'base64')
+          .toString('utf8')
+          .trim()
+          .split('\n')[1] ?? '',
+        'base64',
+      )
+    const publicPacket = packet(publicKey)
+    for (const file of updates) {
+      const signaturePacket = packet(fs.readFileSync(`${file}.sig`, 'utf8'))
+      if (
+        publicPacket.length !== 42 ||
+        signaturePacket.length !== 74 ||
+        !publicPacket.subarray(2, 10).equals(signaturePacket.subarray(2, 10))
+      ) {
+        throw new Error(
+          `Update signature does not match the client public key: ${path.basename(file)}`,
+        )
+      }
+    }
+  }
   copyInstallers(files, 'desktop')
 }
 

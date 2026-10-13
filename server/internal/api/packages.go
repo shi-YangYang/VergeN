@@ -27,7 +27,7 @@ func (a *Server) handleAdminListPackages(w http.ResponseWriter, _ *http.Request)
 	if !a.downloadsReady(w) {
 		return
 	}
-	packages := append([]web.FileRow{}, web.Packages(a.downloads)...)
+	packages := append([]web.FileRow{}, web.PackageFiles(a.downloads)...)
 	writeJSON(w, http.StatusOK, map[string]any{"packages": packages})
 }
 
@@ -132,6 +132,8 @@ func packageUploadError(w http.ResponseWriter, err error) {
 }
 
 func (a *Server) handleAdminDeletePackage(w http.ResponseWriter, r *http.Request) {
+	a.publicationMu.Lock()
+	defer a.publicationMu.Unlock()
 	if !a.downloadsReady(w) {
 		return
 	}
@@ -147,6 +149,15 @@ func (a *Server) handleAdminDeletePackage(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if err == nil {
+		referenced, checkErr := a.packageReferenced(name)
+		if checkErr != nil {
+			fail(w, http.StatusInternalServerError, "internal_error", "could not check package references")
+			return
+		}
+		if referenced {
+			fail(w, http.StatusConflict, "package_in_use", "unpublish releases using this file before deleting it")
+			return
+		}
 		err = os.Remove(path)
 	}
 	if err != nil {

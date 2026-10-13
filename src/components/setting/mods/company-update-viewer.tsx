@@ -48,7 +48,7 @@ export const CompanyUpdateViewer = ({ ref }: Props) => {
   }
 
   const onInstall = async () => {
-    if (!release || installing) return
+    if (!release?.updater_available || installing) return
     setInstalling(true)
     setDownloaded(0)
     setTotal(0)
@@ -68,8 +68,9 @@ export const CompanyUpdateViewer = ({ ref }: Props) => {
     }
     await mutate(() => enterpriseUpdaterInstall(onDownloadEvent), {
       id: 'enterprise-updater-install',
-      errorNotice: false,
-    }).finally(() => setInstalling(false))
+    })
+      .catch(() => {})
+      .finally(() => setInstalling(false))
   }
 
   const progress = total <= 0 ? 0 : Math.min((downloaded / total) * 100, 100)
@@ -123,10 +124,17 @@ export const CompanyUpdateViewer = ({ ref }: Props) => {
         pb: 1,
       }}
       loading={installing}
-      disableOk={!release || installing}
-      okBtn={release ? t('settings.modals.companyUpdate.installNow') : ''}
+      disableOk={
+        !release || installing || (!release.updater_available && !release.url)
+      }
+      okBtn={
+        release?.updater_available
+          ? t('settings.modals.companyUpdate.installNow')
+          : t('settings.modals.companyUpdate.download')
+      }
       onOk={() => {
-        void onInstall()
+        if (release?.updater_available) void onInstall()
+        else if (release?.url) openUrlWithNotice(release.url)
       }}
       cancelBtn={
         installing
@@ -134,6 +142,7 @@ export const CompanyUpdateViewer = ({ ref }: Props) => {
           : t('shared.actions.cancel')
       }
       disableCancel={installing}
+      onCancel={() => setOpen(false)}
       onClose={() => {
         if (!installing) setOpen(false)
       }}
@@ -176,6 +185,11 @@ export const CompanyUpdateViewer = ({ ref }: Props) => {
           },
         }}
       >
+        {release && !release.updater_available && (
+          <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
+            {t('settings.modals.companyUpdate.manualInstall')}
+          </Typography>
+        )}
         {release?.notes?.trim() ? (
           <Suspense fallback={<LinearProgress />}>
             <LazyReactMarkdown>{release.notes}</LazyReactMarkdown>

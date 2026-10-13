@@ -2,6 +2,8 @@ package api
 
 import (
 	"bytes"
+	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"mime"
 	"mime/multipart"
@@ -11,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -668,6 +671,179 @@ func TestClientReleaseManifest(t *testing.T) {
 	code, body = doJSON(t, h, "GET", "/api/v1/client/update", empAccess, nil)
 	if code != http.StatusNotFound {
 		t.Fatalf("update after delete: status=%d body=%v", code, body)
+	}
+}
+
+func TestUnifiedReleasePublishing(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+	s, err := store.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	downloads := filepath.Join(dir, "downloads")
+	if err := os.Mkdir(downloads, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sv, err := NewServer(s, downloads)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := sv.Handler()
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := adminLoginToken(t, h, s)
+	for _, name := range []string{"VergeN.exe", "VergeN.dmg", "VergeN.app.tar.gz", "VergeN.deb", "VergeN.rpm", "VergeN.apk"} {
+		if err := os.WriteFile(filepath.Join(downloads, name), []byte(name), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	packet := append([]byte("ED"), make([]byte, 72)...)
+	signature := base64.StdEncoding.EncodeToString([]byte("untrusted comment: test signature\n" + base64.StdEncoding.EncodeToString(packet) + "\ntrusted comment: test\n" + base64.StdEncoding.EncodeToString(make([]byte, 64)) + "\n"))
+	payload := func(version string) map[string]any {
+		return map[string]any{
+			"version": version, "notes": "One published version", "base_url": "https://ops.example.com",
+			"packages": map[string]string{"windows": "VergeN.exe", "macos": "VergeN.dmg", "linux": "VergeN.deb", "android": "VergeN.apk"},
+			"updater": map[string]updaterPackage{
+				"windows-x86_64":   {Name: "VergeN.exe", Signature: signature},
+				"darwin-aarch64":   {Name: "VergeN.app.tar.gz", Signature: signature},
+				"linux-x86_64-deb": {Name: "VergeN.deb", Signature: signature},
+				"linux-x86_64-rpm": {Name: "VergeN.rpm", Signature: signature},
+			},
+		}
+	}
+	for field, value := range map[string]any{
+		"version": "1.02.3", "base_url": "https://ops.example.com/path", "packages": map[string]string{},
+		"updater": map[string]updaterPackage{"darwin-aarch64": {Name: "VergeN.dmg", Signature: signature}},
+	} {
+		request := payload("1.2.3")
+		request[field] = value
+		if code, body := doJSON(t, h, "POST", "/api/v1/admin/releases", token, request); code != http.StatusBadRequest {
+			t.Fatalf("invalid %s: status=%d body=%v", field, code, body)
+		}
+	}
+	invalidSignature := payload("1.2.3")
+	invalidSignature["updater"] = map[string]updaterPackage{"windows-x86_64": {Name: "VergeN.exe", Signature: "not a signature"}}
+	if code, body := doJSON(t, h, "POST", "/api/v1/admin/releases", token, invalidSignature); code != http.StatusBadRequest {
+		t.Fatalf("invalid signature: status=%d body=%v", code, body)
+	}
+	wrongVersion := payload("1.2.3")
+	decodedSignature, _ := base64.StdEncoding.DecodeString(signature)
+	versionedSignature := base64.StdEncoding.EncodeToString([]byte(strings.Replace(string(decodedSignature), "\ntrusted comment: test", "\ntrusted comment: test\tversion:1.2.2", 1)))
+	wrongVersion["updater"] = map[string]updaterPackage{"windows-x86_64": {Name: "VergeN.exe", Signature: versionedSignature}}
+	if code, body := doJSON(t, h, "POST", "/api/v1/admin/releases", token, wrongVersion); code != http.StatusBadRequest {
+		t.Fatalf("mismatched signed version: status=%d body=%v", code, body)
+	}
+	remoteHTTP := payload("1.2.3")
+	remoteHTTP["base_url"] = "http://ops.example.com"
+	if code, body := doJSON(t, h, "POST", "/api/v1/admin/releases", token, remoteHTTP); code != http.StatusBadRequest || body["error"].(map[string]any)["code"] != "insecure_update_url" {
+		t.Fatalf("insecure updater origin: status=%d body=%v", code, body)
+	}
+	// A feed write failure must not leave a visible release without its updater metadata.
+	probe, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { probe.Close() })
+	if _, err := probe.Exec(`CREATE TRIGGER reject_test_feed BEFORE INSERT ON settings WHEN NEW.key = 'updater_manifest' BEGIN SELECT RAISE(FAIL, 'test feed write failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := doJSON(t, h, "POST", "/api/v1/admin/releases", token, payload("1.2.3")); code != http.StatusInternalServerError {
+		t.Fatalf("failed feed write: status=%d", code)
+	}
+	if releases, err := s.ListReleases(); err != nil || len(releases) != 0 {
+		t.Fatalf("release leaked from failed publication: releases=%v err=%v", releases, err)
+	}
+	if _, err := probe.Exec(`DROP TRIGGER reject_test_feed`); err != nil {
+		t.Fatal(err)
+	}
+	code, body := doJSON(t, h, "POST", "/api/v1/admin/releases", token, payload("1.2.3"))
+	if code != http.StatusCreated {
+		t.Fatalf("publish: status=%d body=%v", code, body)
+	}
+	release := body["release"].(map[string]any)
+	firstID := int64(release["id"].(float64))
+	if len(release["updater_platforms"].([]any)) != 4 || release["mac_url"] != "https://ops.example.com/files/VergeN.dmg" {
+		t.Fatalf("published release: %v", release)
+	}
+	firstManifest, err := s.UpdaterManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"VergeN.exe", "VergeN.app.tar.gz", "VergeN.rpm"} {
+		if code, body := doJSON(t, h, "DELETE", "/api/v1/admin/packages/"+name, token, nil); code != http.StatusConflict {
+			t.Fatalf("delete referenced %s: status=%d body=%v", name, code, body)
+		}
+	}
+	for _, test := range []struct {
+		query, filename string
+		available       bool
+	}{
+		{"platform=windows&arch=x86_64&bundle_type=nsis", "VergeN.exe", true},
+		{"platform=macos&arch=aarch64", "VergeN.dmg", true},
+		{"platform=linux&arch=x86_64&bundle_type=rpm", "VergeN.rpm", true},
+		{"platform=linux&arch=x86_64&bundle_type=deb", "VergeN.deb", true},
+		{"platform=linux&arch=x86_64&bundle_type=appimage", "VergeN.deb", false},
+	} {
+		code, body := doJSON(t, h, "GET", "/api/v1/client/update?"+test.query, token, nil)
+		if code != http.StatusOK || body["url"] != "https://ops.example.com/files/"+test.filename || body["updater_available"] != test.available {
+			t.Fatalf("manual update %s: status=%d body=%v", test.query, code, body)
+		}
+		code, body = doJSON(t, h, "GET", "/api/v1/client/updater?"+test.query, token, nil)
+		if test.available && (code != http.StatusOK || body["version"] != "1.2.3") || !test.available && code != http.StatusNoContent {
+			t.Fatalf("updater %s: status=%d body=%v", test.query, code, body)
+		}
+	}
+	for _, path := range []string{"/api/v1/admin/packages", "/api/v1/public/releases"} {
+		code, body := doJSON(t, h, "GET", path, token, nil)
+		if code != http.StatusOK {
+			t.Fatalf("package listing: status=%d body=%v", code, body)
+		}
+		foundArchive := false
+		for _, value := range body["packages"].([]any) {
+			row := value.(map[string]any)
+			if row["name"] == "VergeN.app.tar.gz" {
+				foundArchive = row["kind"] == "updater"
+			}
+		}
+		if foundArchive != strings.Contains(path, "/admin/") {
+			t.Fatalf("updater archive visibility: %s body=%v", path, body)
+		}
+	}
+	file := httptest.NewRecorder()
+	h.ServeHTTP(file, httptest.NewRequest("GET", "/files/VergeN.app.tar.gz", nil))
+	if file.Code != http.StatusOK || file.Body.String() != "VergeN.app.tar.gz" {
+		t.Fatalf("updater archive download: status=%d body=%q", file.Code, file.Body.String())
+	}
+	if code, _ := doJSON(t, h, "POST", "/api/v1/admin/releases", token, payload("1.2.3")); code != http.StatusConflict {
+		t.Fatalf("duplicate version: status=%d", code)
+	}
+	downloadOnly := payload("1.2.4")
+	downloadOnly["updater"] = map[string]updaterPackage{}
+	code, body = doJSON(t, h, "POST", "/api/v1/admin/releases", token, downloadOnly)
+	if code != http.StatusCreated {
+		t.Fatalf("publish download-only: status=%d body=%v", code, body)
+	}
+	secondID := int64(body["release"].(map[string]any)["id"].(float64))
+	if raw, err := s.UpdaterManifest(); err != nil || raw != "" {
+		t.Fatalf("stale feed after download-only publication: raw=%q err=%v", raw, err)
+	}
+	if code, _ := doJSON(t, h, "DELETE", "/api/v1/admin/releases/"+itoa(secondID), token, nil); code != http.StatusNoContent {
+		t.Fatalf("unpublish latest: status=%d", code)
+	}
+	if raw, err := s.UpdaterManifest(); err != nil || raw != firstManifest {
+		t.Fatalf("previous feed not restored: raw=%q err=%v", raw, err)
+	}
+	if code, _ := doJSON(t, h, "DELETE", "/api/v1/admin/releases/"+itoa(firstID), token, nil); code != http.StatusNoContent {
+		t.Fatalf("unpublish final release: status=%d", code)
+	}
+	if code, _ := doJSON(t, h, "GET", "/api/v1/client/updater?platform=macos&arch=aarch64", token, nil); code != http.StatusNoContent {
+		t.Fatalf("updater after final unpublish: status=%d", code)
+	}
+	if code, body := doJSON(t, h, "DELETE", "/api/v1/admin/packages/VergeN.app.tar.gz", token, nil); code != http.StatusNoContent {
+		t.Fatalf("delete unused archive: status=%d body=%v", code, body)
 	}
 }
 

@@ -16,6 +16,7 @@ type FileRow struct {
 	Name     string `json:"name"`
 	Size     string `json:"size"`
 	Platform string `json:"platform"`
+	Kind     string `json:"kind"`
 }
 
 // Files serves a published package by exact name. The name is matched
@@ -28,7 +29,7 @@ func Files(downloadsDir string) http.HandlerFunc {
 			return
 		}
 		found := false
-		for _, row := range Packages(downloadsDir) {
+		for _, row := range PackageFiles(downloadsDir) {
 			if row.Name == name {
 				found = true
 				break
@@ -52,6 +53,17 @@ func Files(downloadsDir string) http.HandlerFunc {
 
 // Packages lists the package files currently published in the directory.
 func Packages(dir string) []FileRow {
+	var rows []FileRow
+	for _, row := range PackageFiles(dir) {
+		if row.Kind == "installer" {
+			rows = append(rows, row)
+		}
+	}
+	return rows
+}
+
+// PackageFiles includes the macOS archive used by the desktop updater.
+func PackageFiles(dir string) []FileRow {
 	if dir == "" {
 		return nil
 	}
@@ -84,7 +96,11 @@ func PackageFile(name string, size int64) (FileRow, bool) {
 		}
 	}
 	platform := packagePlatform(name)
-	return FileRow{Name: name, Size: formatSize(size), Platform: platform}, platform != ""
+	kind := "installer"
+	if strings.HasSuffix(strings.ToLower(name), ".app.tar.gz") {
+		platform, kind = "macos", "updater"
+	}
+	return FileRow{Name: name, Size: formatSize(size), Platform: platform, Kind: kind}, platform != ""
 }
 
 func packagePlatform(name string) string {

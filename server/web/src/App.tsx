@@ -483,27 +483,164 @@ function AnnouncementPage() {
   )
 }
 
-function PackagesSection() {
+type ReleasePlatform = PackageFile['platform']
+
+const INSTALLER_PLATFORMS: {
+  key: ReleasePlatform
+  label: string
+  accept: string
+  hint: string
+}[] = [
+  {
+    key: 'windows',
+    label: 'Windows · x64',
+    accept: '.exe,.msi',
+    hint: 'EXE / MSI 安装包',
+  },
+  {
+    key: 'macos',
+    label: 'macOS · Apple Silicon',
+    accept: '.dmg,.pkg',
+    hint: 'DMG / PKG 安装包',
+  },
+  {
+    key: 'linux',
+    label: 'Linux · x64',
+    accept: '.deb,.rpm,.AppImage',
+    hint: 'DEB / RPM / AppImage 安装包',
+  },
+  {
+    key: 'android',
+    label: 'Android · arm64',
+    accept: '.apk',
+    hint: 'APK 安装包',
+  },
+]
+
+const UPDATER_TARGETS: {
+  key: string
+  platform: ReleasePlatform
+  label: string
+  accept: string
+  hint: string
+}[] = [
+  {
+    key: 'windows-x86_64',
+    platform: 'windows',
+    label: 'Windows',
+    accept: '.exe,.msi',
+    hint: '安装包及同名 .sig 文件',
+  },
+  {
+    key: 'darwin-aarch64',
+    platform: 'macos',
+    label: 'macOS',
+    accept: '.app.tar.gz',
+    hint: '.app.tar.gz 更新包及同名 .sig 文件',
+  },
+  {
+    key: 'linux-x86_64-deb',
+    platform: 'linux',
+    label: 'Linux · DEB',
+    accept: '.deb',
+    hint: '.deb 安装包及同名 .sig 文件',
+  },
+  {
+    key: 'linux-x86_64-rpm',
+    platform: 'linux',
+    label: 'Linux · RPM',
+    accept: '.rpm',
+    hint: '.rpm 安装包及同名 .sig 文件',
+  },
+]
+
+function acceptsPackage(name: string, accept: string) {
+  return accept
+    .split(',')
+    .some((extension) => name.toLowerCase().endsWith(extension.toLowerCase()))
+}
+
+function PackageUpload({
+  label,
+  accept,
+  disabled,
+  onFile,
+}: {
+  label: string
+  accept: string
+  disabled: boolean
+  onFile: (file: File) => void
+}) {
+  return (
+    <label className={`package-upload${disabled ? ' disabled' : ''}`}>
+      {label}
+      <input
+        type="file"
+        accept={accept}
+        aria-label={label}
+        disabled={disabled}
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          if (file) onFile(file)
+          event.target.value = ''
+        }}
+      />
+    </label>
+  )
+}
+
+function ReleasePage() {
+  const [releases, setReleases] = useState<AdminRelease[]>([])
   const [packages, setPackages] = useState<PackageFile[]>([])
   const [loading, setLoading] = useState(true)
-  const [file, setFile] = useState<File | null>(null)
-  const [inputKey, setInputKey] = useState(0)
-  const [uploading, setUploading] = useState(false)
-  const [deleting, setDeleting] = useState('')
-  const [progress, setProgress] = useState({ loaded: 0, total: 0, speed: 0 })
+  const [version, setVersion] = useState('')
+  const [notes, setNotes] = useState('')
+  const [selected, setSelected] = useState<
+    Partial<Record<ReleasePlatform, string>>
+  >({})
+  const [enableUpdater, setEnableUpdater] = useState(false)
+  const [updates, setUpdates] = useState<Record<string, string>>({})
+  const [signatures, setSignatures] = useState<
+    Record<string, { name: string; text: string }>
+  >({})
+  const [busy, setBusy] = useState('')
+  const [progress, setProgress] = useState({
+    name: '',
+    loaded: 0,
+    total: 0,
+    speed: 0,
+  })
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
-  const busy = uploading || deleting !== ''
-  const percent = progress.total
-    ? Math.floor((progress.loaded / progress.total) * 100)
-    : 0
+  const selectedPlatforms = INSTALLER_PLATFORMS.filter(
+    ({ key }) => selected[key],
+  )
+  const availableTargets = UPDATER_TARGETS.filter(
+    ({ platform }) => selected[platform],
+  )
+  const updaterTargets = enableUpdater
+    ? availableTargets.filter(({ key }) => updates[key])
+    : []
+  const incompleteUpdate = updaterTargets.some(
+    ({ key }) => !signatures[key]?.text,
+  )
+  const canPublish =
+    !loading &&
+    !busy &&
+    version.trim() !== '' &&
+    notes.trim() !== '' &&
+    selectedPlatforms.length > 0 &&
+    (!enableUpdater || (updaterTargets.length > 0 && !incompleteUpdate))
 
   const reload = useCallback(async () => {
     setLoading(true)
     try {
-      const data = await listPackages()
-      setPackages(data.packages)
-      setError('')
+      const [releaseData, packageData] = await Promise.all([
+        listReleases(),
+        listPackages(),
+      ])
+      setReleases(releaseData.releases)
+      setPackages(packageData.packages)
     } catch (err) {
       setError(alertContext(err))
     } finally {
@@ -515,381 +652,562 @@ function PackagesSection() {
     void reload()
   }, [reload])
 
-  const upload = async (event: FormEvent) => {
-    event.preventDefault()
-    if (!file || busy) return
+  const selectInstaller = (platform: ReleasePlatform, name: string) => {
+    setSelected((value) => ({ ...value, [platform]: name }))
+    setUpdates((value) => {
+      const next = { ...value }
+      for (const target of UPDATER_TARGETS.filter(
+        (item) => item.platform === platform,
+      )) {
+        if (!name) delete next[target.key]
+        else if (acceptsPackage(name, target.accept)) next[target.key] = name
+      }
+      return next
+    })
+    setSignatures((value) => {
+      const next = { ...value }
+      for (const target of UPDATER_TARGETS.filter(
+        (item) => item.platform === platform,
+      ))
+        delete next[target.key]
+      return next
+    })
+  }
+
+  const upload = async (
+    file: File,
+    platform: ReleasePlatform,
+    targetKey?: string,
+  ) => {
+    if (busy) return
     setError('')
     setMessage('')
-    if (!/\.(exe|msi|dmg|pkg|deb|rpm|AppImage|apk)$/i.test(file.name)) {
-      setError('请选择支持的安装包格式')
+    const accept = targetKey
+      ? UPDATER_TARGETS.find(({ key }) => key === targetKey)!.accept
+      : INSTALLER_PLATFORMS.find(({ key }) => key === platform)!.accept
+    if (!acceptsPackage(file.name, accept)) {
+      setError(`请选择 ${accept} 格式的文件`)
       return
     }
     if (file.size > 512 * 1024 * 1024) {
-      setError('单个安装包不能超过 512 MiB')
+      setError('单个文件不能超过 512 MiB')
       return
     }
-    setUploading(true)
-    setProgress({ loaded: 0, total: file.size, speed: 0 })
+    setBusy('upload')
+    setProgress({ name: file.name, loaded: 0, total: file.size, speed: 0 })
     const started = performance.now()
     try {
-      await uploadPackage(file, (loaded, total) => {
+      const data = await uploadPackage(file, (loaded, total) => {
         const seconds = (performance.now() - started) / 1000
         setProgress({
+          name: file.name,
           loaded,
           total,
           speed: seconds > 0 ? loaded / seconds : 0,
         })
       })
-      setMessage(`${file.name} 已上传，公开下载页已可下载`)
-      setFile(null)
-      setInputKey((key) => key + 1)
-      await reload()
+      setPackages((value) => [
+        ...value.filter((item) => item.name !== data.package.name),
+        data.package,
+      ])
+      if (targetKey) {
+        setUpdates((value) => ({ ...value, [targetKey]: data.package.name }))
+        setSignatures((value) => {
+          const next = { ...value }
+          delete next[targetKey]
+          return next
+        })
+      } else selectInstaller(platform, data.package.name)
+      setMessage(`${file.name} 已上传并选中`)
     } catch (err) {
       setError(alertContext(err))
     } finally {
-      setUploading(false)
+      setBusy('')
     }
   }
 
-  const remove = async (item: PackageFile) => {
-    if (!window.confirm(`删除安装包 ${item.name}？删除后该下载链接将失效。`))
-      return
-    setDeleting(item.name)
+  const readSignature = async (file: File, key: string) => {
     setError('')
-    setMessage('')
+    if (!file.name.endsWith('.sig') || file.size > 64 * 1024) {
+      setError('请选择构建生成的 .sig 签名文件（最多 64 KiB）')
+      return
+    }
+    if (file.name !== `${updates[key]}.sig`) {
+      setError(`请选择与更新文件配套的 ${updates[key]}.sig`)
+      return
+    }
     try {
-      await deletePackage(item.name)
-      setMessage(`${item.name} 已删除`)
-      await reload()
+      const text = (await file.text()).trim()
+      if (!text) throw new Error('签名文件为空，请重新选择')
+      setSignatures((value) => ({ ...value, [key]: { name: file.name, text } }))
     } catch (err) {
       setError(alertContext(err))
-    } finally {
-      setDeleting('')
     }
   }
-
-  return (
-    <fieldset className="packages-section">
-      <legend>安装包管理</legend>
-      <div className="muted">
-        本地打包后上传，成功后自动出现在{' '}
-        <a href="/download" target="_blank" rel="noreferrer">
-          公开下载页
-        </a>
-        。 支持
-        .exe、.msi、.dmg、.pkg、.deb、.rpm、.AppImage、.apk，单个文件最多 512
-        MiB。
-      </div>
-      <form className="row-form" onSubmit={upload}>
-        <label className="package-picker">
-          选择安装包
-          <input
-            key={inputKey}
-            type="file"
-            accept=".exe,.msi,.dmg,.pkg,.deb,.rpm,.AppImage,.apk"
-            disabled={busy}
-            onChange={(event) => {
-              setFile(event.target.files?.[0] ?? null)
-              setError('')
-              setMessage('')
-            }}
-          />
-        </label>
-        <button type="submit" disabled={!file || busy}>
-          {uploading ? '上传中…' : '上传安装包'}
-        </button>
-      </form>
-      {uploading && (
-        <div className="package-progress" role="status">
-          <progress
-            value={progress.loaded}
-            max={progress.total || 1}
-            aria-label="安装包上传进度"
-          />
-          <span className="muted">
-            {percent}% · {(progress.loaded / 1024 / 1024).toFixed(1)} /{' '}
-            {(progress.total / 1024 / 1024).toFixed(1)} MiB
-            {' · '}
-            {(progress.speed / 1024 / 1024).toFixed(2)} MiB/s
-            {percent === 100 && ' · 传输完成，正在发布…'}
-          </span>
-        </div>
-      )}
-      {error && (
-        <div className="error" role="alert">
-          {error}
-        </div>
-      )}
-      {message && (
-        <div className="muted" role="status">
-          {message}
-        </div>
-      )}
-      <div className="row-form">
-        <span className="muted">
-          {loading ? '加载中…' : `已发布 ${packages.length} 个安装包`}
-        </span>
-        <button
-          className="ghost"
-          disabled={busy || loading}
-          onClick={() => void reload()}
-        >
-          刷新
-        </button>
-      </div>
-      <div className="package-table">
-        <table>
-          <thead>
-            <tr>
-              <th>文件名</th>
-              <th>平台</th>
-              <th>大小</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {packages.map((item) => (
-              <tr key={item.name}>
-                <td>
-                  <a href={`/files/${encodeURIComponent(item.name)}`} download>
-                    {item.name}
-                  </a>
-                </td>
-                <td>{PLATFORM_LABELS[item.platform]}</td>
-                <td>{item.size}</td>
-                <td className="actions">
-                  <button
-                    className="ghost"
-                    disabled={busy}
-                    onClick={() => void remove(item)}
-                  >
-                    {deleting === item.name ? '删除中…' : '删除'}
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {!loading && !error && packages.length === 0 && (
-              <tr>
-                <td colSpan={4} className="muted">
-                  暂无安装包，请先上传。
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </fieldset>
-  )
-}
-
-function ReleasePage() {
-  const [releases, setReleases] = useState<AdminRelease[]>([])
-  const [version, setVersion] = useState('')
-  const [notes, setNotes] = useState('')
-  const [winUrl, setWinUrl] = useState('')
-  const [linuxUrl, setLinuxUrl] = useState('')
-  const [androidUrl, setAndroidUrl] = useState('')
-  const [macUrl, setMacUrl] = useState('')
-  const [settings, setSettings] = useState<AdminSettings | null>(null)
-  const [manifest, setManifest] = useState('')
-  const [message, setMessage] = useState('')
-
-  const [releaseError, setReleaseError] = useState('')
-
-  const reload = useCallback(async () => {
-    try {
-      const data = await listReleases()
-      setReleases(data.releases)
-      setReleaseError('')
-    } catch (err) {
-      setReleaseError(err instanceof Error ? err.message : String(err))
-    }
-  }, [])
-
-  useEffect(() => {
-    void reload()
-    void getSettings().then((data) => {
-      setSettings(data)
-      setManifest(data.updater_manifest ?? '')
-    })
-  }, [reload])
 
   const save = async (event: FormEvent) => {
     event.preventDefault()
-    if (!version.trim()) {
-      setMessage('版本号必填')
-      return
-    }
+    if (!canPublish) return
+    setBusy('publish')
+    setError('')
+    setMessage('')
     try {
-      await createRelease({
-        version: version.trim(),
-        notes,
-        win_url: winUrl.trim(),
-        linux_url: linuxUrl.trim(),
-        mac_url: macUrl.trim(),
-        android_url: androidUrl.trim(),
+      const updater = Object.fromEntries(
+        updaterTargets.map(({ key }) => [
+          key,
+          {
+            name: updates[key],
+            signature: signatures[key].text,
+          },
+        ]),
+      )
+      const data = await createRelease({
+        version: version.trim().replace(/^v/, ''),
+        notes: notes.trim(),
+        base_url: window.location.origin,
+        packages: Object.fromEntries(
+          Object.entries(selected).filter(([, name]) => name),
+        ),
+        updater,
       })
       setVersion('')
       setNotes('')
-      setWinUrl('')
-      setLinuxUrl('')
-      setMacUrl('')
-      setMessage('已发布')
-      setTimeout(() => setMessage(''), 2000)
+      setSelected({})
+      setUpdates({})
+      setSignatures({})
+      setEnableUpdater(false)
+      setMessage(
+        `v${data.release.version} 已发布，下载页和客户端版本信息已更新`,
+      )
       await reload()
     } catch (err) {
-      setMessage(alertContext(err))
+      setError(alertContext(err))
+    } finally {
+      setBusy('')
     }
   }
 
   const removeRelease = async (release: AdminRelease) => {
-    if (!window.confirm(`删除 v${release.version}?`)) return
+    if (
+      !window.confirm(
+        `删除版本 v${release.version}？该版本将从下载页移除，安装包文件仍然保留。`,
+      )
+    )
+      return
+    setBusy('delete-release')
+    setError('')
+    setMessage('')
     try {
       await deleteRelease(release.id)
+      setMessage(`v${release.version} 已删除`)
       await reload()
     } catch (err) {
-      setMessage(alertContext(err))
+      setError(alertContext(err))
+    } finally {
+      setBusy('')
     }
   }
 
-  const saveManifest = async () => {
+  const removePackage = async (item: PackageFile) => {
+    if (
+      !window.confirm(
+        `删除文件 ${item.name}？已被版本或在线更新引用的文件不能删除。`,
+      )
+    )
+      return
+    setBusy('delete-package')
+    setError('')
+    setMessage('')
     try {
-      const data = await patchSettings({ updater_manifest: manifest })
-      setSettings(data)
-      setMessage('已保存')
-      setTimeout(() => setMessage(''), 2000)
+      await deletePackage(item.name)
+      setPackages((value) => value.filter(({ name }) => name !== item.name))
+      for (const { key } of INSTALLER_PLATFORMS)
+        if (selected[key] === item.name) selectInstaller(key, '')
+      setUpdates((value) =>
+        Object.fromEntries(
+          Object.entries(value).filter(([, name]) => name !== item.name),
+        ),
+      )
+      setMessage(`${item.name} 已删除`)
     } catch (err) {
-      setMessage(alertContext(err))
+      setError(alertContext(err))
+    } finally {
+      setBusy('')
     }
   }
 
   return (
-    <section className="panel">
-      <PackagesSection />
-      {releaseError && <div className="error">{releaseError}</div>}
-      <form className="stack" onSubmit={save}>
-        <fieldset>
-          <legend>版本说明与外部下载链接（可选）</legend>
-          <div className="row-form">
+    <section className="release-page stack">
+      <div className="release-heading">
+        <div>
+          <h1>发布客户端版本</h1>
+          <p className="muted">
+            填写版本说明、选择安装包，再一次发布到下载页和客户端。
+          </p>
+        </div>
+        <a href="/download" target="_blank" rel="noreferrer">
+          查看下载页 ↗
+        </a>
+      </div>
+      {error && (
+        <div className="release-feedback error" role="alert">
+          {error}
+        </div>
+      )}
+      {message && (
+        <div className="release-feedback" role="status">
+          {message}
+        </div>
+      )}
+      <form className="panel release-form stack" onSubmit={save}>
+        <fieldset disabled={!!busy || loading} className="release-step">
+          <legend>
+            <span className="step-number">1</span> 版本信息
+          </legend>
+          <div className="release-version-fields">
             <label>
               版本号
               <input
-                placeholder="1.0.2"
+                placeholder="例如 0.1.1"
                 value={version}
                 onChange={(e) => setVersion(e.target.value)}
-                style={{ minWidth: 120 }}
+                required
+              />
+              <span className="muted">
+                与安装包的版本一致，每次发布使用新版本号。
+              </span>
+            </label>
+            <label>
+              更新说明
+              <textarea
+                rows={4}
+                placeholder={
+                  '这次更新了什么？\n例如：修复连接问题，优化启动速度。'
+                }
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                required
               />
             </label>
-            <label style={{ flex: 1 }}>
-              更新说明
-              <input value={notes} onChange={(e) => setNotes(e.target.value)} />
-            </label>
-          </div>
-          <label>
-            Windows 安装包 URL(.exe/.msi)
-            <input
-              placeholder="https://…"
-              value={winUrl}
-              onChange={(e) => setWinUrl(e.target.value)}
-            />
-          </label>
-          <label>
-            macOS 安装包 URL(.dmg/.app.tar.gz)
-            <input
-              placeholder="https://…"
-              value={macUrl}
-              onChange={(e) => setMacUrl(e.target.value)}
-            />
-          </label>
-          <label>
-            Linux 安装包 URL(.AppImage/.deb)
-            <input
-              placeholder="https://…"
-              value={linuxUrl}
-              onChange={(e) => setLinuxUrl(e.target.value)}
-            />
-          </label>
-          <label>
-            Android 安装包 URL(.apk)
-            <input
-              placeholder="https://…"
-              value={androidUrl}
-              onChange={(e) => setAndroidUrl(e.target.value)}
-            />
-          </label>
-          <div className="row-form">
-            <button type="submit">发布</button>
-            {message && <span className="muted">{message}</span>}
           </div>
         </fieldset>
+        <fieldset disabled={!!busy || loading} className="release-step">
+          <legend>
+            <span className="step-number">2</span> 选择安装包
+          </legend>
+          <p className="muted">
+            从 GitHub
+            草稿下载后上传，或选择已有文件。只需选择本次要发布的平台，单个文件最多
+            512 MiB。
+          </p>
+          <div className="release-package-grid">
+            {INSTALLER_PLATFORMS.map((platform) => (
+              <div
+                className={`release-package-card${selected[platform.key] ? ' selected' : ''}`}
+                key={platform.key}
+              >
+                <div className="release-card-heading">
+                  <strong>{platform.label}</strong>
+                  <span className="muted">
+                    {selected[platform.key] ? '已选择' : '未选择'}
+                  </span>
+                </div>
+                <label>
+                  安装包
+                  <select
+                    aria-label={`${PLATFORM_LABELS[platform.key]} 安装包`}
+                    value={selected[platform.key] ?? ''}
+                    onChange={(event) =>
+                      selectInstaller(platform.key, event.target.value)
+                    }
+                  >
+                    <option value="">暂不发布此平台</option>
+                    {packages
+                      .filter(
+                        (item) =>
+                          item.platform === platform.key &&
+                          item.kind !== 'updater' &&
+                          acceptsPackage(item.name, platform.accept),
+                      )
+                      .map((item) => (
+                        <option value={item.name} key={item.name}>
+                          {item.name} · {item.size}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <div className="release-card-footer">
+                  <span className="muted">{platform.hint}</span>
+                  <PackageUpload
+                    label={`上传 ${PLATFORM_LABELS[platform.key]} 安装包`}
+                    accept={platform.accept}
+                    disabled={!!busy || loading}
+                    onFile={(file) => void upload(file, platform.key)}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+          {busy === 'upload' && (
+            <div className="package-progress" role="status">
+              <span>{progress.name}</span>
+              <progress
+                value={progress.loaded}
+                max={progress.total || 1}
+                aria-label="文件上传进度"
+              />
+              <span className="muted">
+                {Math.floor((progress.loaded / (progress.total || 1)) * 100)}% ·{' '}
+                {(progress.loaded / 1024 / 1024).toFixed(1)} /{' '}
+                {(progress.total / 1024 / 1024).toFixed(1)} MiB ·{' '}
+                {(progress.speed / 1024 / 1024).toFixed(2)} MiB/s
+                {progress.loaded >= progress.total && ' · 正在保存文件…'}
+              </span>
+            </div>
+          )}
+        </fieldset>
+        <fieldset disabled={!!busy || loading} className="release-step">
+          <legend>
+            <span className="step-number">3</span> 在线更新
+          </legend>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={enableUpdater}
+              onChange={(event) => setEnableUpdater(event.target.checked)}
+            />
+            同时启用桌面客户端在线更新
+          </label>
+          <p className="muted">
+            不勾选时，客户端提示新版本，用户下载后安装。勾选后，为需要在线更新的平台选择更新包和配套签名。
+          </p>
+          {enableUpdater && (
+            <div className="stack">
+              <div className="release-update-guide">
+                在 GitHub 的 Client packages 工作流勾选
+                signed_updates，下载更新文件及同名 <code>.sig</code>
+                。这里选择文件即可，无需填写链接或更新清单。
+              </div>
+              {availableTargets.length === 0 && (
+                <p className="muted">
+                  请先在第 2 步选择至少一个桌面平台的安装包。
+                </p>
+              )}
+              {availableTargets.map((target) => (
+                <div className="release-updater-row" key={target.key}>
+                  <div>
+                    <strong>{target.label}</strong>
+                    <p className="muted">{target.hint}</p>
+                  </div>
+                  <div className="stack">
+                    <label>
+                      更新文件
+                      <select
+                        aria-label={`${target.label} 更新文件`}
+                        value={updates[target.key] ?? ''}
+                        onChange={(event) => {
+                          const name = event.target.value
+                          setUpdates((value) => ({
+                            ...value,
+                            [target.key]: name,
+                          }))
+                          setSignatures((value) => {
+                            const next = { ...value }
+                            delete next[target.key]
+                            return next
+                          })
+                        }}
+                      >
+                        <option value="">此平台不启用在线更新</option>
+                        {packages
+                          .filter(
+                            (item) =>
+                              item.platform === target.platform &&
+                              acceptsPackage(item.name, target.accept),
+                          )
+                          .map((item) => (
+                            <option value={item.name} key={item.name}>
+                              {item.name}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                    <PackageUpload
+                      label={`上传 ${target.label} 更新文件`}
+                      accept={target.accept}
+                      disabled={!!busy || loading}
+                      onFile={(file) =>
+                        void upload(file, target.platform, target.key)
+                      }
+                    />
+                  </div>
+                  <div className="release-signature">
+                    <PackageUpload
+                      label={`选择 ${target.label} 签名`}
+                      accept=".sig"
+                      disabled={!!busy || !updates[target.key]}
+                      onFile={(file) => void readSignature(file, target.key)}
+                    />
+                    <span
+                      className={
+                        signatures[target.key] ? 'release-ready' : 'muted'
+                      }
+                    >
+                      {signatures[target.key]?.name ??
+                        (updates[target.key]
+                          ? '还需选择配套 .sig 文件'
+                          : '未启用')}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="muted">
+            Android 更新仍通过下载安装 APK 完成；安装包需要沿用原签名，并提高
+            versionCode。
+          </p>
+        </fieldset>
+        <div className="release-publish-bar">
+          <div>
+            <strong>
+              {version.trim()
+                ? `发布 v${version.trim().replace(/^v/, '')}`
+                : '准备发布新版本'}
+            </strong>
+            <p className="muted">
+              {selectedPlatforms.length
+                ? `已选择 ${selectedPlatforms.map(({ key }) => PLATFORM_LABELS[key]).join('、')}`
+                : '先填写版本说明并选择安装包'}
+              {enableUpdater &&
+                ` · ${updaterTargets.filter(({ key }) => signatures[key]?.text).length} 项在线更新已就绪`}
+            </p>
+          </div>
+          <button type="submit" disabled={!canPublish}>
+            {busy === 'publish' ? '正在发布…' : '发布版本'}
+          </button>
+        </div>
       </form>
-      <table>
-        <thead>
-          <tr>
-            <th>版本</th>
-            <th>说明</th>
-            <th>发布时间</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {releases.map((release, index) => (
-            <tr key={release.id} className={index === 0 ? '' : 'off'}>
-              <td>
-                {index === 0 && <span className="pill">最新</span>}v
-                {release.version}
-              </td>
-              <td>{release.notes || '-'}</td>
-              <td>
-                {release.pub_date
-                  ? new Date(release.pub_date * 1000).toLocaleString('zh-CN')
-                  : '-'}
-              </td>
-              <td className="actions">
+      <section className="panel release-history">
+        <div className="release-section-heading">
+          <h2>已发布版本</h2>
+          <span className="muted">{releases.length} 个版本</span>
+        </div>
+        {loading && <p className="muted">加载中…</p>}
+        {!loading && releases.length === 0 && (
+          <p className="muted">
+            还没有发布版本。完成上方 3 步后，版本和更新说明会显示在这里。
+          </p>
+        )}
+        {releases.map((release, index) => {
+          const links = {
+            windows: release.win_url,
+            macos: release.mac_url,
+            linux: release.linux_url,
+            android: release.android_url,
+          }
+          return (
+            <article className="release-history-item" key={release.id}>
+              <div className="release-section-heading">
+                <div className="row-form">
+                  <strong>v{release.version}</strong>
+                  {index === 0 && <span className="pill">当前版本</span>}
+                  <span className="muted">
+                    {new Date(release.pub_date * 1000).toLocaleString('zh-CN')}
+                  </span>
+                </div>
                 <button
+                  type="button"
                   className="ghost"
+                  disabled={!!busy}
                   onClick={() => void removeRelease(release)}
                 >
-                  删除
+                  删除版本
                 </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {settings && (
-        <form
-          className="stack"
-          onSubmit={(event) => {
-            event.preventDefault()
-            void saveManifest()
-          }}
-          style={{ marginTop: 20 }}
-        >
-          <fieldset>
-            <legend>一键更新清单(可选)</legend>
-            <label>
-              updater JSON(tauri 格式;留空则只提示不自动升级)
-              <textarea
-                rows={5}
-                placeholder={
-                  '{\n  "version": "1.0.1",\n  "platforms": { … }\n}'
-                }
-                value={manifest}
-                onChange={(e) => setManifest(e.target.value)}
-              />
-            </label>
-            {settings.updater_manifest && (
-              <div className="muted" style={{ fontSize: 12 }}>
-                一键更新已启用
               </div>
-            )}
-            <div className="row-form">
-              <button type="submit">保存清单</button>
-            </div>
-          </fieldset>
-        </form>
-      )}
+              <p className="release-notes">{release.notes || '暂无更新说明'}</p>
+              <div className="release-history-links">
+                {INSTALLER_PLATFORMS.filter(({ key }) => links[key]).map(
+                  ({ key }) => (
+                    <a
+                      key={key}
+                      href={links[key]}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {PLATFORM_LABELS[key]} ↗
+                    </a>
+                  ),
+                )}
+                <span className="muted">
+                  {release.updater_platforms?.length
+                    ? `在线更新：${release.updater_platforms.map((key) => UPDATER_TARGETS.find((item) => item.key === key)?.label ?? key).join('、')}`
+                    : '下载后安装'}
+                </span>
+              </div>
+            </article>
+          )
+        })}
+      </section>
+      <details className="panel release-library">
+        <summary>
+          文件库{' '}
+          <span className="muted">
+            {packages.length} 个文件 · 清理未使用的安装包和更新包
+          </span>
+        </summary>
+        <p className="muted">
+          这里管理服务器上的文件。已被版本引用的文件受到保护；请先删除对应版本，再清理文件。
+        </p>
+        <div className="package-table">
+          <table>
+            <thead>
+              <tr>
+                <th>文件名</th>
+                <th>平台 / 用途</th>
+                <th>大小</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {packages.map((item) => (
+                <tr key={item.name}>
+                  <td>
+                    <a
+                      href={`/files/${encodeURIComponent(item.name)}`}
+                      download
+                    >
+                      {item.name}
+                    </a>
+                  </td>
+                  <td>
+                    {PLATFORM_LABELS[item.platform]} ·{' '}
+                    {item.kind === 'updater' ? '更新包' : '安装包'}
+                  </td>
+                  <td>{item.size}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="ghost"
+                      disabled={!!busy}
+                      onClick={() => void removePackage(item)}
+                    >
+                      删除文件
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {!packages.length && (
+                <tr>
+                  <td colSpan={4} className="muted">
+                    暂无文件，请在第 2 步上传安装包。
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </details>
     </section>
   )
 }
@@ -1020,7 +1338,25 @@ function GatewayPage() {
 function DownloadPage({ onBack }: { onBack: () => void }) {
   const [downloads, setDownloads] = useState<PublicDownloads | null>(null)
   const releases = downloads?.releases ?? null
-  const packages = downloads?.packages ?? []
+  const publishedPaths = new Set(
+    (releases ?? []).flatMap((release) =>
+      [
+        release.win_url,
+        release.mac_url,
+        release.linux_url,
+        release.android_url,
+      ].map((url) => {
+        try {
+          return new URL(url, window.location.origin).pathname
+        } catch {
+          return ''
+        }
+      }),
+    ),
+  )
+  const packages = (downloads?.packages ?? []).filter(
+    (file) => !publishedPaths.has(`/files/${encodeURIComponent(file.name)}`),
+  )
 
   useEffect(() => {
     void fetchPublicReleases().then(setDownloads)
@@ -1034,30 +1370,6 @@ function DownloadPage({ onBack }: { onBack: () => void }) {
         </div>
       </div>
 
-      {packages.length > 0 && (
-        <div className="download-version">
-          <div className="download-version-head">
-            <strong style={{ fontSize: 19 }}>客户端安装包</strong>
-          </div>
-          <div
-            className="download-grid"
-            style={{
-              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            }}
-          >
-            {packages.map((file) => (
-              <PlatformCard
-                key={file.name}
-                kind={file.platform}
-                label={PLATFORM_LABELS[file.platform]}
-                url={`/files/${encodeURIComponent(file.name)}`}
-                fileName={file.name}
-                size={file.size}
-              />
-            ))}
-          </div>
-        </div>
-      )}
       {releases === null ? (
         <div className="muted" style={{ textAlign: 'center', padding: 32 }}>
           加载中…
@@ -1105,6 +1417,30 @@ function DownloadPage({ onBack }: { onBack: () => void }) {
             </div>
           </div>
         ))
+      )}
+      {packages.length > 0 && (
+        <details className="download-version download-legacy">
+          <summary>
+            其他安装包 <span className="muted">尚未归入版本的文件</span>
+          </summary>
+          <div
+            className="download-grid"
+            style={{
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            }}
+          >
+            {packages.map((file) => (
+              <PlatformCard
+                key={file.name}
+                kind={file.platform}
+                label={PLATFORM_LABELS[file.platform]}
+                url={`/files/${encodeURIComponent(file.name)}`}
+                fileName={file.name}
+                size={file.size}
+              />
+            ))}
+          </div>
+        </details>
       )}
       <button className="ghost" onClick={onBack} style={{ marginTop: 12 }}>
         返回

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/shi-YangYang/VergeN/server/internal/auth"
@@ -33,7 +34,8 @@ type Server struct {
 	pollLimiter *auth.Limiter
 	// Directory of published client package files served from /files and
 	// listed on the root landing page; empty disables that section.
-	downloads string
+	downloads     string
+	publicationMu sync.Mutex
 }
 
 func NewServer(s *store.Store, downloadsDir string) (*Server, error) {
@@ -451,7 +453,7 @@ func (a *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 
 // handleClientUpdate hands the employee client the published release
 // manifest; an empty version means "nothing published" and 404s.
-func (a *Server) handleClientUpdate(w http.ResponseWriter, _ *http.Request) {
+func (a *Server) handleClientUpdate(w http.ResponseWriter, request *http.Request) {
 	r, err := a.store.GetRelease()
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
@@ -462,27 +464,70 @@ func (a *Server) handleClientUpdate(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 	url := r.WinURL
-	if url == "" {
-		url = r.MacURL
-	}
-	if url == "" {
-		url = r.LinuxURL
+	available := false
+	if platform := request.URL.Query().Get("platform"); platform != "" {
+		switch platform {
+		case "windows":
+			url = r.WinURL
+		case "macos":
+			url = r.MacURL
+		case "linux":
+			url = r.LinuxURL
+		case "android":
+			url = r.AndroidURL
+		default:
+			fail(w, http.StatusBadRequest, "invalid_platform", "unsupported client platform")
+			return
+		}
+		raw, err := a.store.UpdaterManifest()
+		if err != nil {
+			fail(w, http.StatusInternalServerError, "internal_error", "could not read updater manifest")
+			return
+		}
+		artifact, matches := matchingUpdater(raw, r, clientUpdaterTarget(request))
+		available = matches
+		if platform == "linux" && matches {
+			url = artifact.URL
+		}
+		if url == "" {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+	} else {
+		if url == "" {
+			url = r.MacURL
+		}
+		if url == "" {
+			url = r.LinuxURL
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"version":  r.Version,
-		"notes":    r.Notes,
-		"url":      url,
-		"pub_date": r.PubDate,
+		"version":           r.Version,
+		"notes":             r.Notes,
+		"url":               url,
+		"pub_date":          r.PubDate,
+		"updater_available": available,
 	})
 }
 
 // handleClientUpdater hands the raw tauri-format manifest to the updater
 // plugin; the manifest must point its platform artifacts at signed packages.
-func (a *Server) handleClientUpdater(w http.ResponseWriter, _ *http.Request) {
+func (a *Server) handleClientUpdater(w http.ResponseWriter, request *http.Request) {
 	raw, err := a.store.UpdaterManifest()
 	if err != nil {
 		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
+	}
+	if request.URL.Query().Get("platform") != "" {
+		release, err := a.store.GetRelease()
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			fail(w, http.StatusInternalServerError, "internal_error", "could not read release")
+			return
+		}
+		if _, ok := matchingUpdater(raw, release, clientUpdaterTarget(request)); !ok {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 	}
 	if strings.TrimSpace(raw) == "" {
 		fail(w, http.StatusNotFound, "no_release", "no updater manifest published")

@@ -12,6 +12,10 @@ on:
         description: "Android versionCode, higher than all distributed APKs"
         required: true
         type: string
+      signed_updates:
+        description: "Generate signed desktop updates (requires the existing Tauri signing key)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -23,6 +27,7 @@ concurrency:
 env:
   RELEASE_TAG: ${{ inputs.tag }}
   ANDROID_VERSION_CODE: ${{ inputs.android_version_code }}
+  VERGEN_BUILD_UPDATER: ${{ inputs.signed_updates }}
 
 jobs:
   prepare:
@@ -44,6 +49,7 @@ jobs:
         env:
           VITE_ENTERPRISE_SERVER_URL: ${{ vars.VITE_ENTERPRISE_SERVER_URL }}
           ANDROID_SIGNING_READY: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_SIGN_STORE_PASSWORD != '' && secrets.ANDROID_SIGN_KEY_PASSWORD != '' }}
+          UPDATER_SIGNING_READY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
         shell: bash
         run: |
           if [ "$GITHUB_REF" != refs/heads/main ]; then
@@ -56,6 +62,14 @@ jobs:
           fi
           if [ "$ANDROID_SIGNING_READY" != true ]; then
             echo "::error::Set ANDROID_KEYSTORE_BASE64, ANDROID_SIGN_STORE_PASSWORD and ANDROID_SIGN_KEY_PASSWORD using the existing release key."
+            exit 1
+          fi
+          if [ "$VERGEN_BUILD_UPDATER" = true ] && [ "$UPDATER_SIGNING_READY" != true ]; then
+            echo "::error::Set TAURI_SIGNING_PRIVATE_KEY to the existing key matching the installed client public key."
+            exit 1
+          fi
+          if [ "$VERGEN_BUILD_UPDATER" = true ] && [[ ! "$VITE_ENTERPRISE_SERVER_URL" =~ ^https:// ]]; then
+            echo "::error::Signed desktop updates require an HTTPS VITE_ENTERPRISE_SERVER_URL."
             exit 1
           fi
       - name: Create or reuse an unpublished draft
@@ -121,6 +135,9 @@ jobs:
         shell: bash
         run: pnpm release-version "$RELEASE_TAG"
       - name: Build the desktop installer
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         shell: bash
         run: pnpm package:desktop "$RELEASE_TAG"
       # Upload directly: artifacts in a public repository are not private.

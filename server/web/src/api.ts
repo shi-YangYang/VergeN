@@ -265,6 +265,7 @@ export interface AdminRelease {
   android_url: string
   pub_date: number
   created_at: number
+  updater_platforms?: string[]
 }
 
 export const listReleases = () =>
@@ -273,10 +274,9 @@ export const listReleases = () =>
 export async function createRelease(payload: {
   version: string
   notes: string
-  win_url?: string
-  linux_url?: string
-  mac_url?: string
-  android_url?: string
+  base_url: string
+  packages: Partial<Record<PackageFile['platform'], string>>
+  updater: Record<string, { name: string; signature: string }>
 }) {
   return request<{ release: AdminRelease }>('/admin/releases', {
     method: 'POST',
@@ -292,6 +292,7 @@ export interface PackageFile {
   name: string
   size: string
   platform: 'windows' | 'macos' | 'linux' | 'android'
+  kind?: 'installer' | 'updater'
 }
 
 export const listPackages = () =>

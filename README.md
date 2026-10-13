@@ -69,12 +69,15 @@ VergeN 是基于 [clash-verge-rev](https://github.com/clash-verge-rev/clash-verg
 
 - `tag`:未使用过的版本,例如 `v0.1.1`;所有安装包内部版本统一为 `0.1.1`。
 - `android_version_code`:高于所有已分发 APK 的整数版本代码;换工作流也不能从 1 重新开始。
+- `signed_updates`:需要桌面客户端内更新时勾选;默认仅生成下载安装包。
 
 工作流并行构建 Windows x64 EXE、macOS arm64 DMG、Linux x64 DEB/RPM 和 Android arm64 APK,直接上传到对应版本的 **Draft Release(草稿)**。每个版本保留独立草稿,不会自动发布、上传客户端 Actions artifacts 或传包到服务器。在仓库 Releases 中登录下载草稿附件,再到运维面板「客户端发布」上传即可。全部构建任务成功后再分发安装包;某个平台失败时,草稿可能只有部分附件。
 
-同一版本、相同源码提交和 Android versionCode 可以重跑,补齐或替换对应安装包。换了源码或版本代码须使用新版本,避免一份草稿混入不同批次的包。已有 Git tag、已发布 Release 或来源不一致的草稿会被拒绝,工作流不会把公开 Release 改回草稿。
+同一版本、相同源码提交、Android versionCode 和签名模式可以重跑,补齐或替换对应安装包。换了源码、版本代码或 `signed_updates` 设置须使用新版本,避免一份草稿混入不同批次的包或失效签名。已有 Git tag、已发布 Release、未记录签名模式的旧草稿或来源不一致的草稿会被拒绝,工作流不会把公开 Release 改回草稿。
 
-需要沿用仓库变量 `VITE_ENTERPRISE_SERVER_URL`,以及现有 Android 正式签名 secrets: `ANDROID_KEYSTORE_BASE64`、`ANDROID_SIGN_STORE_PASSWORD`、`ANDROID_SIGN_KEY_PASSWORD`(密钥 alias 为 `vergen`)。缺少配置会在开始构建前停止,不会退回 debug 签名。桌面仅生成安装包,不依赖 Tauri updater 私钥。
+需要沿用仓库变量 `VITE_ENTERPRISE_SERVER_URL`,以及现有 Android 正式签名 secrets: `ANDROID_KEYSTORE_BASE64`、`ANDROID_SIGN_STORE_PASSWORD`、`ANDROID_SIGN_KEY_PASSWORD`(密钥 alias 为 `vergen`)。缺少配置会在开始构建前停止,不会退回 debug 签名。勾选 `signed_updates` 时还需要 `TAURI_SIGNING_PRIVATE_KEY`,以及密钥有密码时的 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`;该密钥必须与已安装客户端内置的公钥匹配,不要重新生成或替换。普通安装包构建不需要 Tauri updater 私钥。
+
+启用签名更新后,草稿还会包含 Windows EXE 和 Linux DEB/RPM 的同名 `.sig`,以及 macOS 的带版本号 `.app.tar.gz` 与同名 `.sig`。DMG 用于首次安装,macOS 客户端内更新使用 `.app.tar.gz`。Linux DEB 和 RPM 分别配置对应更新文件,避免向客户端推送错误的安装格式。
 
 草稿及附件仅供拥有仓库写入权限的维护者访问;保持草稿状态,不要点击 Publish release。公开仓库的构建日志和输入版本号仍可能公开。运维下载页 `/download` 仍是公开页面,上传到该页面即对外提供下载。
 
@@ -90,11 +93,18 @@ pnpm package:android 0.1.1 9
 
 `release-version` 会修改仓库中的客户端版本文件。桌面命令构建当前系统和架构的安装包:macOS 上生成 DMG,Windows 上生成 EXE,Linux 上生成 DEB/RPM;Windows x64 和 Linux x64 安装包应在相应环境构建。Android 命令仅生成 arm64 APK,最后的 `9` 是版本代码示例,正式发布必须使用高于已发布版本的代码。
 
-产物统一放在 `release-local/<版本>/desktop/` 和 `release-local/<版本>/android/`。本地构建配置放在不提交的 `.env.build.local`,用于指定服务端地址、Java 和 Android SDK 路径。构建沿用已有 Android 签名配置,不要更换已发布应用的签名密钥或包名。桌面安装包构建默认不生成自动更新归档;客户端自动更新仍需要单独生成带签名的更新产物,并在后台配置 updater manifest。
+产物统一放在 `release-local/<版本>/desktop/` 和 `release-local/<版本>/android/`。本地构建配置放在不提交的 `.env.build.local`,用于指定服务端地址、Java 和 Android SDK 路径。构建沿用已有 Android 签名配置,不要更换已发布应用的签名密钥或包名。需要桌面客户端内更新时,设置 `VERGEN_BUILD_UPDATER=true` 和上述 Tauri 签名环境变量,再运行 `pnpm package:desktop`。
 
-登录运维面板,进入「客户端发布」即可上传和删除安装包。支持 `.dmg`、`.pkg`、`.exe`、`.msi`、`.deb`、`.rpm`、`.AppImage` 和 `.apk`,单个文件最大 512 MiB。上传界面显示进度和速度;上传完成后安装包自动出现在公开下载页 `/download`,无需登记链接。同名文件不会被覆盖,需要先删除旧文件或使用包含新版本号的文件名。删除安装包不会删除已有的手动版本发布记录,使用该文件的下载链接也会失效。
+登录运维面板,进入「客户端发布」,按以下顺序操作:
 
-安装包保存在 `/var/lib/vergen/downloads`;CD 会为服务账号准备该目录的写入权限。已有手动填写的版本链接和客户端自动更新配置继续可用。
+1. 填写与安装包一致的版本号和更新说明。
+2. 为本次发布的平台上传或选择已有安装包。支持 `.dmg`、`.pkg`、`.exe`、`.msi`、`.deb`、`.rpm`、`.AppImage` 和 `.apk`,单个文件最大 512 MiB。
+3. 如需桌面客户端内更新,勾选在线更新,选择各平台更新文件及同名 `.sig`;签名文件只需选择,无需填写链接或 JSON。未配置的平台使用下载安装,Android 目前仅支持下载安装。
+4. 点击「发布版本」,版本说明、下载链接和在线更新配置一起生效。客户端发现更高版本后提示更新,用户点击后下载、验证签名并安装。
+
+发布记录集中显示在下方,公共 `/download` 页按版本展示。上传本身只准备文件,不会创建版本或向客户端推送更新;未关联版本的安装包仍可在下载页折叠区域找到,文件链接也公开可访问。文件管理收在折叠区域,已被版本引用的文件不能删除;先删除相关版本再清理文件。删除最新版本会恢复上一条发布记录的在线更新配置。同名文件不覆盖,请使用包含版本号的文件名。在线更新的正式服务地址应为 HTTPS。
+
+安装包保存在 `/var/lib/vergen/downloads`;CD 会为服务账号准备该目录的写入权限。已有手动填写的版本链接继续显示,发布新版本时会同步替换在线更新配置。
 
 ## Development
 

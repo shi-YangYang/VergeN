@@ -16,6 +16,7 @@ export async function run(args, env = process.env, fetchAPI = fetch) {
   const code = env.ANDROID_VERSION_CODE
   const sha = env.GITHUB_SHA
   const repository = env.GITHUB_REPOSITORY
+  const signedUpdates = env.VERGEN_BUILD_UPDATER === 'true'
   if (!/^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(tag ?? '')) {
     throw new Error('RELEASE_TAG must be vX.Y.Z, for example v0.1.1')
   }
@@ -33,7 +34,7 @@ export async function run(args, env = process.env, fetchAPI = fetch) {
 
   const api = env.GITHUB_API_URL || 'https://api.github.com'
   const base = `${api}/repos/${repository}`
-  const marker = `<!-- vergen-build:${sha}:${code} -->`
+  const marker = `<!-- vergen-build:${sha}:${code}:${signedUpdates} -->`
 
   async function request(url, options = {}, missingOK = false) {
     const response = await fetchAPI(url, {
@@ -76,7 +77,7 @@ export async function run(args, env = process.env, fetchAPI = fetch) {
       !release.body?.includes(marker)
     ) {
       throw new Error(
-        'Draft version, source commit, or Android versionCode differs; use a new version',
+        'Draft version, source commit, Android versionCode, or signing mode differs; use a new version',
       )
     }
   }
@@ -111,10 +112,11 @@ export async function run(args, env = process.env, fetchAPI = fetch) {
           make_latest: 'false',
           body: [
             'Private installer staging. Keep this release as a draft.',
-            'Download the installers and upload them through the ops panel.',
+            'Download the packages and any matching .sig files, then publish the version through the ops panel.',
             '',
             `Source commit: ${sha}`,
             `Android versionCode: ${code}`,
+            `Signed desktop updates: ${signedUpdates}`,
             `Build: ${runURL}`,
             '',
             marker,
@@ -141,7 +143,9 @@ export async function run(args, env = process.env, fetchAPI = fetch) {
     .filter(
       (entry) =>
         entry.isFile() &&
-        /\.(dmg|pkg|exe|msi|deb|rpm|AppImage|apk)$/.test(entry.name),
+        /\.(dmg|pkg|apk|(?:exe|msi|deb|rpm|AppImage|app\.tar\.gz)(?:\.sig)?)$/.test(
+          entry.name,
+        ),
     )
     .map((entry) => entry.name)
     .sort()

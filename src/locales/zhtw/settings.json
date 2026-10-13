@@ -653,6 +653,7 @@
       }
     },
     "companyUpdate": {
+      "manualInstall": "此版本未提供適用於目前系統的線上更新套件，請下載安裝套件後手動安裝。",
       "installNow": "Update now",
       "updating": "Updating, the app will restart…",
       "download": "Download"

@@ -33,6 +33,7 @@ export interface CompanyUpdateInfo {
   notes: string
   url: string
   pub_date: number
+  updater_available: boolean
 }
 
 type AppUpdateInfo = {
@@ -66,6 +67,7 @@ const checkUpdateChannel = async (): Promise<UpdateInfo | null> => {
     notes: release.notes,
     url: release.url,
     pub_date: release.pub_date,
+    updater_available: release.updater_available,
   }
 }
 
