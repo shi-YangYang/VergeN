@@ -149,7 +149,7 @@ subprojects {
 
         signingConfigs {
             val keystore = rootProject.file("signing.properties")
-            if (keystore.exists()) {
+            if (keystore.exists() && rootProject.file("release.keystore").exists()) {
                 create("release") {
                     val prop = Properties().apply {
                         keystore.inputStream().use(this::load)
