@@ -60,8 +60,9 @@ func (a *Server) Handler() (http.Handler, error) {
 	}
 	mux := http.NewServeMux()
 	// Handoff page on the root path: operators go to the admin panel,
-	// employees pick up published client package files.
+	// employees go to the client download list.
 	mux.HandleFunc("GET /{$}", web.Landing(a.downloads))
+	mux.HandleFunc("GET /download", web.Download(a.downloads))
 	mux.HandleFunc("GET /files/{name}", web.Files(a.downloads))
 	mux.Handle("GET /admin", adminPanel)
 	mux.Handle("GET /admin/{path...}", adminPanel)
