@@ -398,7 +398,7 @@ tr.off td {
 .release-card-heading {
   font-size: 14px;
 }
-.release-package-card select {
+.release-package-card .ops-select-trigger {
   width: 100%;
 }
 .release-card-footer {

@@ -1,0 +1,84 @@
+.ops-select-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.ops-select-trigger {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: auto;
+  min-width: 0;
+  padding: 8px 36px 8px 10px;
+  border: 1px solid var(--divider-strong);
+  border-radius: 8px;
+  background: var(--field-bg);
+  color: var(--text);
+  text-align: left;
+}
+
+.ops-select-trigger:hover {
+  background: var(--field-bg);
+  border-color: var(--primary);
+}
+
+.ops-select-trigger:focus-visible,
+.ops-select-trigger[aria-expanded="true"] {
+  outline: 2px solid color-mix(in srgb, var(--primary) 25%, transparent);
+  outline-offset: 1px;
+  border-color: var(--primary);
+}
+
+.ops-select-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ops-select-arrow {
+  position: absolute;
+  right: 14px;
+  top: calc(50% - 5px);
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
+.ops-select-list {
+  position: fixed;
+  z-index: 1000;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+  border: 1px solid var(--divider-strong);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--text);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 16%);
+  font-size: 13px;
+}
+
+.ops-select-option {
+  min-height: 34px;
+  padding: 8px 10px;
+  border-radius: 5px;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.ops-select-option[aria-selected="true"] {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.ops-select-option.ops-select-active {
+  background: color-mix(in srgb, var(--primary) 12%, var(--card));
+}

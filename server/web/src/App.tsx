@@ -48,6 +48,7 @@ import {
   type SettingsPatch,
 } from './api'
 import { PLATFORM_GLYPHS, type PlatformKey } from './assets/platform-glyphs'
+import { Select } from './components/Select'
 
 type Tab =
   | 'users'
@@ -538,8 +539,8 @@ const INSTALLER_PLATFORMS: {
   {
     key: 'linux',
     label: 'Linux · x64',
-    accept: '.deb,.rpm,.AppImage',
-    hint: 'DEB / RPM / AppImage 安装包',
+    accept: '.deb',
+    hint: 'DEB 安装包',
   },
   {
     key: 'android',
@@ -576,13 +577,6 @@ const UPDATER_TARGETS: {
     label: 'Linux · DEB',
     accept: '.deb',
     hint: '.deb 安装包及同名 .sig 文件',
-  },
-  {
-    key: 'linux-x86_64-rpm',
-    platform: 'linux',
-    label: 'Linux · RPM',
-    accept: '.rpm',
-    hint: '.rpm 安装包及同名 .sig 文件',
   },
 ]
 
@@ -944,30 +938,29 @@ function ReleasePage() {
                     {selected[platform.key] ? '已选择' : '未选择'}
                   </span>
                 </div>
-                <label>
-                  安装包
-                  <select
-                    aria-label={`${PLATFORM_LABELS[platform.key]} 安装包`}
+                <div className="ops-select-field">
+                  <span>安装包</span>
+                  <Select
+                    label={`${PLATFORM_LABELS[platform.key]} 安装包`}
                     value={selected[platform.key] ?? ''}
-                    onChange={(event) =>
-                      selectInstaller(platform.key, event.target.value)
-                    }
-                  >
-                    <option value="">暂不发布此平台</option>
-                    {packages
-                      .filter(
-                        (item) =>
-                          item.platform === platform.key &&
-                          item.kind !== 'updater' &&
-                          acceptsPackage(item.name, platform.accept),
-                      )
-                      .map((item) => (
-                        <option value={item.name} key={item.name}>
-                          {item.name} · {item.size}
-                        </option>
-                      ))}
-                  </select>
-                </label>
+                    disabled={!!busy || loading}
+                    onChange={(name) => selectInstaller(platform.key, name)}
+                    options={[
+                      { value: '', label: '暂不发布此平台' },
+                      ...packages
+                        .filter(
+                          (item) =>
+                            item.platform === platform.key &&
+                            item.kind !== 'updater' &&
+                            acceptsPackage(item.name, platform.accept),
+                        )
+                        .map((item) => ({
+                          value: item.name,
+                          label: `${item.name} · ${item.size}`,
+                        })),
+                    ]}
+                  />
+                </div>
                 <div className="release-card-footer">
                   <span className="muted">{platform.hint}</span>
                   <PackageUpload
@@ -1032,13 +1025,13 @@ function ReleasePage() {
                     <p className="muted">{target.hint}</p>
                   </div>
                   <div className="stack">
-                    <label>
-                      更新文件
-                      <select
-                        aria-label={`${target.label} 更新文件`}
+                    <div className="ops-select-field">
+                      <span>更新文件</span>
+                      <Select
+                        label={`${target.label} 更新文件`}
                         value={updates[target.key] ?? ''}
-                        onChange={(event) => {
-                          const name = event.target.value
+                        disabled={!!busy || loading}
+                        onChange={(name) => {
                           setUpdates((value) => ({
                             ...value,
                             [target.key]: name,
@@ -1049,21 +1042,21 @@ function ReleasePage() {
                             return next
                           })
                         }}
-                      >
-                        <option value="">此平台不启用在线更新</option>
-                        {packages
-                          .filter(
-                            (item) =>
-                              item.platform === target.platform &&
-                              acceptsPackage(item.name, target.accept),
-                          )
-                          .map((item) => (
-                            <option value={item.name} key={item.name}>
-                              {item.name}
-                            </option>
-                          ))}
-                      </select>
-                    </label>
+                        options={[
+                          { value: '', label: '此平台不启用在线更新' },
+                          ...packages
+                            .filter(
+                              (item) =>
+                                item.platform === target.platform &&
+                                acceptsPackage(item.name, target.accept),
+                            )
+                            .map((item) => ({
+                              value: item.name,
+                              label: item.name,
+                            })),
+                        ]}
+                      />
+                    </div>
                     <PackageUpload
                       label={`上传 ${target.label} 更新文件`}
                       accept={target.accept}
@@ -1733,14 +1726,16 @@ function UsersPanel() {
           value={newPassword}
           onChange={(e) => setNewPassword(e.target.value)}
         />
-        <select
-          aria-label="账号角色"
+        <Select
+          label="账号角色"
           value={newRole}
-          onChange={(e) => setNewRole(e.target.value as 'user' | 'admin')}
-        >
-          <option value="user">员工</option>
-          <option value="admin">管理员</option>
-        </select>
+          onChange={(value) => setNewRole(value as 'user' | 'admin')}
+          disabled={busy}
+          options={[
+            { value: 'user', label: '员工' },
+            { value: 'admin', label: '管理员' },
+          ]}
+        />
         <button type="submit" disabled={busy}>
           创建账号
         </button>
