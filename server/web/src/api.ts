@@ -288,6 +288,77 @@ export async function deleteRelease(id: number) {
   return request<null>(`/admin/releases/${id}`, { method: 'DELETE' })
 }
 
+export interface PackageFile {
+  name: string
+  size: string
+  platform: 'windows' | 'macos' | 'linux' | 'android'
+}
+
+export const listPackages = () =>
+  request<{ packages: PackageFile[] }>('/admin/packages')
+
+export const deletePackage = (name: string) =>
+  request<null>(`/admin/packages/${encodeURIComponent(name)}`, {
+    method: 'DELETE',
+  })
+
+export function uploadPackage(
+  file: File,
+  onProgress: (loaded: number, total: number) => void,
+): Promise<{ package: PackageFile }> {
+  const send = (retried: boolean): Promise<{ package: PackageFile }> =>
+    new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', '/api/v1/admin/packages')
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) onProgress(event.loaded, event.total)
+      }
+      xhr.onerror = () => reject(new Error('上传失败，请检查网络连接后重试'))
+      xhr.onabort = () => reject(new Error('上传已取消'))
+      xhr.onload = async () => {
+        try {
+          let data
+          try {
+            data = JSON.parse(xhr.responseText)
+          } catch {
+            throw new Error(`上传失败 (${xhr.status})，请检查服务器上传配置`)
+          }
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve(data)
+            return
+          }
+          if (
+            xhr.status === 401 &&
+            !retried &&
+            data?.error?.code === 'invalid_access_token'
+          ) {
+            if (await refreshAccessToken()) {
+              onProgress(0, file.size)
+              resolve(await send(true))
+              return
+            }
+            clearToken()
+            location.reload()
+          }
+          const message =
+            xhr.status === 409
+              ? '同名安装包已存在，请先删除旧文件，或修改文件名后上传'
+              : xhr.status === 413
+                ? '安装包超出上传大小限制，单个文件最多 512 MiB'
+                : (data?.error?.message ?? `上传失败 (${xhr.status})`)
+          reject(new Error(message))
+        } catch (err) {
+          reject(err)
+        }
+      }
+      const body = new FormData()
+      body.append('file', file)
+      xhr.send(body)
+    })
+  return send(false)
+}
+
 // Gateway download page: intentionally unauthenticated.
 export interface PublicRelease {
   id: number
@@ -303,11 +374,7 @@ export interface PublicRelease {
 
 export interface PublicDownloads {
   releases: PublicRelease[]
-  packages: {
-    name: string
-    size: string
-    platform: 'windows' | 'macos' | 'linux' | 'android'
-  }[]
+  packages: PackageFile[]
 }
 
 export async function fetchPublicReleases(): Promise<PublicDownloads> {

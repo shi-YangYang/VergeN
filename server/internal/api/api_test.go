@@ -3,6 +3,8 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -455,6 +457,145 @@ func TestPublicDownloads(t *testing.T) {
 		if isAndroidMIME != (packages[name] == "android") {
 			t.Fatalf("download %q content type: %s", name, rec.Header().Get("Content-Type"))
 		}
+	}
+}
+
+func TestAdminPackages(t *testing.T) {
+	unconfigured, s := newTestBackend(t)
+	downloads := t.TempDir()
+	sv, err := NewServer(s, downloads)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := sv.Handler()
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := adminLoginToken(t, h, s)
+	user, err := s.CreateUser("employee", "unused", "user", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	userToken, err := auth.IssueAccessToken(sv.secret, user.ID, "user", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, method := range []string{"GET", "POST", "DELETE"} {
+		path := "/api/v1/admin/packages"
+		if method == "DELETE" {
+			path += "/VergeN.apk"
+		}
+		for access, want := range map[string]int{"": http.StatusUnauthorized, userToken: http.StatusForbidden} {
+			if code, _ := doJSON(t, h, method, path, access, nil); code != want {
+				t.Fatalf("%s authorization: status=%d want=%d", method, code, want)
+			}
+		}
+		if code, _ := doJSON(t, unconfigured, method, path, token, nil); code != http.StatusServiceUnavailable {
+			t.Fatalf("%s without downloads: status=%d", method, code)
+		}
+	}
+	upload := func(name, contents string) *http.Request {
+		t.Helper()
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		part, err := writer.CreateFormFile("file", name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := part.Write([]byte(contents)); err != nil {
+			t.Fatal(err)
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest("POST", "/api/v1/admin/packages", &body)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		req.Header.Set("Authorization", "Bearer "+token)
+		return req
+	}
+	assertUpload := func(req *http.Request, want int) {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != want {
+			t.Fatalf("upload status=%d want=%d body=%s", rec.Code, want, rec.Body.String())
+		}
+	}
+	name := `VergeN "desktop" 1.0.2.dmg`
+	assertUpload(upload(name, "installer contents"), http.StatusCreated)
+	for _, path := range []string{"/api/v1/admin/packages", "/api/v1/public/releases"} {
+		code, body := doJSON(t, h, "GET", path, token, nil)
+		packages, _ := body["packages"].([]any)
+		if code != http.StatusOK || len(packages) != 1 || packages[0].(map[string]any)["name"] != name {
+			t.Fatalf("uploaded package list: status=%d body=%v", code, body)
+		}
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/files/"+url.PathEscape(name), nil))
+	if rec.Code != http.StatusOK || rec.Body.String() != "installer contents" || rec.Header().Get("Content-Disposition") == "" {
+		t.Fatalf("uploaded download: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	_, disposition, err := mime.ParseMediaType(rec.Header().Get("Content-Disposition"))
+	if err != nil || disposition["filename"] != name {
+		t.Fatalf("download filename: disposition=%v err=%v", disposition, err)
+	}
+	assertUpload(upload(name, "replacement"), http.StatusConflict)
+	if data, err := os.ReadFile(filepath.Join(downloads, name)); err != nil || string(data) != "installer contents" {
+		t.Fatalf("duplicate replaced package: data=%s err=%v", data, err)
+	}
+	for _, badName := range []string{"../outside.apk", `/tmp/outside.apk`, `nested\outside.apk`, ".hidden.apk", "VergeN.tar.gz", "update.json"} {
+		assertUpload(upload(badName, "installer"), http.StatusBadRequest)
+		code, _ := doJSON(t, h, "DELETE", "/api/v1/admin/packages/"+url.PathEscape(badName), token, nil)
+		if code != http.StatusBadRequest {
+			t.Fatalf("delete invalid filename %q: status=%d", badName, code)
+		}
+	}
+	assertUpload(upload("empty.apk", ""), http.StatusBadRequest)
+	oversized := upload("oversized.apk", "installer")
+	oversized.ContentLength = maxPackageBytes + (1 << 20)
+	assertUpload(oversized, http.StatusRequestEntityTooLarge)
+	incomplete := upload("partial.apk", "incomplete installer")
+	var raw bytes.Buffer
+	if _, err := raw.ReadFrom(incomplete.Body); err != nil {
+		t.Fatal(err)
+	}
+	incomplete.Body = http.NoBody
+	truncated := httptest.NewRequest("POST", incomplete.URL.String(), bytes.NewReader(raw.Bytes()[:raw.Len()-20]))
+	truncated.Header = incomplete.Header
+	assertUpload(truncated, http.StatusBadRequest)
+	entries, err := os.ReadDir(downloads)
+	if err != nil || len(entries) != 1 || entries[0].Name() != name {
+		t.Fatalf("failed upload left partial files: entries=%v err=%v", entries, err)
+	}
+	outside := filepath.Join(t.TempDir(), "outside.apk")
+	if err := os.WriteFile(outside, []byte("outside"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(downloads, "linked.apk")); err != nil {
+		t.Fatal(err)
+	}
+	assertUpload(upload("linked.apk", "replacement"), http.StatusConflict)
+	if code, _ := doJSON(t, h, "DELETE", "/api/v1/admin/packages/linked.apk", token, nil); code != http.StatusNotFound {
+		t.Fatalf("delete symlink: status=%d", code)
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/files/linked.apk", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("public symlink download: status=%d", rec.Code)
+	}
+	if data, err := os.ReadFile(outside); err != nil || string(data) != "outside" {
+		t.Fatalf("outside file changed: data=%s err=%v", data, err)
+	}
+	for _, want := range []int{http.StatusNoContent, http.StatusNotFound} {
+		code, _ := doJSON(t, h, "DELETE", "/api/v1/admin/packages/"+url.PathEscape(name), token, nil)
+		if code != want {
+			t.Fatalf("delete package: status=%d want=%d", code, want)
+		}
+	}
+	code, body := doJSON(t, h, "GET", "/api/v1/public/releases", "", nil)
+	packages, _ := body["packages"].([]any)
+	if code != http.StatusOK || len(packages) != 0 {
+		t.Fatalf("deleted package still published: status=%d body=%v", code, body)
 	}
 }
 

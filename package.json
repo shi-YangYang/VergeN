@@ -12,6 +12,8 @@
     "dev:tauri": "cross-env RUST_BACKTRACE=full tauri dev -f tauri-dev",
     "build": "cross-env NODE_OPTIONS='--max-old-space-size=4096' tauri build",
     "build:fast": "cross-env NODE_OPTIONS='--max-old-space-size=4096' tauri build -- --profile fast-release",
+    "package:desktop": "node scripts/local-build.mjs desktop",
+    "package:android": "node scripts/local-build.mjs android",
     "tauri": "tauri",
     "web:dev": "vite",
     "web:build": "tsc --noEmit && vite build",

@@ -4,6 +4,7 @@ node_modules
 dist/*
 !dist/.gitkeep
 dist-ssr
+release-local/
 *.local
 update.json
 scripts/_env.sh

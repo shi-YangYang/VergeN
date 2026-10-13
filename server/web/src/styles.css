@@ -291,6 +291,44 @@ tr.off td {
   gap: 6px;
 }
 
+.packages-section {
+  margin-bottom: 20px;
+}
+
+.packages-section a {
+  color: var(--primary);
+}
+
+.package-picker {
+  flex: 1;
+  min-width: 220px;
+}
+
+.package-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.package-progress progress {
+  width: 100%;
+  accent-color: var(--primary);
+}
+
+.package-table {
+  overflow-x: auto;
+}
+
+.package-table table {
+  min-width: 520px;
+  margin-top: 0;
+}
+
+.package-table td:first-child {
+  overflow-wrap: anywhere;
+  max-width: 400px;
+}
+
 .cards {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

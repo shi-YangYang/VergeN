@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { BrowserRouter, Route, Routes, useNavigate } from 'react-router-dom'
+import {
+  BrowserRouter,
+  Route,
+  Routes,
+  useMatch,
+  useNavigate,
+} from 'react-router-dom'
 
 import {
   createAnnouncement,
@@ -15,6 +21,9 @@ import {
   createRelease,
   deleteRelease,
   listReleases,
+  listPackages,
+  uploadPackage,
+  deletePackage,
   fetchPublicReleases,
   getDashboard,
   getSettings,
@@ -32,6 +41,7 @@ import {
   type AdminRelease,
   type AdminSettings,
   type PublicDownloads,
+  type PackageFile,
   type AdminSubscription,
   type AdminUser,
   type DashboardStats,
@@ -60,6 +70,13 @@ const TABS: [Tab, string][] = [
 
 function alertContext(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
+}
+
+const PLATFORM_LABELS = {
+  windows: 'Windows',
+  macos: 'macOS',
+  linux: 'Linux',
+  android: 'Android',
 }
 
 function SubscriptionsPage() {
@@ -466,6 +483,205 @@ function AnnouncementPage() {
   )
 }
 
+function PackagesSection() {
+  const [packages, setPackages] = useState<PackageFile[]>([])
+  const [loading, setLoading] = useState(true)
+  const [file, setFile] = useState<File | null>(null)
+  const [inputKey, setInputKey] = useState(0)
+  const [uploading, setUploading] = useState(false)
+  const [deleting, setDeleting] = useState('')
+  const [progress, setProgress] = useState({ loaded: 0, total: 0, speed: 0 })
+  const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
+  const busy = uploading || deleting !== ''
+  const percent = progress.total
+    ? Math.floor((progress.loaded / progress.total) * 100)
+    : 0
+
+  const reload = useCallback(async () => {
+    setLoading(true)
+    try {
+      const data = await listPackages()
+      setPackages(data.packages)
+      setError('')
+    } catch (err) {
+      setError(alertContext(err))
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void reload()
+  }, [reload])
+
+  const upload = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!file || busy) return
+    setError('')
+    setMessage('')
+    if (!/\.(exe|msi|dmg|pkg|deb|rpm|AppImage|apk)$/i.test(file.name)) {
+      setError('请选择支持的安装包格式')
+      return
+    }
+    if (file.size > 512 * 1024 * 1024) {
+      setError('单个安装包不能超过 512 MiB')
+      return
+    }
+    setUploading(true)
+    setProgress({ loaded: 0, total: file.size, speed: 0 })
+    const started = performance.now()
+    try {
+      await uploadPackage(file, (loaded, total) => {
+        const seconds = (performance.now() - started) / 1000
+        setProgress({
+          loaded,
+          total,
+          speed: seconds > 0 ? loaded / seconds : 0,
+        })
+      })
+      setMessage(`${file.name} 已上传，公开下载页已可下载`)
+      setFile(null)
+      setInputKey((key) => key + 1)
+      await reload()
+    } catch (err) {
+      setError(alertContext(err))
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const remove = async (item: PackageFile) => {
+    if (!window.confirm(`删除安装包 ${item.name}？删除后该下载链接将失效。`))
+      return
+    setDeleting(item.name)
+    setError('')
+    setMessage('')
+    try {
+      await deletePackage(item.name)
+      setMessage(`${item.name} 已删除`)
+      await reload()
+    } catch (err) {
+      setError(alertContext(err))
+    } finally {
+      setDeleting('')
+    }
+  }
+
+  return (
+    <fieldset className="packages-section">
+      <legend>安装包管理</legend>
+      <div className="muted">
+        本地打包后上传，成功后自动出现在{' '}
+        <a href="/download" target="_blank" rel="noreferrer">
+          公开下载页
+        </a>
+        。 支持
+        .exe、.msi、.dmg、.pkg、.deb、.rpm、.AppImage、.apk，单个文件最多 512
+        MiB。
+      </div>
+      <form className="row-form" onSubmit={upload}>
+        <label className="package-picker">
+          选择安装包
+          <input
+            key={inputKey}
+            type="file"
+            accept=".exe,.msi,.dmg,.pkg,.deb,.rpm,.AppImage,.apk"
+            disabled={busy}
+            onChange={(event) => {
+              setFile(event.target.files?.[0] ?? null)
+              setError('')
+              setMessage('')
+            }}
+          />
+        </label>
+        <button type="submit" disabled={!file || busy}>
+          {uploading ? '上传中…' : '上传安装包'}
+        </button>
+      </form>
+      {uploading && (
+        <div className="package-progress" role="status">
+          <progress
+            value={progress.loaded}
+            max={progress.total || 1}
+            aria-label="安装包上传进度"
+          />
+          <span className="muted">
+            {percent}% · {(progress.loaded / 1024 / 1024).toFixed(1)} /{' '}
+            {(progress.total / 1024 / 1024).toFixed(1)} MiB
+            {' · '}
+            {(progress.speed / 1024 / 1024).toFixed(2)} MiB/s
+            {percent === 100 && ' · 传输完成，正在发布…'}
+          </span>
+        </div>
+      )}
+      {error && (
+        <div className="error" role="alert">
+          {error}
+        </div>
+      )}
+      {message && (
+        <div className="muted" role="status">
+          {message}
+        </div>
+      )}
+      <div className="row-form">
+        <span className="muted">
+          {loading ? '加载中…' : `已发布 ${packages.length} 个安装包`}
+        </span>
+        <button
+          className="ghost"
+          disabled={busy || loading}
+          onClick={() => void reload()}
+        >
+          刷新
+        </button>
+      </div>
+      <div className="package-table">
+        <table>
+          <thead>
+            <tr>
+              <th>文件名</th>
+              <th>平台</th>
+              <th>大小</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {packages.map((item) => (
+              <tr key={item.name}>
+                <td>
+                  <a href={`/files/${encodeURIComponent(item.name)}`} download>
+                    {item.name}
+                  </a>
+                </td>
+                <td>{PLATFORM_LABELS[item.platform]}</td>
+                <td>{item.size}</td>
+                <td className="actions">
+                  <button
+                    className="ghost"
+                    disabled={busy}
+                    onClick={() => void remove(item)}
+                  >
+                    {deleting === item.name ? '删除中…' : '删除'}
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {!loading && !error && packages.length === 0 && (
+              <tr>
+                <td colSpan={4} className="muted">
+                  暂无安装包，请先上传。
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </fieldset>
+  )
+}
+
 function ReleasePage() {
   const [releases, setReleases] = useState<AdminRelease[]>([])
   const [version, setVersion] = useState('')
@@ -549,10 +765,11 @@ function ReleasePage() {
 
   return (
     <section className="panel">
+      <PackagesSection />
       {releaseError && <div className="error">{releaseError}</div>}
       <form className="stack" onSubmit={save}>
         <fieldset>
-          <legend>发布新版本</legend>
+          <legend>版本说明与外部下载链接（可选）</legend>
           <div className="row-form">
             <label>
               版本号
@@ -804,12 +1021,6 @@ function DownloadPage({ onBack }: { onBack: () => void }) {
   const [downloads, setDownloads] = useState<PublicDownloads | null>(null)
   const releases = downloads?.releases ?? null
   const packages = downloads?.packages ?? []
-  const platformLabels = {
-    windows: 'Windows',
-    macos: 'macOS',
-    linux: 'Linux',
-    android: 'Android',
-  }
 
   useEffect(() => {
     void fetchPublicReleases().then(setDownloads)
@@ -838,7 +1049,7 @@ function DownloadPage({ onBack }: { onBack: () => void }) {
               <PlatformCard
                 key={file.name}
                 kind={file.platform}
-                label={platformLabels[file.platform]}
+                label={PLATFORM_LABELS[file.platform]}
                 url={`/files/${encodeURIComponent(file.name)}`}
                 fileName={file.name}
                 size={file.size}
@@ -1331,9 +1542,14 @@ export function App() {
 
 function RouterShell() {
   const navigate = useNavigate()
+  const downloadMatch = useMatch('/download')
   const [authed, setAuthed] = useState(hasToken)
   const [user, setUser] = useState<string>('')
   const [tab, setTab] = useState<Tab>('users')
+
+  if (downloadMatch) {
+    return <DownloadPage onBack={() => navigate('/')} />
+  }
 
   if (!authed) {
     return (
@@ -1350,10 +1566,6 @@ function RouterShell() {
               }}
             />
           }
-        />
-        <Route
-          path="/download"
-          element={<DownloadPage onBack={() => navigate('/')} />}
         />
         <Route path="*" element={<GatewayPage />} />
       </Routes>

@@ -71,13 +71,14 @@ the ownership evidence the AI-slop review evaluates (see
 - Pull requests run the CI checks automatically
   ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)); green CI is
   expected before merge.
-- Releasing — CD — is a manual step, never an automatic one: run the
-  Release workflow from the Actions tab with branch `main` and an
-  explicit `vX.Y.Z` tag input
+- Deploying — CD — is a manual step, never an automatic one: run the
+  Release workflow from the Actions tab with branch `main`; it builds
+  and deploys only the ops server and its embedded admin panel
   ([`.github/workflows/release.yml`](.github/workflows/release.yml);
   the trigger needs the workflow definition on `main`, which only a
   merge supplies). Pushing a `v*` tag does not trigger the pipeline;
-  manual dispatch is the only release entry point.
+  manual dispatch is the only deployment entry point. Build client
+  installers locally and upload them through the admin panel.
 
 ## Pull Request Shape
 
