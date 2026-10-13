@@ -120,9 +120,19 @@ jobs:
       - name: Wire signing config
         working-directory: android
         env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           VERGEN_STORE_PASSWORD: ${{ secrets.ANDROID_SIGN_STORE_PASSWORD }}
           VERGEN_KEY_PASSWORD: ${{ secrets.ANDROID_SIGN_KEY_PASSWORD }}
         run: |
+          if [[ -n "${ANDROID_KEYSTORE_BASE64:-}" ]]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > release.keystore
+            echo "Decoded the production keystore from ANDROID_KEYSTORE_BASE64"
+          else
+            # No production keystore yet: remove the stale local file so the
+            # build falls back to the debug signing config instead of failing.
+            rm -f release.keystore signing.properties.bak
+            echo "ANDROID_KEYSTORE_BASE64 not set; falling back to debug signing"
+          fi
           # The repo carries a dev keystore; production overrides via secrets.
           store="${VERGEN_STORE_PASSWORD:-vergen1234}"
           printf 'keystore.password=%s\nkey.alias=vergen\nkey.password=%s\n' \
