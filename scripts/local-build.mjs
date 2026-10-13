@@ -95,12 +95,11 @@ function desktop() {
     target,
     'release/bundle',
   )
-  const patterns = ['dmg/*.dmg', 'nsis/*.exe', 'deb/*.deb', 'rpm/*.rpm']
+  const patterns = ['dmg/*.dmg', 'nsis/*.exe', 'deb/*.deb']
   if (signedUpdates) {
     patterns.push(
       'nsis/*.exe.sig',
       'deb/*.deb.sig',
-      'rpm/*.rpm.sig',
       'macos/*.app.tar.gz',
       'macos/*.app.tar.gz.sig',
     )
@@ -111,7 +110,7 @@ function desktop() {
     .filter((file) => fs.statSync(file).mtimeMs >= started - 1000)
   if (signedUpdates) {
     const updates = files.filter((file) =>
-      /\.(exe|deb|rpm|app\.tar\.gz)$/.test(file),
+      /\.(exe|deb|app\.tar\.gz)$/.test(file),
     )
     if (
       !updates.length ||

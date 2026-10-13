@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "identifier": "io.github.vergen.vergen",
   "bundle": {
-    "targets": ["deb", "rpm"],
+    "targets": ["deb"],
     "linux": {
       "deb": {
         "depends": ["openssl", "libayatana-appindicator3-1"],
