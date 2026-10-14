@@ -78,7 +78,7 @@ VergeN 是基于 [clash-verge-rev](https://github.com/clash-verge-rev/clash-verg
 
 启用签名更新后,草稿还会包含 Windows EXE 和 Linux DEB 的同名 `.sig`,以及 macOS 的带版本号 `.app.tar.gz` 与同名 `.sig`。DMG 用于首次安装,macOS 客户端内更新使用 `.app.tar.gz`。Linux 仅生成 DEB 安装包,在线更新使用该 DEB 及其同名 `.sig`。
 
-构建产物按系统、架构和用途使用中文命名,例如 `VergeN_0.1.1_苹果电脑_ARM64_安装包.dmg` 和 `VergeN_0.1.1_苹果电脑_ARM64_升级包.app.tar.gz`。Windows 和 Linux 标为「安装及升级包」,Android 标为「安卓」;签名文件始终为对应包名加 `.sig`,文件内容保持不变。GitHub 会改写中文附件名,因此草稿列表使用中文显示名,实际下载文件名使用英文;本地构建产物和运维端均支持中文文件名。不额外生成 ZIP。
+构建产物按系统、架构和用途使用中文命名,例如 `VergeN_0.1.1_苹果电脑_ARM64_安装包.dmg` 和 `VergeN_0.1.1_苹果电脑_ARM64_升级包.app.tar.gz`。Windows 和 Linux 统一标为「安装包」,Android 标为「安卓」。勾选 `signed_updates` 后,Windows 和 Linux 在线更新复用安装包并生成配套 `.sig`,macOS 另生成 `.app.tar.gz` 升级包及其 `.sig`;未勾选时只输出安装包。签名文件始终为对应包名加 `.sig`,文件内容保持不变。GitHub 会改写中文附件名,因此草稿列表使用中文显示名,实际下载文件名使用英文;本地构建产物和运维端均支持中文文件名。不额外生成 ZIP。
 
 草稿及附件仅供拥有仓库写入权限的维护者访问;保持草稿状态,不要点击 Publish release。公开仓库的构建日志和输入版本号仍可能公开。运维下载页 `/download` 仍是公开页面,上传到该页面即对外提供下载。
 
