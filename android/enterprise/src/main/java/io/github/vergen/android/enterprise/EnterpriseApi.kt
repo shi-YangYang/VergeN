@@ -23,6 +23,9 @@ data class CapabilitiesResponse(
 )
 
 @Serializable
+data class DingtalkQrStartRequest(val client: String)
+
+@Serializable
 data class DingtalkQrPollRequest(
     @SerialName("session_id") val sessionId: String,
 )
@@ -137,7 +140,9 @@ class EnterpriseApi(
     /** Kotlin 配合桌面端:开一个扫码会话拿 dingtalk qrcode link。 */
     @Throws(ApiError::class)
     fun dingtalkQrStart(): DingtalkQrStartResponse {
-        return request("POST", "/api/v1/auth/dingtalk/qr/start", emptyBody()).use { response ->
+        val body = json.encodeToString(DingtalkQrStartRequest.serializer(), DingtalkQrStartRequest(client = "android"))
+            .toRequestBody(JSON_MEDIA)
+        return request("POST", "/api/v1/auth/dingtalk/qr/start", body).use { response ->
             if (response.code != 200) throw ApiError(ErrorKind.HTTP, response.code)
             decode(DingtalkQrStartResponse.serializer(), response.body?.string().orEmpty(), 200)
         }

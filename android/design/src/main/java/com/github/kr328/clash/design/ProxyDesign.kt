@@ -27,6 +27,7 @@ class ProxyDesign(
     overrideMode: TunnelState.Mode?,
     groupNames: List<String>,
     uiStore: UiStore,
+    managedProfileName: String?,
 ) : Design<ProxyDesign.Request>(context) {
     sealed class Request {
         object ReloadAll : Request()
@@ -138,8 +139,13 @@ class ProxyDesign(
                 })
             }
 
+            val managedGroupIndex = groupNames.indexOfFirst { it != "GLOBAL" }
             TabLayoutMediator(binding.tabLayoutView, binding.pagesView) { tab, index ->
-                tab.text = groupNames[index]
+                tab.text = if (index == managedGroupIndex) {
+                    managedProfileName ?: groupNames[index]
+                } else {
+                    groupNames[index]
+                }
             }.attach()
 
             val initialPosition = groupNames.indexOf(uiStore.proxyLastGroup)

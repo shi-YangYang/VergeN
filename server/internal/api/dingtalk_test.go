@@ -20,6 +20,7 @@ func (f dingtalkTestTransport) RoundTrip(r *http.Request) (*http.Response, error
 func TestDingtalkCallback(t *testing.T) {
 	for _, tc := range []struct {
 		name           string
+		client         string
 		configuredCorp string
 		tokenCorp      string
 		unionID        string
@@ -32,6 +33,7 @@ func TestDingtalkCallback(t *testing.T) {
 		wantFailure    string
 	}{
 		{name: "personal login", unionID: "union-1"},
+		{name: "Android login", client: "android", unionID: "union-1"},
 		{name: "organization login", configuredCorp: "corp-1", tokenCorp: "corp-1", unionID: "union-1"},
 		{name: "wrong organization", configuredCorp: "corp-1", tokenCorp: "corp-2", unionID: "union-1", wantFailure: "组织不符"},
 		{name: "missing organization", configuredCorp: "corp-1", unionID: "union-1", wantFailure: "组织不符"},
@@ -44,6 +46,7 @@ func TestDingtalkCallback(t *testing.T) {
 		{name: "user info rejected", unionID: "union-1", userStatus: http.StatusForbidden, wantFailure: "钉钉验证失败"},
 		{name: "missing user identity", wantFailure: "钉钉验证失败"},
 		{name: "authorization denied", authError: "untrusted-access-denied", wantFailure: "未完成钉钉授权，请重新登录"},
+		{name: "Android authorization denied", client: "android", authError: "untrusted-access-denied", wantFailure: "未完成钉钉授权，请重新登录"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h, s := newTestBackend(t)
@@ -133,7 +136,11 @@ func TestDingtalkCallback(t *testing.T) {
 				if wantDisplayName == "" {
 					wantDisplayName = "张三"
 				}
-				status, body := doJSON(t, h, http.MethodPost, "/api/v1/auth/dingtalk/qr/start", "", nil)
+				var startBody any
+				if tc.client != "" {
+					startBody = map[string]string{"client": tc.client}
+				}
+				status, body := doJSON(t, h, http.MethodPost, "/api/v1/auth/dingtalk/qr/start", "", startBody)
 				if status != http.StatusOK {
 					t.Fatalf("QR start: status=%d body=%v", status, body)
 				}
@@ -154,7 +161,11 @@ func TestDingtalkCallback(t *testing.T) {
 				}
 				callback := "/api/v1/auth/dingtalk/callback?authCode=auth-code&state=" + url.QueryEscape(state)
 				if tc.authError != "" {
-					h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v1/auth/dingtalk/callback?error="+url.QueryEscape(tc.authError)+"&state=invalid-state", nil))
+					invalid := httptest.NewRecorder()
+					h.ServeHTTP(invalid, httptest.NewRequest(http.MethodGet, "/api/v1/auth/dingtalk/callback?error="+url.QueryEscape(tc.authError)+"&state=invalid-state", nil))
+					if strings.Contains(invalid.Body.String(), "vergen://") {
+						t.Fatal("unmatched callback offered an app return link")
+					}
 					status, pending := doJSON(t, h, http.MethodPost, "/api/v1/auth/dingtalk/qr/poll", "", map[string]any{"session_id": body["session_id"]})
 					if status != http.StatusOK || pending["status"] != "pending" {
 						t.Fatalf("unmatched error callback changed session: status=%d body=%v", status, pending)
@@ -168,6 +179,14 @@ func TestDingtalkCallback(t *testing.T) {
 				}
 				if tc.authError != "" && strings.Contains(rec.Body.String(), tc.authError) {
 					t.Fatal("callback echoed the untrusted authorization error")
+				}
+				if hasReturnLink := strings.Contains(rec.Body.String(), `href="vergen://auth/dingtalk"`); hasReturnLink != (tc.client == "android") {
+					t.Fatalf("app return link = %v for client %q", hasReturnLink, tc.client)
+				}
+				for _, credential := range []string{state, body["session_id"].(string), "auth-code", "user-access-token"} {
+					if strings.Contains(rec.Body.String(), credential) {
+						t.Fatal("callback page exposed a login credential")
+					}
 				}
 				wantCalls := 2
 				if tc.authError != "" {
