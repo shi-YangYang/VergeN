@@ -6,7 +6,7 @@
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
-      "timestampUrl": "",
+      "timestampUrl": null,
       "webviewInstallMode": {
         "type": "embedBootstrapper",
         "silent": true

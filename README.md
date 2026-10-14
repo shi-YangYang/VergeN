@@ -76,9 +76,13 @@ VergeN 是基于 [clash-verge-rev](https://github.com/clash-verge-rev/clash-verg
 
 需要沿用仓库变量 `VITE_ENTERPRISE_SERVER_URL`,以及现有 Android 正式签名 secrets: `ANDROID_KEYSTORE_BASE64`、`ANDROID_SIGN_STORE_PASSWORD`、`ANDROID_SIGN_KEY_PASSWORD`(密钥 alias 为 `vergen`)。缺少配置会在开始构建前停止,不会退回 debug 签名。勾选 `signed_updates` 时还需要 `TAURI_SIGNING_PRIVATE_KEY`,以及密钥有密码时的 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`;该密钥必须与已安装客户端内置的公钥匹配,不要重新生成或替换。普通安装包构建不需要 Tauri updater 私钥。
 
+macOS 默认对完整应用包进行 ad-hoc 签名,并在收集安装包前校验签名完整性;校验失败会停止发布。该签名不等于 Apple Developer ID 签名和公证,从网页下载后仍可能需要在「系统设置 → 隐私与安全性」中允许打开。要通过 macOS 的常规分发信任检查,还需配置 Apple Developer ID 签名及公证。`signed_updates` 只控制在线更新签名,与 Apple 应用签名无关。
+
+Windows 打包需要 `WINDOWS_CERTIFICATE_BASE64`(带私钥 PFX 文件的 Base64)和 `WINDOWS_CERTIFICATE_PASSWORD` secrets,自动签名应用、服务程序与安装器,与 `signed_updates` 开关独立。上传前会校验安装器和内置应用的签名,并确认 Mihomo 内核未被签名过程改写,保留安装时的摘要校验。当前使用自签名证书,仅在 GitHub 临时构建机上信任其公开证书以完成校验,结束后删除证书和私钥;其他用户电脑不会自动信任,仍可能出现 SmartScreen 提示。当前未配置时间戳服务,签名有效性受证书有效期限制。
+
 启用签名更新后,草稿还会包含 Windows EXE 和 Linux DEB 的同名 `.sig`,以及 macOS 的带版本号 `.app.tar.gz` 与同名 `.sig`。DMG 用于首次安装,macOS 客户端内更新使用 `.app.tar.gz`。Linux 仅生成 DEB 安装包,在线更新使用该 DEB 及其同名 `.sig`。
 
-构建产物按系统、架构和用途使用中文命名,例如 `VergeN_0.1.1_苹果电脑_ARM64_安装包.dmg` 和 `VergeN_0.1.1_苹果电脑_ARM64_升级包.app.tar.gz`。Windows 和 Linux 标为「安装及升级包」,Android 标为「安卓」;签名文件始终为对应包名加 `.sig`,文件内容保持不变。GitHub 会改写中文附件名,因此草稿列表使用中文显示名,实际下载文件名使用英文;本地构建产物和运维端均支持中文文件名。不额外生成 ZIP。
+构建产物按系统、架构和用途使用中文命名,例如 `VergeN_0.1.1_苹果电脑_ARM64_安装包.dmg` 和 `VergeN_0.1.1_苹果电脑_ARM64_升级包.app.tar.gz`。Windows 和 Linux 统一标为「安装包」,Android 标为「安卓」。勾选 `signed_updates` 后,Windows 和 Linux 在线更新复用安装包并生成配套 `.sig`,macOS 另生成 `.app.tar.gz` 升级包及其 `.sig`;未勾选时只输出安装包。签名文件始终为对应包名加 `.sig`,文件内容保持不变。GitHub 会改写中文附件名,因此草稿列表使用中文显示名,实际下载文件名使用英文;本地构建产物和运维端均支持中文文件名。不额外生成 ZIP。
 
 草稿及附件仅供拥有仓库写入权限的维护者访问;保持草稿状态,不要点击 Publish release。公开仓库的构建日志和输入版本号仍可能公开。运维下载页 `/download` 仍是公开页面,上传到该页面即对外提供下载。
 
@@ -95,6 +99,8 @@ pnpm package:android 0.1.1 9
 `release-version` 会修改仓库中的客户端版本文件。桌面命令构建当前系统和架构的安装包:macOS 上生成 DMG,Windows 上生成 EXE,Linux 上仅生成 DEB;Windows x64 和 Linux x64 安装包应在相应环境构建。Android 命令仅生成 arm64 APK,最后的 `9` 是版本代码示例,正式发布必须使用高于已发布版本的代码。
 
 产物统一放在 `release-local/<版本>/desktop/` 和 `release-local/<版本>/android/`。本地构建配置放在不提交的 `.env.build.local`,用于指定服务端地址、Java 和 Android SDK 路径。构建沿用已有 Android 签名配置,不要更换已发布应用的签名密钥或包名。需要桌面客户端内更新时,设置 `VERGEN_BUILD_UPDATER=true` 和上述 Tauri 签名环境变量,再运行 `pnpm package:desktop`。
+
+在 Windows 本地签名打包时,先将 PFX 导入当前用户的个人证书存储,再设置 `WINDOWS_CERTIFICATE_THUMBPRINT` 为该证书的 SHA1 指纹;文件签名使用 SHA256。PFX 和密码应保存在仓库外,不要提交或作为发布附件上传。
 
 登录运维面板,进入「客户端发布」,按以下顺序操作:
 

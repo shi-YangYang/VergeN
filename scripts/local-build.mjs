@@ -74,6 +74,19 @@ function desktop() {
       'Signed updates require an HTTPS VITE_ENTERPRISE_SERVER_URL',
     )
   }
+  const bundleConfig = { createUpdaterArtifacts: signedUpdates }
+  if (process.platform === 'win32' && env.WINDOWS_CERTIFICATE_THUMBPRINT) {
+    if (!/^[a-f\d]{40}$/i.test(env.WINDOWS_CERTIFICATE_THUMBPRINT)) {
+      throw new Error(
+        'WINDOWS_CERTIFICATE_THUMBPRINT must be a SHA1 certificate thumbprint',
+      )
+    }
+    bundleConfig.windows = {
+      certificateThumbprint: env.WINDOWS_CERTIFICATE_THUMBPRINT,
+    }
+    // The installer embeds core hashes computed before Tauri signs binaries.
+    env.TAURI_SKIP_SIDECAR_SIGNATURE_CHECK = 'true'
+  }
   Object.assign(env, {
     CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16',
     CARGO_PROFILE_RELEASE_DEBUG: '0',
@@ -88,13 +101,22 @@ function desktop() {
     '--target',
     target,
     '--config',
-    JSON.stringify({ bundle: { createUpdaterArtifacts: signedUpdates } }),
+    JSON.stringify({ bundle: bundleConfig }),
   ])
   const bundle = path.resolve(
     env.CARGO_TARGET_DIR || 'target',
     target,
     'release/bundle',
   )
+  if (process.platform === 'darwin') {
+    run('codesign', [
+      '--verify',
+      '--deep',
+      '--strict',
+      '--verbose=2',
+      path.join(bundle, 'macos', 'VergeN.app'),
+    ])
+  }
   const patterns = ['dmg/*.dmg', 'nsis/*.exe', 'deb/*.deb']
   if (signedUpdates) {
     patterns.push(

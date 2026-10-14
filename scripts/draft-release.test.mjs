@@ -196,12 +196,12 @@ test('upload keeps signed desktop updates and their matching signatures', async 
   const names = [
     'VergeN_0.1.1_苹果电脑_ARM64_升级包.app.tar.gz',
     'VergeN_0.1.1_苹果电脑_ARM64_升级包.app.tar.gz.sig',
-    'VergeN_0.1.1_Windows_x64_安装及升级包.exe',
-    'VergeN_0.1.1_Windows_x64_安装及升级包.exe.sig',
-    'VergeN_0.1.1_Linux_x64_安装及升级包.deb',
-    'VergeN_0.1.1_Linux_x64_安装及升级包.deb.sig',
-    'VergeN_0.1.1_Linux_x64_安装及升级包.rpm',
-    'VergeN_0.1.1_Linux_x64_安装及升级包.rpm.sig',
+    'VergeN_0.1.1_Windows_x64_安装包.exe',
+    'VergeN_0.1.1_Windows_x64_安装包.exe.sig',
+    'VergeN_0.1.1_Linux_x64_安装包.deb',
+    'VergeN_0.1.1_Linux_x64_安装包.deb.sig',
+    'VergeN_0.1.1_Linux_x64_安装包.rpm',
+    'VergeN_0.1.1_Linux_x64_安装包.rpm.sig',
   ]
   const contents = new Map()
   for (const name of [...names, 'private.key', 'build.log']) {
@@ -247,11 +247,11 @@ test('upload keeps signed desktop updates and their matching signatures', async 
 
 test('package names identify the platform and keep signature pairs together', () => {
   for (const [file, arch, name] of [
-    ['VergeN.exe', 'x64', 'Windows_x64_安装及升级包.exe'],
+    ['VergeN.exe', 'x64', 'Windows_x64_安装包.exe'],
     ['VergeN.dmg', 'arm64', '苹果电脑_ARM64_安装包.dmg'],
     ['VergeN.app.tar.gz', 'arm64', '苹果电脑_ARM64_升级包.app.tar.gz'],
-    ['VergeN.deb', 'x64', 'Linux_x64_安装及升级包.deb'],
-    ['VergeN.rpm', 'x64', 'Linux_x64_安装及升级包.rpm'],
+    ['VergeN.deb', 'x64', 'Linux_x64_安装包.deb'],
+    ['VergeN.rpm', 'x64', 'Linux_x64_安装包.rpm'],
     ['VergeN.apk', 'arm64', '安卓_ARM64_安装包.apk'],
   ]) {
     const expected = `VergeN_0.1.1_${name}`

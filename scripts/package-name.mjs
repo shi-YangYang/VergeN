@@ -1,9 +1,9 @@
 const formats = [
   ['.app.tar.gz', '苹果电脑', '升级包'],
   ['.dmg', '苹果电脑', '安装包'],
-  ['.exe', 'Windows', '安装及升级包'],
-  ['.deb', 'Linux', '安装及升级包'],
-  ['.rpm', 'Linux', '安装及升级包'],
+  ['.exe', 'Windows', '安装包'],
+  ['.deb', 'Linux', '安装包'],
+  ['.rpm', 'Linux', '安装包'],
   ['.apk', '安卓', '安装包'],
 ]
 
