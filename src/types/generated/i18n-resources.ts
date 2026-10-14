@@ -270,6 +270,13 @@ export interface TranslationResources {
       announcement: {
         title: string
       }
+      capabilities: {
+        checking: string
+        disabled: string
+        failed: string
+        retry: string
+        unconfigured: string
+      }
       dingtalk: {
         expired: string
         failed: string

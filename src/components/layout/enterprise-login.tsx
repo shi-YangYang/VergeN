@@ -2,6 +2,7 @@ import {
   Alert,
   Box,
   Button,
+  CircularProgress,
   Paper,
   SvgIcon,
   Tab,
@@ -291,22 +292,27 @@ export const EnterpriseLogin = ({
     : envServerUrl || storedServerUrl
   const [tab, setTab] = useState(0)
 
-  // The QR tab only exists when the company server actually runs DingTalk
-  // login; unreachable probes degrade to password-only.
-  const { data: capabilities } = useQuery({
+  const hasServer = /^https?:\/\//.test(serverUrl)
+  const {
+    data: capabilities,
+    error: capabilitiesError,
+    isFetching: checkingCapabilities,
+    refetch: refreshCapabilities,
+  } = useQuery({
     queryKey: ['enterpriseCapabilities', serverUrl],
     queryFn: () => enterpriseCapabilities(serverUrl),
-    enabled: serverUrl.trim() !== '' && /^https?:\/\//.test(serverUrl),
-    staleTime: 60_000,
-    retry: 1,
+    enabled: hasServer,
+    staleTime: 2000,
+    retry: 3,
+    retryDelay: (attempt) => Math.min(2000 * 2 ** attempt, 8000),
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   })
   const dingtalkReady = capabilities?.dingtalk_qr ?? false
-  const dingtalkTab = dingtalkReady
-    ? [{ key: 'dingtalk', label: t('login.tabs.dingtalk') }]
-    : []
+  const activeTab = dingtalkReady ? tab : 0
   const tabs = [
     { key: 'password', label: t('login.tabs.password') },
-    ...dingtalkTab,
+    { key: 'dingtalk', label: t('login.tabs.dingtalk') },
   ]
 
   return (
@@ -395,17 +401,59 @@ export const EnterpriseLogin = ({
           </Typography>
 
           <Tabs
-            value={Math.min(tab, tabs.length - 1)}
+            value={activeTab}
             onChange={(_, next: number) => setTab(next)}
             variant="fullWidth"
             sx={{ mb: 2, '& .MuiTab-root': { textTransform: 'none' } }}
           >
             {tabs.map((entry) => (
-              <Tab key={entry.key} label={entry.label} />
+              <Tab
+                key={entry.key}
+                label={entry.label}
+                disabled={entry.key === 'dingtalk' && !dingtalkReady}
+              />
             ))}
           </Tabs>
 
-          {tabs[Math.min(tab, tabs.length - 1)].key === 'password' ? (
+          {checkingCapabilities ? (
+            <Box
+              role="status"
+              sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}
+            >
+              <CircularProgress size={16} />
+              <Typography variant="body2" color="text.secondary">
+                {t('login.capabilities.checking')}
+              </Typography>
+            </Box>
+          ) : capabilitiesError || !dingtalkReady ? (
+            <Alert
+              severity={capabilitiesError || !hasServer ? 'warning' : 'info'}
+              sx={{ mb: 2 }}
+              action={
+                hasServer && (
+                  <Button
+                    color="inherit"
+                    size="small"
+                    onClick={() => {
+                      void refreshCapabilities().catch(() => undefined)
+                    }}
+                  >
+                    {t('login.capabilities.retry')}
+                  </Button>
+                )
+              }
+            >
+              {t(
+                !hasServer
+                  ? 'login.capabilities.unconfigured'
+                  : capabilitiesError
+                    ? 'login.capabilities.failed'
+                    : 'login.capabilities.disabled',
+              )}
+            </Alert>
+          ) : null}
+
+          {tabs[activeTab].key === 'password' ? (
             <>
               <PasswordForm serverUrl={serverUrl} />
               {session.announcement && (

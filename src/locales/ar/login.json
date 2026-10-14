@@ -29,5 +29,12 @@
   },
   "account": {
     "logout": "Sign out"
+  },
+  "capabilities": {
+    "checking": "Checking DingTalk sign-in…",
+    "failed": "Unable to check DingTalk sign-in. Check your connection or try again later.",
+    "disabled": "DingTalk sign-in is not enabled. Check again after your administrator configures it.",
+    "unconfigured": "No company server is configured. Contact your administrator.",
+    "retry": "Check again"
   }
 }
