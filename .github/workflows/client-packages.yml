@@ -49,6 +49,7 @@ jobs:
         env:
           VITE_ENTERPRISE_SERVER_URL: ${{ vars.VITE_ENTERPRISE_SERVER_URL }}
           ANDROID_SIGNING_READY: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_SIGN_STORE_PASSWORD != '' && secrets.ANDROID_SIGN_KEY_PASSWORD != '' }}
+          WINDOWS_SIGNING_READY: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 != '' && secrets.WINDOWS_CERTIFICATE_PASSWORD != '' }}
           UPDATER_SIGNING_READY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
         shell: bash
         run: |
@@ -62,6 +63,10 @@ jobs:
           fi
           if [ "$ANDROID_SIGNING_READY" != true ]; then
             echo "::error::Set ANDROID_KEYSTORE_BASE64, ANDROID_SIGN_STORE_PASSWORD and ANDROID_SIGN_KEY_PASSWORD using the existing release key."
+            exit 1
+          fi
+          if [ "$WINDOWS_SIGNING_READY" != true ]; then
+            echo "::error::Set WINDOWS_CERTIFICATE_BASE64 and WINDOWS_CERTIFICATE_PASSWORD using the Windows code-signing certificate."
             exit 1
           fi
           if [ "$VERGEN_BUILD_UPDATER" = true ] && [ "$UPDATER_SIGNING_READY" != true ]; then
@@ -107,6 +112,39 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Import Windows signing certificate
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pfxPath = Join-Path $env:RUNNER_TEMP 'vergen-windows-signing.pfx'
+          try {
+            [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64))
+            $password = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+            $certificates = @(Import-PfxCertificate -FilePath $pfxPath -Password $password -CertStoreLocation Cert:\CurrentUser\My | Where-Object HasPrivateKey)
+            if ($certificates.Count -ne 1) { throw 'Expected one Windows signing certificate with a private key.' }
+            $certificate = $certificates[0]
+            "WINDOWS_CERTIFICATE_THUMBPRINT=$($certificate.Thumbprint)" >> $env:GITHUB_ENV
+            if ($certificate.NotBefore -gt (Get-Date) -or $certificate.NotAfter -le (Get-Date)) {
+              throw 'The Windows signing certificate is not currently valid.'
+            }
+            if ($certificate.Subject -eq $certificate.Issuer) {
+              # Trust only the public certificate on this disposable runner for signature verification.
+              $store = [Security.Cryptography.X509Certificates.X509Store]::new('Root', 'LocalMachine')
+              try {
+                $store.Open('ReadWrite')
+                $store.Add([Security.Cryptography.X509Certificates.X509Certificate2]::new($certificate.RawData))
+                'WINDOWS_SELF_SIGNED_CERTIFICATE=true' >> $env:GITHUB_ENV
+              } finally {
+                $store.Close()
+              }
+            }
+          } finally {
+            Remove-Item -LiteralPath $pfxPath -Force -ErrorAction SilentlyContinue
+          }
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -140,6 +178,26 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         shell: bash
         run: pnpm package:desktop "$RELEASE_TAG"
+      - name: Verify Windows installer signatures and bundled cores
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = $env:RELEASE_TAG -replace '^v', ''
+          ./scripts/verify-windows-installer.ps1 -Directory "release-local/$version/desktop" -Thumbprint $env:WINDOWS_CERTIFICATE_THUMBPRINT -CoreHashesFile 'src-tauri/packages/windows/core-hashes.nsh'
+      - name: Remove Windows signing certificate
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $thumbprint = $env:WINDOWS_CERTIFICATE_THUMBPRINT
+          if ($thumbprint) {
+            try {
+              if ($env:WINDOWS_SELF_SIGNED_CERTIFICATE -eq 'true') {
+                Remove-Item -LiteralPath "Cert:\LocalMachine\Root\$thumbprint" -Force
+              }
+            } finally {
+              Remove-Item -LiteralPath "Cert:\CurrentUser\My\$thumbprint" -DeleteKey -Force
+            }
+          }
       # Upload directly: artifacts in a public repository are not private.
       - name: Upload installers to the draft
         timeout-minutes: 10
