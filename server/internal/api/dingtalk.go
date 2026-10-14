@@ -23,12 +23,13 @@ const (
 	dingtalkTimeout = 10 * time.Second
 )
 
-// dingtalkQrSession bridges the desktop client (poll) and the DingTalk
+// dingtalkQrSession bridges the client (poll) and the DingTalk
 // redirect (callback). The server resolves the user identity during the
 // callback; tokens are only minted when the client collects them, so no
 // credential ever rests in the map.
 type dingtalkQrSession struct {
 	state    string
+	client   string
 	status   string // pending | ok | fail
 	created  time.Time
 	username string
@@ -52,7 +53,7 @@ func (qs *dingtalkQrSessions) sweepLocked(now time.Time) {
 	}
 }
 
-func (qs *dingtalkQrSessions) create() (id, state string) {
+func (qs *dingtalkQrSessions) create(client string) (id, state string) {
 	qs.mu.Lock()
 	defer qs.mu.Unlock()
 	qs.sweepLocked(time.Now())
@@ -68,7 +69,7 @@ func (qs *dingtalkQrSessions) create() (id, state string) {
 		return "", ""
 	}
 	state = hex.EncodeToString(buf)
-	qs.live[id] = &dingtalkQrSession{state: state, status: "pending", created: time.Now()}
+	qs.live[id] = &dingtalkQrSession{state: state, client: client, status: "pending", created: time.Now()}
 	return id, state
 }
 
@@ -93,16 +94,16 @@ func (qs *dingtalkQrSessions) complete(id, username, failMsg string) {
 	s.status, s.username = "ok", username
 }
 
-func (qs *dingtalkQrSessions) byState(state string) (id string, ok bool) {
+func (qs *dingtalkQrSessions) byState(state string) (id, client string, ok bool) {
 	qs.mu.Lock()
 	defer qs.mu.Unlock()
 	qs.sweepLocked(time.Now())
 	for sid, s := range qs.live {
 		if s.state == state {
-			return sid, true
+			return sid, s.client, true
 		}
 	}
-	return "", false
+	return "", "", false
 }
 
 func (qs *dingtalkQrSessions) take(id string) (status, username, failMsg string, ok bool) {
@@ -156,6 +157,14 @@ func (a *Server) throttleQr(ip, sessionID string) bool {
 }
 
 func (a *Server) handleDingtalkQrStart(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Client string `json:"client"`
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+		fail(w, http.StatusBadRequest, "bad_request", "invalid JSON body")
+		return
+	}
 	appKey, _, ok := a.dingtalkReady()
 	if !ok {
 		fail(w, http.StatusBadRequest, "dingtalk_not_configured",
@@ -176,7 +185,7 @@ func (a *Server) handleDingtalkQrStart(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusTooManyRequests, "too_many_requests", "too many requests, try again later")
 		return
 	}
-	id, state := a.qrSessions.create()
+	id, state := a.qrSessions.create(req.Client)
 	if id == "" {
 		fail(w, http.StatusServiceUnavailable, "too_many_sessions", "too many pending QR sessions, try again later")
 		return
@@ -259,9 +268,11 @@ func (a *Server) handleDingtalkCallback(w http.ResponseWriter, r *http.Request) 
 	authError := r.URL.Query().Get("error")
 
 	title, detail := "登录失败", "链接无效或已过期，请回到客户端重新扫码"
+	returnToApp := false
 
 	if state != "" {
-		if sessionID, found := a.qrSessions.byState(state); found {
+		if sessionID, client, found := a.qrSessions.byState(state); found {
+			returnToApp = client == "android"
 			if authError != "" {
 				detail = "未完成钉钉授权，请重新登录"
 				a.qrSessions.complete(sessionID, "", detail)
@@ -271,7 +282,7 @@ func (a *Server) handleDingtalkCallback(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	qrCallbackPage(w, title, detail)
+	qrCallbackPage(w, title, detail, returnToApp)
 }
 
 func (a *Server) dingtalkFinishCallback(sessionID, code string) (title, detail string) {
@@ -384,13 +395,18 @@ func dingtalkExchangeUser(appKey, appSecret, code string) (dingtalkUser, string,
 	return user, parsed.CorpID, nil
 }
 
-func qrCallbackPage(w http.ResponseWriter, title, detail string) {
+func qrCallbackPage(w http.ResponseWriter, title, detail string, returnToApp bool) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	returnLink := ""
+	if returnToApp {
+		returnLink = `<a href="vergen://auth/dingtalk" style="display:block;margin-top:24px;padding:14px 20px;border-radius:10px;background:#007aff;color:#fff;text-decoration:none;font-size:16px">返回 VergeN</a><p style="color:#6b7280;font-size:13px;margin:12px 0 0;line-height:1.6">如无法打开，请手动切回 VergeN。</p>`
+	}
 	fmt.Fprintf(w, `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>%s</title><body style="font-family:-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;background:#f3f4f6;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
-<div style="background:#fff;border-radius:16px;padding:40px 36px;max-width:320px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.08)">
+<div style="background:#fff;border-radius:16px;padding:40px 28px;box-sizing:border-box;width:calc(100%% - 32px);max-width:392px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.08)">
 <div style="font-size:40px;font-weight:700;color:#15181d;margin-bottom:12px">N</div>
 <h1 style="font-size:20px;margin:0 0 10px;color:#15181d">%s</h1>
 <p style="color:#6b7280;font-size:14px;margin:0;line-height:1.6">%s</p>
-</div></body>`, html.EscapeString(title), html.EscapeString(title), html.EscapeString(detail))
+%s</div></body>`, html.EscapeString(title), html.EscapeString(title), html.EscapeString(detail), returnLink)
 }

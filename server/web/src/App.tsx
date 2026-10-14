@@ -172,13 +172,13 @@ function SubscriptionsPage() {
           placeholder="订阅 URL"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
-          style={{ flex: 1, minWidth: 260 }}
+          className="form-grow"
         />
         <button type="submit">添加订阅</button>
       </form>
       {error && <div className="error">{error}</div>}
       <div className="table-scroll">
-        <table>
+        <table className="mobile-cards">
           <thead>
             <tr>
               <th>ID</th>
@@ -191,12 +191,12 @@ function SubscriptionsPage() {
           <tbody>
             {subs.map((sub) => (
               <tr key={sub.id} className={sub.enabled ? '' : 'off'}>
-                <td>{sub.id}</td>
-                <td>{sub.name || '-'}</td>
-                <td className="url-cell" title={sub.url}>
+                <td data-label="ID">{sub.id}</td>
+                <td data-label="名称">{sub.name || '-'}</td>
+                <td data-label="URL" className="url-cell" title={sub.url}>
                   {sub.url}
                 </td>
-                <td>
+                <td data-label="状态">
                   <label className="check">
                     <input
                       type="checkbox"
@@ -208,20 +208,22 @@ function SubscriptionsPage() {
                     员工可选
                   </label>
                 </td>
-                <td className="actions">
-                  <button
-                    className="ghost"
-                    onClick={() => {
-                      setEditId(editId === sub.id ? null : sub.id)
-                      setEditName(sub.name)
-                      setEditUrl(sub.url)
-                    }}
-                  >
-                    编辑
-                  </button>
-                  <button className="ghost" onClick={() => void remove(sub)}>
-                    删除
-                  </button>
+                <td data-label="操作" className="actions">
+                  <div className="action-buttons">
+                    <button
+                      className="ghost"
+                      onClick={() => {
+                        setEditId(editId === sub.id ? null : sub.id)
+                        setEditName(sub.name)
+                        setEditUrl(sub.url)
+                      }}
+                    >
+                      编辑
+                    </button>
+                    <button className="ghost" onClick={() => void remove(sub)}>
+                      删除
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -246,7 +248,7 @@ function SubscriptionsPage() {
             placeholder="URL"
             value={editUrl}
             onChange={(e) => setEditUrl(e.target.value)}
-            style={{ flex: 1, minWidth: 240 }}
+            className="form-grow"
           />
           <button type="submit">确认</button>
           <button
@@ -340,19 +342,19 @@ function AnnouncementPage() {
           placeholder="标题"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          style={{ minWidth: 200 }}
+          className="form-title"
         />
         <input
           placeholder="内容(可选)"
           value={content}
           onChange={(e) => setContent(e.target.value)}
-          style={{ flex: 1, minWidth: 260 }}
+          className="form-grow"
         />
         <button type="submit">添加公告</button>
       </form>
       {error && <div className="error">{error}</div>}
       <div className="table-scroll">
-        <table>
+        <table className="mobile-cards">
           <thead>
             <tr>
               <th>ID</th>
@@ -365,21 +367,16 @@ function AnnouncementPage() {
           <tbody>
             {items.map((item) => (
               <tr key={item.id} className={item.enabled ? '' : 'off'}>
-                <td>{item.id}</td>
-                <td>{item.title}</td>
+                <td data-label="ID">{item.id}</td>
+                <td data-label="标题">{item.title}</td>
                 <td
-                  className="url-cell"
+                  data-label="内容"
+                  className="url-cell announcement-content"
                   title={item.content}
-                  style={{
-                    maxWidth: 320,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
                 >
                   {item.content || '-'}
                 </td>
-                <td>
+                <td data-label="下发">
                   <label className="check">
                     <input
                       type="checkbox"
@@ -391,20 +388,22 @@ function AnnouncementPage() {
                     下发
                   </label>
                 </td>
-                <td className="actions">
-                  <button
-                    className="ghost"
-                    onClick={() => {
-                      setEditId(editId === item.id ? null : item.id)
-                      setEditTitle(item.title)
-                      setEditContent(item.content)
-                    }}
-                  >
-                    编辑
-                  </button>
-                  <button className="ghost" onClick={() => void remove(item)}>
-                    删除
-                  </button>
+                <td data-label="操作" className="actions">
+                  <div className="action-buttons">
+                    <button
+                      className="ghost"
+                      onClick={() => {
+                        setEditId(editId === item.id ? null : item.id)
+                        setEditTitle(item.title)
+                        setEditContent(item.content)
+                      }}
+                    >
+                      编辑
+                    </button>
+                    <button className="ghost" onClick={() => void remove(item)}>
+                      删除
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -429,7 +428,7 @@ function AnnouncementPage() {
             placeholder="内容"
             value={editContent}
             onChange={(e) => setEditContent(e.target.value)}
-            style={{ flex: 1, minWidth: 240 }}
+            className="form-grow"
           />
           <button type="submit">确认</button>
           <button
@@ -1114,7 +1113,7 @@ function ReleasePage() {
           这里管理服务器上的文件。已被版本引用的文件受到保护；请先删除对应版本，再清理文件。
         </p>
         <div className="package-table">
-          <table>
+          <table className="mobile-cards">
             <thead>
               <tr>
                 <th>文件名</th>
@@ -1126,7 +1125,7 @@ function ReleasePage() {
             <tbody>
               {packages.map((item) => (
                 <tr key={item.name}>
-                  <td>
+                  <td data-label="文件名">
                     <a
                       href={`/files/${encodeURIComponent(item.name)}`}
                       download
@@ -1134,20 +1133,22 @@ function ReleasePage() {
                       {item.name}
                     </a>
                   </td>
-                  <td>
+                  <td data-label="平台 / 用途">
                     {PLATFORM_LABELS[item.platform]} ·{' '}
                     {item.kind === 'updater' ? '更新包' : '安装包'}
                   </td>
-                  <td>{item.size}</td>
-                  <td>
-                    <button
-                      type="button"
-                      className="ghost"
-                      disabled={!!busy}
-                      onClick={() => void removePackage(item)}
-                    >
-                      删除文件
-                    </button>
+                  <td data-label="大小">{item.size}</td>
+                  <td data-label="操作" className="actions">
+                    <div className="action-buttons">
+                      <button
+                        type="button"
+                        className="ghost"
+                        disabled={!!busy}
+                        onClick={() => void removePackage(item)}
+                      >
+                        删除文件
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -1365,9 +1366,9 @@ function DownloadPage({ onBack }: { onBack: () => void }) {
         releases.map((release, index) => (
           <div className="download-version" key={release.id}>
             <div className="download-version-head">
-              <div>
+              <div className="download-version-title">
                 <span className="pill">{index === 0 ? '最新' : '历史'}</span>
-                <strong style={{ fontSize: 19 }}>v{release.version}</strong>
+                <strong>v{release.version}</strong>
               </div>
               <span className="muted" style={{ fontSize: 12 }}>
                 {release.pub_date
@@ -1378,12 +1379,7 @@ function DownloadPage({ onBack }: { onBack: () => void }) {
               </span>
             </div>
             {release.notes && (
-              <div
-                className="muted"
-                style={{ marginBottom: 12, whiteSpace: 'pre-line' }}
-              >
-                {release.notes}
-              </div>
+              <div className="muted download-notes">{release.notes}</div>
             )}
             <div className="download-grid">
               {(
@@ -1405,12 +1401,7 @@ function DownloadPage({ onBack }: { onBack: () => void }) {
           <summary>
             其他安装包 <span className="muted">尚未归入版本的文件</span>
           </summary>
-          <div
-            className="download-grid"
-            style={{
-              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            }}
-          >
+          <div className="download-grid download-legacy-grid">
             {packages.map((file) => (
               <PlatformCard
                 key={file.name}
@@ -1460,17 +1451,7 @@ function PlatformCard({
         ))}
       </svg>
       <span>{label}</span>
-      {fileName && (
-        <span
-          style={{
-            fontSize: 12,
-            overflowWrap: 'anywhere',
-            textAlign: 'center',
-          }}
-        >
-          {fileName}
-        </span>
-      )}
+      {fileName && <span className="download-file-name">{fileName}</span>}
       <span className="muted" style={{ fontSize: 12 }}>
         {disabled ? '暂无安装包' : size ? `下载 · ${size}` : '下载'}
       </span>
@@ -1672,7 +1653,7 @@ function UsersPanel() {
       </form>
       {error && <div className="error">{error}</div>}
       <div className="table-scroll">
-        <table>
+        <table className="mobile-cards">
           <thead>
             <tr>
               <th>ID</th>
@@ -1687,11 +1668,11 @@ function UsersPanel() {
           <tbody>
             {users.map((user) => (
               <tr key={user.id}>
-                <td>{user.id}</td>
-                <td title={user.username}>
+                <td data-label="ID">{user.id}</td>
+                <td data-label="姓名 / 账号" title={user.username}>
                   {user.display_name || user.username}
                 </td>
-                <td>
+                <td data-label="钉钉">
                   {user.dingtalk_userid ? (
                     <span
                       className="muted"
@@ -1704,42 +1685,46 @@ function UsersPanel() {
                     <span className="muted">未绑定</span>
                   )}
                 </td>
-                <td>{user.role === 'admin' ? '管理员' : '员工'}</td>
-                <td title={user.last_os || ''}>
+                <td data-label="角色">
+                  {user.role === 'admin' ? '管理员' : '员工'}
+                </td>
+                <td data-label="最近在线" title={user.last_os || ''}>
                   {timeOf(user.last_seen_at)}
                   {user.last_version ? ` · v${user.last_version}` : ''}
                 </td>
-                <td>
+                <td data-label="客户端">
                   {[user.last_os, user.last_version]
                     .filter(Boolean)
                     .join(' / ') || '-'}
                 </td>
-                <td className="actions">
-                  <button
-                    className="ghost"
-                    onClick={() =>
-                      void remove(user.id, user.display_name || user.username)
-                    }
-                  >
-                    删除
-                  </button>
-                  <button
-                    className="ghost"
-                    onClick={() =>
-                      setResetId(resetId === user.id ? null : user.id)
-                    }
-                  >
-                    重置密码
-                  </button>
-                  <button
-                    className="ghost"
-                    onClick={() => {
-                      setBindId(bindId === user.id ? null : user.id)
-                      setBindDingtalk(user.dingtalk_userid)
-                    }}
-                  >
-                    {user.dingtalk_userid ? '重新绑定' : '绑定钉钉'}
-                  </button>
+                <td data-label="操作" className="actions">
+                  <div className="action-buttons">
+                    <button
+                      className="ghost"
+                      onClick={() =>
+                        void remove(user.id, user.display_name || user.username)
+                      }
+                    >
+                      删除
+                    </button>
+                    <button
+                      className="ghost"
+                      onClick={() =>
+                        setResetId(resetId === user.id ? null : user.id)
+                      }
+                    >
+                      重置密码
+                    </button>
+                    <button
+                      className="ghost"
+                      onClick={() => {
+                        setBindId(bindId === user.id ? null : user.id)
+                        setBindDingtalk(user.dingtalk_userid)
+                      }}
+                    >
+                      {user.dingtalk_userid ? '重新绑定' : '绑定钉钉'}
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -1784,7 +1769,7 @@ function UsersPanel() {
             placeholder="钉钉 UnionID(留空解除绑定)"
             value={bindDingtalk}
             onChange={(e) => setBindDingtalk(e.target.value)}
-            style={{ flex: 1, minWidth: 240 }}
+            className="form-grow"
           />
           <button type="submit">确认</button>
           <button
@@ -1927,7 +1912,7 @@ function RouterShell() {
         <div className="brand">
           <span className="brand-mark">N</span> VergeN 运维面板
         </div>
-        <nav>
+        <nav aria-label="运维导航">
           {TABS.map(([key, label]) => (
             <button
               key={key}

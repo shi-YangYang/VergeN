@@ -38,6 +38,11 @@ class EnterpriseDingtalkActivity : AppCompatActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedState: Bundle?) {
         super.onCreate(savedState)
+        if (intent.action == Intent.ACTION_VIEW || intent.data != null) {
+            // A return link only resumes locally authenticated state; it never starts or completes authorization.
+            if (isReturnIntent(intent)) openMain() else finish()
+            return
+        }
         setContentView(R.layout.activity_enterprise_dingtalk)
 
         web = findViewById(R.id.dingtalk_web)
@@ -50,10 +55,10 @@ class EnterpriseDingtalkActivity : AppCompatActivity() {
         web.settings.domStorageEnabled = true
         web.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean =
-                !isAllowedNavigation(url)
+                handleNavigation(url)
 
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean =
-                request?.isForMainFrame == true && !isAllowedNavigation(request.url.toString())
+                request?.isForMainFrame == true && handleNavigation(request.url.toString())
 
             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? =
                 if (request?.isForMainFrame == true && !isAllowedNavigation(request.url.toString())) {
@@ -97,11 +102,7 @@ class EnterpriseDingtalkActivity : AppCompatActivity() {
                 }
 
                 while (isActive) {
-                    // Cancelling an in-flight poll on pause could discard its one-time login tokens.
-                    if (!resumed) {
-                        delay(POLL_MILLIS)
-                        continue
-                    }
+                    // DingTalk owns the foreground while authorizing; collect its one-time result in the background.
                     val poll = withContext(Dispatchers.IO) {
                         runCatching { api.dingtalkQrPoll(start.sessionId) }.getOrNull()
                     }
@@ -141,6 +142,11 @@ class EnterpriseDingtalkActivity : AppCompatActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (isReturnIntent(intent)) finishLoginIfResumed()
+    }
+
     override fun onResume() {
         super.onResume()
         resumed = true
@@ -154,19 +160,36 @@ class EnterpriseDingtalkActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         loginJob?.cancel()
-        web.stopLoading()
-        web.destroy()
+        if (::web.isInitialized) {
+            web.stopLoading()
+            web.destroy()
+        }
         super.onDestroy()
     }
 
     private fun finishLoginIfResumed() {
         if (!resumed || !loginComplete) return
         loginComplete = false
+        openMain()
+    }
+
+    private fun openMain() {
         startActivity(
             MainActivity::class.intent
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
         )
         finishAffinity()
+    }
+
+    private fun isReturnIntent(intent: Intent): Boolean =
+        intent.action == Intent.ACTION_VIEW && intent.data?.toString() == RETURN_URI
+
+    private fun handleNavigation(url: String?): Boolean {
+        if (url == RETURN_URI) {
+            finishLoginIfResumed()
+            return true
+        }
+        return !isAllowedNavigation(url)
     }
 
     private fun openDingtalk(url: Uri): Boolean {
@@ -176,7 +199,9 @@ class EnterpriseDingtalkActivity : AppCompatActivity() {
             .path("/page/link")
             .appendQueryParameter("url", url.toString())
             .build()
-        val intent = Intent(Intent.ACTION_VIEW, link).setPackage("com.alibaba.android.rimet")
+        val intent = Intent(Intent.ACTION_VIEW, link)
+            .setPackage("com.alibaba.android.rimet")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         return try {
             if (intent.resolveActivity(packageManager) == null) return false
             startActivity(intent)
@@ -236,5 +261,6 @@ class EnterpriseDingtalkActivity : AppCompatActivity() {
 
     private companion object {
         const val POLL_MILLIS = 2000L
+        const val RETURN_URI = "vergen://auth/dingtalk"
     }
 }

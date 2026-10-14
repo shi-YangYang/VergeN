@@ -122,7 +122,11 @@ object EnterpriseKit {
                             val uuid = profile?.uuid
                                 ?: create(Profile.Type.Url, subscription.name, subscription.url)
                                     .also { Log.d("managed profile created: ${subscription.name}") }
-                            if (profile == null || profile.pending) {
+                            val renamed = profile != null && profile.name != subscription.name
+                            if (profile != null && renamed) {
+                                patch(uuid, subscription.name, profile.source, profile.interval, profile.ageSecretKey)
+                            }
+                            if (profile == null || profile.pending || renamed) {
                                 commit(uuid, null)
                                 Log.d("managed profile committed: ${subscription.name}")
                             } else if (System.currentTimeMillis() - profile.updatedAt > REFETCH_MILLIS) {

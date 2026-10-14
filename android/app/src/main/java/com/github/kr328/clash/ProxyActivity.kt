@@ -5,7 +5,9 @@ import com.github.kr328.clash.core.Clash
 import com.github.kr328.clash.core.model.Proxy
 import com.github.kr328.clash.design.ProxyDesign
 import com.github.kr328.clash.design.model.ProxyState
+import com.github.kr328.clash.enterprise.EnterpriseKit
 import com.github.kr328.clash.util.withClash
+import com.github.kr328.clash.util.withProfile
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
@@ -16,6 +18,7 @@ class ProxyActivity : BaseActivity<ProxyDesign>() {
     override suspend fun main() {
         val mode = withClash { queryOverride(Clash.OverrideSlot.Session).mode }
         val names = withClash { queryProxyGroupNames(uiStore.proxyExcludeNotSelectable) }
+        val managedProfileName = queryManagedProfileName()
         val states = List(names.size) { ProxyState("?") }
         val unorderedStates = names.indices.map { names[it] to states[it] }.toMap()
         val reloadLock = Semaphore(10)
@@ -24,7 +27,8 @@ class ProxyActivity : BaseActivity<ProxyDesign>() {
             this,
             mode,
             names,
-            uiStore
+            uiStore,
+            managedProfileName
         )
 
         setContentDesign(design)
@@ -35,12 +39,12 @@ class ProxyActivity : BaseActivity<ProxyDesign>() {
             select<Unit> {
                 events.onReceive {
                     when (it) {
-                        Event.ProfileLoaded -> {
+                        Event.ProfileLoaded, Event.ProfileChanged, Event.ActivityStart -> {
                             val newNames = withClash {
                                 queryProxyGroupNames(uiStore.proxyExcludeNotSelectable)
                             }
 
-                            if (newNames != names) {
+                            if (newNames != names || queryManagedProfileName() != managedProfileName) {
                                 startActivity(ProxyActivity::class.intent)
 
                                 finish()
@@ -114,5 +118,10 @@ class ProxyActivity : BaseActivity<ProxyDesign>() {
                 }
             }
         }
+    }
+
+    private suspend fun queryManagedProfileName(): String? = withProfile {
+        queryActive()?.takeIf { EnterpriseKit.isManaged(it) }
+            ?.name?.trim()?.takeIf { it.isNotEmpty() }
     }
 }

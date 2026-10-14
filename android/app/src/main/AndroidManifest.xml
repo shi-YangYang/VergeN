@@ -48,7 +48,15 @@
         <activity
             android:name=".enterprise.EnterpriseDingtalkActivity"
             android:label="@string/enterprise_login_title"
-            android:exported="false" />
+            android:launchMode="singleTask"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="vergen" android:host="auth" android:path="/dingtalk" />
+            </intent-filter>
+        </activity>
         <activity
             android:name=".enterprise.EnterpriseLoginActivity"
             android:label="@string/enterprise_login_title"
