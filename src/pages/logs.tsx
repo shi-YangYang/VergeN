@@ -19,6 +19,8 @@ import {
 import LogItem from '@/components/log/log-item'
 import { useClashLog } from '@/hooks/use-clash-log'
 import { useLogData } from '@/hooks/use-log-data'
+import { useManagedGroupAlias } from '@/hooks/use-managed-subscription'
+import { displayManagedLog } from '@/utils/managed-group-name'
 
 const LogPage = () => {
   const { t } = useTranslation()
@@ -34,6 +36,7 @@ const LogPage = () => {
     response: { data: logData },
     refreshGetClashLog,
   } = useLogData()
+  const managedGroupAlias = useManagedGroupAlias()
 
   const filterLogs = useMemo(() => {
     if (!logData || logData.length === 0) {
@@ -42,19 +45,24 @@ const LogPage = () => {
 
     // Server-side filtering handles level filtering via query parameters
     // We only need to apply search filtering here
-    return logData.filter((data) => {
-      // 构建完整的搜索文本，包含时间、类型和内容
-      const searchText =
-        `${data.time || ''} ${data.type} ${data.payload}`.toLowerCase()
+    return logData
+      .map((data) => {
+        const payload = displayManagedLog(data.payload, managedGroupAlias)
+        return payload === data.payload ? data : { ...data, payload }
+      })
+      .filter((data) => {
+        // 构建完整的搜索文本，包含时间、类型和内容
+        const searchText =
+          `${data.time || ''} ${data.type} ${data.payload}`.toLowerCase()
 
-      const matchesSearch = match(searchText)
+        const matchesSearch = match(searchText)
 
-      return (
-        (logState == 'all' ? true : data.type.includes(logState)) &&
-        matchesSearch
-      )
-    })
-  }, [logData, logState, match])
+        return (
+          (logState == 'all' ? true : data.type.includes(logState)) &&
+          matchesSearch
+        )
+      })
+  }, [logData, logState, match, managedGroupAlias])
 
   const filteredLogs = useMemo(
     () => (isDescending ? [...filterLogs].reverse() : filterLogs),

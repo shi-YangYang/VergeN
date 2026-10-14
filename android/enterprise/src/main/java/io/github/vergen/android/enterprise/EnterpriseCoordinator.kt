@@ -81,22 +81,16 @@ class EnterpriseCoordinator(
     }
 
     /** Accepts a token pair minted by the DingTalk QR flow. */
-    suspend fun signInWithTokens(
+    fun signInWithTokens(
         accessToken: String,
         refreshToken: String,
         user: EnterpriseUser? = null,
-    ): List<BootstrapSubscription> {
+    ) {
         session.updateUser(user)
-        val bootstrap = withContext(Dispatchers.IO) {
-            (apiHolder.api ?: throw ApiError(ErrorKind.NETWORK)).bootstrap(accessToken)
-        }
-        session.updateUser(bootstrap.user)
         session.update(
             accessToken = accessToken,
             refreshToken = refreshToken,
         )
-        bootstrap.configVersion?.let { session.update(configVersion = it) }
-        return bootstrap.subscriptions
     }
 
     suspend fun signOut() {

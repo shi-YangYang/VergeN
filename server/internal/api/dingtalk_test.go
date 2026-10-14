@@ -21,6 +21,7 @@ func TestDingtalkCallback(t *testing.T) {
 	for _, tc := range []struct {
 		name           string
 		client         string
+		androidPackage string
 		configuredCorp string
 		tokenCorp      string
 		unionID        string
@@ -34,6 +35,8 @@ func TestDingtalkCallback(t *testing.T) {
 	}{
 		{name: "personal login", unionID: "union-1"},
 		{name: "Android login", client: "android", unionID: "union-1"},
+		{name: "Android alpha login", client: "android", androidPackage: "io.github.vergen.android.alpha", unionID: "union-1"},
+		{name: "Android meta login", client: "android", androidPackage: "io.github.vergen.android.meta", unionID: "union-1"},
 		{name: "organization login", configuredCorp: "corp-1", tokenCorp: "corp-1", unionID: "union-1"},
 		{name: "wrong organization", configuredCorp: "corp-1", tokenCorp: "corp-2", unionID: "union-1", wantFailure: "组织不符"},
 		{name: "missing organization", configuredCorp: "corp-1", unionID: "union-1", wantFailure: "组织不符"},
@@ -138,7 +141,7 @@ func TestDingtalkCallback(t *testing.T) {
 				}
 				var startBody any
 				if tc.client != "" {
-					startBody = map[string]string{"client": tc.client}
+					startBody = map[string]string{"client": tc.client, "android_package": tc.androidPackage}
 				}
 				status, body := doJSON(t, h, http.MethodPost, "/api/v1/auth/dingtalk/qr/start", "", startBody)
 				if status != http.StatusOK {
@@ -182,6 +185,19 @@ func TestDingtalkCallback(t *testing.T) {
 				}
 				if hasReturnLink := strings.Contains(rec.Body.String(), `href="vergen://auth/dingtalk"`); hasReturnLink != (tc.client == "android") {
 					t.Fatalf("app return link = %v for client %q", hasReturnLink, tc.client)
+				}
+				if tc.client == "android" {
+					wantPackage := tc.androidPackage
+					if wantPackage == "" {
+						wantPackage = "io.github.vergen.android"
+					}
+					if !strings.Contains(rec.Body.String(), `data-package="`+wantPackage+`"`) ||
+						!strings.Contains(rec.Body.String(), "dd.device.launcher.launchApp") ||
+						!strings.Contains(rec.Body.String(), "EnterpriseDingtalkReturnActivity") {
+						t.Fatal("Android callback omitted its native return target")
+					}
+				} else if strings.Contains(rec.Body.String(), "dingtalk-jsapi") {
+					t.Fatal("desktop callback loaded the Android return SDK")
 				}
 				for _, credential := range []string{state, body["session_id"].(string), "auth-code", "user-access-token"} {
 					if strings.Contains(rec.Body.String(), credential) {
@@ -260,5 +276,20 @@ func TestDingtalkCallback(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestDingtalkStartRejectsUntrustedAndroidPackage(t *testing.T) {
+	h, s := newTestBackend(t)
+	for key, value := range map[string]string{settingDingtalkKey: "app-key", settingDingtalkSecret: "app-secret"} {
+		if err := s.SetSetting(key, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	status, _ := doJSON(t, h, http.MethodPost, "/api/v1/auth/dingtalk/qr/start", "", map[string]any{
+		"client": "android", "android_package": "untrusted.app",
+	})
+	if status != http.StatusBadRequest {
+		t.Fatalf("untrusted Android package status = %d", status)
 	}
 }

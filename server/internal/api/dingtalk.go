@@ -28,12 +28,12 @@ const (
 // callback; tokens are only minted when the client collects them, so no
 // credential ever rests in the map.
 type dingtalkQrSession struct {
-	state    string
-	client   string
-	status   string // pending | ok | fail
-	created  time.Time
-	username string
-	failMsg  string
+	state          string
+	androidPackage string
+	status         string // pending | ok | fail
+	created        time.Time
+	username       string
+	failMsg        string
 }
 
 type dingtalkQrSessions struct {
@@ -53,7 +53,7 @@ func (qs *dingtalkQrSessions) sweepLocked(now time.Time) {
 	}
 }
 
-func (qs *dingtalkQrSessions) create(client string) (id, state string) {
+func (qs *dingtalkQrSessions) create(androidPackage string) (id, state string) {
 	qs.mu.Lock()
 	defer qs.mu.Unlock()
 	qs.sweepLocked(time.Now())
@@ -69,7 +69,7 @@ func (qs *dingtalkQrSessions) create(client string) (id, state string) {
 		return "", ""
 	}
 	state = hex.EncodeToString(buf)
-	qs.live[id] = &dingtalkQrSession{state: state, client: client, status: "pending", created: time.Now()}
+	qs.live[id] = &dingtalkQrSession{state: state, androidPackage: androidPackage, status: "pending", created: time.Now()}
 	return id, state
 }
 
@@ -94,13 +94,13 @@ func (qs *dingtalkQrSessions) complete(id, username, failMsg string) {
 	s.status, s.username = "ok", username
 }
 
-func (qs *dingtalkQrSessions) byState(state string) (id, client string, ok bool) {
+func (qs *dingtalkQrSessions) byState(state string) (id, androidPackage string, ok bool) {
 	qs.mu.Lock()
 	defer qs.mu.Unlock()
 	qs.sweepLocked(time.Now())
 	for sid, s := range qs.live {
 		if s.state == state {
-			return sid, s.client, true
+			return sid, s.androidPackage, true
 		}
 	}
 	return "", "", false
@@ -158,7 +158,8 @@ func (a *Server) throttleQr(ip, sessionID string) bool {
 
 func (a *Server) handleDingtalkQrStart(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Client string `json:"client"`
+		Client         string `json:"client"`
+		AndroidPackage string `json:"android_package"`
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
@@ -185,7 +186,20 @@ func (a *Server) handleDingtalkQrStart(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusTooManyRequests, "too_many_requests", "too many requests, try again later")
 		return
 	}
-	id, state := a.qrSessions.create(req.Client)
+	androidPackage := ""
+	if req.Client == "android" {
+		androidPackage = req.AndroidPackage
+		if androidPackage == "" {
+			androidPackage = "io.github.vergen.android"
+		}
+		switch androidPackage {
+		case "io.github.vergen.android", "io.github.vergen.android.alpha", "io.github.vergen.android.meta":
+		default:
+			fail(w, http.StatusBadRequest, "bad_request", "unsupported Android package")
+			return
+		}
+	}
+	id, state := a.qrSessions.create(androidPackage)
 	if id == "" {
 		fail(w, http.StatusServiceUnavailable, "too_many_sessions", "too many pending QR sessions, try again later")
 		return
@@ -268,11 +282,11 @@ func (a *Server) handleDingtalkCallback(w http.ResponseWriter, r *http.Request) 
 	authError := r.URL.Query().Get("error")
 
 	title, detail := "登录失败", "链接无效或已过期，请回到客户端重新扫码"
-	returnToApp := false
+	androidPackage := ""
 
 	if state != "" {
-		if sessionID, client, found := a.qrSessions.byState(state); found {
-			returnToApp = client == "android"
+		if sessionID, returnPackage, found := a.qrSessions.byState(state); found {
+			androidPackage = returnPackage
 			if authError != "" {
 				detail = "未完成钉钉授权，请重新登录"
 				a.qrSessions.complete(sessionID, "", detail)
@@ -282,7 +296,7 @@ func (a *Server) handleDingtalkCallback(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	qrCallbackPage(w, title, detail, returnToApp)
+	qrCallbackPage(w, title, detail, androidPackage)
 }
 
 func (a *Server) dingtalkFinishCallback(sessionID, code string) (title, detail string) {
@@ -395,12 +409,59 @@ func dingtalkExchangeUser(appKey, appSecret, code string) (dingtalkUser, string,
 	return user, parsed.CorpID, nil
 }
 
-func qrCallbackPage(w http.ResponseWriter, title, detail string, returnToApp bool) {
+func qrCallbackPage(w http.ResponseWriter, title, detail, androidPackage string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	returnLink := ""
-	if returnToApp {
-		returnLink = `<a href="vergen://auth/dingtalk" style="display:block;margin-top:24px;padding:14px 20px;border-radius:10px;background:#007aff;color:#fff;text-decoration:none;font-size:16px">返回 VergeN</a><p style="color:#6b7280;font-size:13px;margin:12px 0 0;line-height:1.6">如无法打开，请手动切回 VergeN。</p>`
+	if androidPackage != "" {
+		returnLink = fmt.Sprintf(`<a id="return-app" href="vergen://auth/dingtalk" data-package="%s" style="display:block;margin-top:24px;padding:14px 20px;border-radius:10px;background:#007aff;color:#fff;text-decoration:none;font-size:16px">返回 VergeN</a><p id="return-hint" role="status" style="color:#6b7280;font-size:13px;margin:12px 0 0;line-height:1.6">点击按钮返回 VergeN。</p>
+<script>
+(function () {
+  window.history.replaceState(null, '', window.location.pathname);
+  var button = document.getElementById('return-app');
+  var hint = document.getElementById('return-hint');
+  var dingTalk = /DingTalk/i.test(navigator.userAgent);
+  var sdkLoaded = false;
+  var pendingReturn = false;
+  var fallback = function () { pendingReturn = false; window.location.href = button.href; };
+  function launchApp() {
+    if (!window.dd || !dd.device || !dd.device.launcher) { fallback(); return; }
+    try {
+      dd.device.launcher.launchApp({
+        app: button.getAttribute('data-package'),
+        activity: 'com.github.kr328.clash.enterprise.EnterpriseDingtalkReturnActivity',
+        onSuccess: function (result) { if (!result || !result.result) fallback(); },
+        onFail: fallback
+      });
+    } catch (_) { fallback(); }
+  }
+  if (dingTalk) {
+    var sdk = document.createElement('script');
+    sdk.src = 'https://g.alicdn.com/dingding/dingtalk-jsapi/3.0.25/dingtalk.open.js';
+    sdk.referrerPolicy = 'no-referrer';
+    sdk.onerror = function () {
+      sdkLoaded = true;
+      if (pendingReturn) { pendingReturn = false; fallback(); }
+    };
+    sdk.onload = function () {
+      sdkLoaded = true;
+      if (pendingReturn) { pendingReturn = false; launchApp(); }
+    };
+    document.head.appendChild(sdk);
+  }
+  button.onclick = function (event) {
+    hint.textContent = '正在返回 VergeN…';
+    window.setTimeout(function () {
+      if (pendingReturn) fallback();
+      hint.textContent = '如果未能打开，请从最近任务切回 VergeN，登录结果会自动确认。';
+    }, 1800);
+    if (!dingTalk) return;
+    event.preventDefault();
+    if (sdkLoaded) launchApp();
+    else pendingReturn = true;
+  };
+})();
+</script>`, html.EscapeString(androidPackage))
 	}
 	fmt.Fprintf(w, `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>%s</title><body style="font-family:-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;background:#f3f4f6;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
