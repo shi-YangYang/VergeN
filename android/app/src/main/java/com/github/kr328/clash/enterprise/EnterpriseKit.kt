@@ -110,7 +110,7 @@ object EnterpriseKit {
 
                     withProfile {
                         val existing = queryAll()
-                        subscriptions.forEach { subscription ->
+                        val syncedUuids = subscriptions.map { subscription ->
                             // 重复项清理:保留已登记过的那个,其余删除。
                             val matches = existing.filter { it.source == subscription.url }
                             val keep = matches.firstOrNull { isManaged(it) } ?: matches.firstOrNull()
@@ -130,6 +130,13 @@ object EnterpriseKit {
                                 Log.d("managed profile refetched: ${subscription.name}")
                             }
                             markManaged(uuid)
+                            uuid
+                        }
+                        if (queryActive() == null) {
+                            val profile = queryByUUID(syncedUuids.first())
+                            if (profile != null && profile.imported) {
+                                setActive(profile)
+                            }
                         }
                     }
                     return@withContext true

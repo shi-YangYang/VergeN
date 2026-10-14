@@ -248,7 +248,7 @@ pub async fn session() -> EnterpriseSession {
 
 /// Apply a config mutation with write serialization, persist and commit it.
 async fn persist_verge_edit(f: impl FnOnce(&mut IVerge)) -> Result<()> {
-    let _config_write = Config::try_lock_config_write()?;
+    let _config_write = Config::lock_config_write().await;
     let verge = Config::verge().await;
     let transaction = DraftTransaction::begin(vec![&verge])?;
     verge.edit_draft(f);
@@ -462,7 +462,6 @@ fn is_managed_subscription_item(item: &PrfItem, subscription_url: &str) -> bool 
 }
 
 /// Ensure a profile item for the managed subscription exists and is activated.
-/// Activation failures are logged, not fatal: authentication already succeeded.
 pub async fn ensure_managed_profile(subscription_url: &str) -> Result<()> {
     let subscription_url = normalize_subscription_url(subscription_url);
     let display_name = subscriptions_from_config()
@@ -533,11 +532,12 @@ pub async fn ensure_managed_profile(subscription_url: &str) -> Result<()> {
             logging!(warn, Type::Config, "公司订阅重复项清理失败: {e:#}");
         }
     }
-    let current = Config::profiles().await.data_arc().current.clone();
-    if current.as_ref() != Some(&uid) {
-        crate::cmd::patch_profiles_config_by_profile_index(uid.clone())
-            .await
-            .map_err(|failure| anyhow!("切换公司订阅失败: {failure}"))?;
+    // Importing the first profile sets `current` before its runtime is applied.
+    let outcome = crate::cmd::patch_profiles_config_by_profile_index(uid)
+        .await
+        .map_err(|failure| anyhow!("切换公司订阅失败: {failure}"))?;
+    if !outcome.is_valid() {
+        return Err(anyhow!("激活公司订阅失败: {outcome}"));
     }
     Ok(())
 }
@@ -563,9 +563,6 @@ pub async fn select_managed_subscription(url: &str) -> Result<EnterpriseSession>
     }
     persist_verge_edit(|d| d.enterprise_subscription_url = Some(url.clone().into())).await?;
     ensure_managed_profile(&url).await?;
-    if let Err(e) = crate::core::CoreManager::global().update_config_forced().await {
-        logging!(warn, Type::Cmd, "start core after subscription switch: {e:#}");
-    }
     let data = Config::verge().await.data_arc();
     Ok(session_from(&data, true))
 }
@@ -1030,10 +1027,8 @@ pub async fn sync() -> Result<EnterpriseSession> {
     };
     let bootstrap = bootstrap_fetch(&client, &server, &access).await?;
     store_bootstrap(&server, &bootstrap).await?;
-    if !bootstrap.subscription_url.trim().is_empty()
-        && let Err(e) = ensure_managed_profile(bootstrap.subscription_url.trim()).await
-    {
-        logging!(warn, Type::Cmd, "managed subscription provisioning failed: {e:#}");
+    if !bootstrap.subscription_url.trim().is_empty() {
+        ensure_managed_profile(bootstrap.subscription_url.trim()).await?;
     }
     let data = Config::verge().await.data_arc();
     Ok(session_from(&data, true))
