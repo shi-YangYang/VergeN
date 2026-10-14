@@ -39,9 +39,11 @@ import {
 import { ConnectionTable } from '@/components/connection/connection-table'
 import { useConnectionData } from '@/hooks/use-connection-data'
 import { useConnectionSetting } from '@/hooks/use-connection-setting'
+import { useManagedGroupAlias } from '@/hooks/use-managed-subscription'
 import { useTrafficData } from '@/hooks/use-traffic-data'
 import { useVisibility } from '@/hooks/use-visibility'
 import { mutate } from '@/services/mutate'
+import { displayManagedConnection } from '@/utils/managed-group-name'
 import parseTraffic from '@/utils/parse-traffic'
 
 type OrderFunc = (list: IConnectionsItem[]) => IConnectionsItem[]
@@ -101,15 +103,21 @@ const ConnectionsPage = () => {
   } = useTrafficData({ enabled: pageVisible })
 
   const [setting, setSetting] = useConnectionSetting()
+  const managedGroupAlias = useManagedGroupAlias()
 
   const isTableLayout = setting.layout === 'table'
 
   const [isColumnManagerOpen, setIsColumnManagerOpen] = useState(false)
 
-  const selectedConnections =
-    connectionsType === 'active'
-      ? (connections?.activeConnections ?? EMPTY_CONNECTIONS)
-      : (connections?.closedConnections ?? EMPTY_CONNECTIONS)
+  const selectedConnections = useMemo(() => {
+    const items =
+      connectionsType === 'active'
+        ? (connections?.activeConnections ?? EMPTY_CONNECTIONS)
+        : (connections?.closedConnections ?? EMPTY_CONNECTIONS)
+    return managedGroupAlias
+      ? items.map((item) => displayManagedConnection(item, managedGroupAlias))
+      : items
+  }, [connections, connectionsType, managedGroupAlias])
 
   const filterConn = useMemo(() => {
     const orderFunc = orderFunctionMap[curOrderOpt]

@@ -20,14 +20,13 @@ import kotlinx.coroutines.withContext
  *    after login.
  *
  * Authorization calls wrap [author]: on 401 the refresh token buys a fresh
- * pair once; when that also fails the session clears (admin disabled the
- * user) and the failure rethrows.
+ * pair once; only a definitive authorization rejection clears the session.
  */
 class EnterpriseCoordinator(
     private val apiHolder: EnterpriseApiHolder,
     private val session: EnterpriseSession,
     private val appVersion: String,
-    private val onSyncRequired: suspend () -> Unit,
+    private val onSyncRequired: suspend () -> Boolean,
 ) {
     private val running = AtomicReference<CoroutineScope?>(null)
     private val authorLock = Mutex()
@@ -46,14 +45,15 @@ class EnterpriseCoordinator(
     suspend fun tick(): Boolean {
         val api = apiHolder.api ?: return false
         return try {
-            author { token ->
+            val serverVersion = author { token ->
                 val stored = session.load()
                 val response = api.heartbeat(token, appVersion, stored.configVersion.orEmpty())
-                val serverVersion = response.configVersion
-                if (!serverVersion.isNullOrEmpty() && serverVersion != stored.configVersion) {
-                    session.update(configVersion = serverVersion)
-                    onSyncRequired()
-                }
+                response.configVersion
+            }
+            if (!serverVersion.isNullOrEmpty() && serverVersion != stored()) {
+                // Sync calls author again, so it must run outside authorLock.
+                if (!onSyncRequired()) return false
+                session.update(configVersion = serverVersion)
             }
             true
         } catch (e: ApiError) {
@@ -81,22 +81,16 @@ class EnterpriseCoordinator(
     }
 
     /** Accepts a token pair minted by the DingTalk QR flow. */
-    suspend fun signInWithTokens(
+    fun signInWithTokens(
         accessToken: String,
         refreshToken: String,
         user: EnterpriseUser? = null,
-    ): List<BootstrapSubscription> {
+    ) {
         session.updateUser(user)
-        val bootstrap = withContext(Dispatchers.IO) {
-            (apiHolder.api ?: throw ApiError(ErrorKind.NETWORK)).bootstrap(accessToken)
-        }
-        session.updateUser(bootstrap.user)
         session.update(
             accessToken = accessToken,
             refreshToken = refreshToken,
         )
-        bootstrap.configVersion?.let { session.update(configVersion = it) }
-        return bootstrap.subscriptions
     }
 
     suspend fun signOut() {
@@ -145,6 +139,10 @@ class EnterpriseCoordinator(
             try {
                 block(token)
             } catch (e: ApiError) {
+                if (e.kind == ErrorKind.FORBIDDEN) {
+                    session.clear()
+                    throw e
+                }
                 if (e.kind != ErrorKind.BAD_CREDENTIALS) throw e
 
                 val refreshToken = session.load().refreshToken
@@ -160,9 +158,13 @@ class EnterpriseCoordinator(
                         refreshToken = refreshed.refreshToken,
                     )
                     block(refreshed.accessToken)
-                } catch (_: ApiError) {
-                    session.clear()
-                    throw e
+                } catch (refreshError: ApiError) {
+                    if (refreshError.kind == ErrorKind.BAD_CREDENTIALS ||
+                        refreshError.kind == ErrorKind.FORBIDDEN
+                    ) {
+                        session.clear()
+                    }
+                    throw refreshError
                 }
             }
         }

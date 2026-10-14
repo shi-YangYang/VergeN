@@ -11,9 +11,15 @@
     <string name="enterprise_login_error">登录失败,请稍后再试</string>
     <string name="enterprise_login_connecting">连接中…</string>
     <string name="enterprise_login_dingtalk">使用钉钉登录</string>
+    <string name="enterprise_dingtalk_checking">正在检查钉钉登录是否可用…</string>
+    <string name="enterprise_dingtalk_unavailable">服务器尚未启用钉钉登录，可联系管理员或重新检查。</string>
+    <string name="enterprise_dingtalk_retrying">暂时无法检查钉钉登录，%1$d 秒后自动重试。</string>
+    <string name="enterprise_dingtalk_check_failed">无法检查钉钉登录，请检查网络后重试。仍可尝试账号密码登录。</string>
+    <string name="enterprise_dingtalk_check_again">重新检查钉钉登录</string>
     <string name="enterprise_login_or">或</string>
     <string name="enterprise_login_empty">请输入账号和密码</string>
     <string name="enterprise_dingtalk_failed">钉钉授权未完成或已过期，请返回重试</string>
+    <string name="enterprise_dingtalk_completing">正在确认登录结果…</string>
     <string name="enterprise_dingtalk_opened">请在钉钉中确认授权，完成后返回 VergeN</string>
     <string name="enterprise_dingtalk_web_login">使用网页登录</string>
     <string name="enterprise_dingtalk_fallback">改用账号密码登录</string>

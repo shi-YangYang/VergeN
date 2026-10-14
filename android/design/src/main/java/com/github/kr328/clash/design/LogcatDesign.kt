@@ -48,6 +48,13 @@ class LogcatDesign(
         }
     }
 
+    suspend fun replaceMessages(messages: List<LogMessage>) {
+        withContext(Dispatchers.Main) {
+            adapter.messages = messages
+            adapter.notifyDataSetChanged()
+        }
+    }
+
     override val root: View
         get() = binding.root
 

@@ -23,14 +23,23 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 class EnterpriseDingtalkActivity : AppCompatActivity() {
     private lateinit var web: WebView
+    private lateinit var status: TextView
+    private lateinit var progress: View
+    private lateinit var fallback: View
+    private lateinit var webLogin: View
+    private val pollWakeups = Channel<Unit>(Channel.CONFLATED)
     private var loginJob: Job? = null
+    private var nativeLoginOpened = false
+    private var usingWebLogin = false
     private var authorizationUrl: Uri? = null
     private var resumed = false
     private var loginComplete = false
@@ -46,10 +55,11 @@ class EnterpriseDingtalkActivity : AppCompatActivity() {
         setContentView(R.layout.activity_enterprise_dingtalk)
 
         web = findViewById(R.id.dingtalk_web)
-        val status = findViewById<TextView>(R.id.dingtalk_status)
+        status = findViewById(R.id.dingtalk_status)
+        progress = findViewById(R.id.dingtalk_progress)
         val errorView = findViewById<View>(R.id.dingtalk_error)
-        val fallback = findViewById<View>(R.id.dingtalk_fallback)
-        val webLogin = findViewById<View>(R.id.dingtalk_web_login)
+        fallback = findViewById(R.id.dingtalk_fallback)
+        webLogin = findViewById(R.id.dingtalk_web_login)
 
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true
@@ -70,6 +80,8 @@ class EnterpriseDingtalkActivity : AppCompatActivity() {
 
         fun openWebLogin() {
             val url = authorizationUrl ?: return
+            usingWebLogin = true
+            progress.visibility = View.GONE
             webLogin.visibility = View.GONE
             status.visibility = View.GONE
             web.visibility = View.VISIBLE
@@ -88,13 +100,14 @@ class EnterpriseDingtalkActivity : AppCompatActivity() {
             var sessionId: String? = null
             try {
                 val start = withContext(Dispatchers.IO) {
-                    api.dingtalkQrStart().also { sessionId = it.sessionId }
+                    api.dingtalkQrStart(packageName).also { sessionId = it.sessionId }
                 }
                 val url = validatedAuthorizationUrl(start.qrUrl)
                     ?: error("Invalid DingTalk authorization URL")
                 authorizationUrl = url
                 while (!resumed) delay(POLL_MILLIS)
-                if (openDingtalk(url)) {
+                nativeLoginOpened = openDingtalk(url)
+                if (nativeLoginOpened) {
                     status.setText(R.string.enterprise_dingtalk_opened)
                     webLogin.visibility = View.VISIBLE
                 } else {
@@ -111,19 +124,20 @@ class EnterpriseDingtalkActivity : AppCompatActivity() {
                             val access = poll.accessToken.orEmpty()
                             val refresh = poll.refreshToken.orEmpty()
                             if (access.isBlank() || refresh.isBlank()) error("Missing login tokens")
-                            webLogin.isEnabled = false
-                            fallback.isEnabled = false
-                            withContext(Dispatchers.IO) {
-                                EnterpriseKit.coordinator.signInWithTokens(access, refresh, poll.user)
-                                runCatching { EnterpriseKit.syncProfiles() }
-                            }
+                            showCompleting()
+                            EnterpriseKit.coordinator.signInWithTokens(access, refresh, poll.user)
                             loginComplete = true
                             finishLoginIfResumed()
                             return@launch
                         }
                         "fail", "expired" -> error("DingTalk authorization did not complete")
                     }
-                    delay(POLL_MILLIS)
+                    if (resumed && nativeLoginOpened && !usingWebLogin) {
+                        status.setText(R.string.enterprise_dingtalk_opened)
+                        webLogin.visibility = View.VISIBLE
+                        fallback.visibility = View.VISIBLE
+                    }
+                    withTimeoutOrNull(POLL_MILLIS) { pollWakeups.receive() }
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -132,7 +146,9 @@ class EnterpriseDingtalkActivity : AppCompatActivity() {
                 web.visibility = View.GONE
                 status.visibility = View.GONE
                 webLogin.visibility = View.GONE
+                progress.visibility = View.GONE
                 errorView.visibility = View.VISIBLE
+                fallback.visibility = View.VISIBLE
                 fallback.isEnabled = true
             } finally {
                 withContext(NonCancellable + Dispatchers.IO) {
@@ -144,12 +160,16 @@ class EnterpriseDingtalkActivity : AppCompatActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        if (isReturnIntent(intent)) finishLoginIfResumed()
+        if (isReturnIntent(intent)) {
+            refreshLoginResult()
+            finishLoginIfResumed()
+        }
     }
 
     override fun onResume() {
         super.onResume()
         resumed = true
+        if (nativeLoginOpened && !usingWebLogin) refreshLoginResult()
         finishLoginIfResumed()
     }
 
@@ -165,6 +185,22 @@ class EnterpriseDingtalkActivity : AppCompatActivity() {
             web.destroy()
         }
         super.onDestroy()
+    }
+
+    private fun refreshLoginResult() {
+        if (loginJob?.isActive != true) return
+        usingWebLogin = false
+        showCompleting()
+        pollWakeups.trySend(Unit)
+    }
+
+    private fun showCompleting() {
+        progress.visibility = View.VISIBLE
+        web.visibility = View.GONE
+        webLogin.visibility = View.GONE
+        fallback.visibility = View.GONE
+        status.visibility = View.VISIBLE
+        status.setText(R.string.enterprise_dingtalk_completing)
     }
 
     private fun finishLoginIfResumed() {
@@ -186,6 +222,7 @@ class EnterpriseDingtalkActivity : AppCompatActivity() {
 
     private fun handleNavigation(url: String?): Boolean {
         if (url == RETURN_URI) {
+            refreshLoginResult()
             finishLoginIfResumed()
             return true
         }

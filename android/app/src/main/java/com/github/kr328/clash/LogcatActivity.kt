@@ -18,9 +18,13 @@ import com.github.kr328.clash.design.dialog.withModelProgressBar
 import com.github.kr328.clash.design.model.LogFile
 import com.github.kr328.clash.design.ui.ToastDuration
 import com.github.kr328.clash.design.util.showExceptionToast
+import com.github.kr328.clash.enterprise.EnterpriseKit
 import com.github.kr328.clash.log.LogcatFilter
 import com.github.kr328.clash.log.LogcatReader
+import com.github.kr328.clash.log.ManagedLogLabel
 import com.github.kr328.clash.util.logsDir
+import com.github.kr328.clash.util.withClash
+import com.github.kr328.clash.util.withProfile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.selects.select
@@ -46,8 +50,9 @@ class LogcatActivity : BaseActivity<LogcatDesign>() {
     }
 
     private suspend fun mainLocalFile(file: LogFile) {
+        val logLabel = queryManagedLogLabel()
         val messages = try {
-            LogcatReader(this, file).readAll()
+            LogcatReader(this, file).readAll().map { logLabel?.format(it) ?: it }
         } catch (e: Exception) {
             Log.e("Fail to read log file ${file.fileName}: ${e.message}")
             return showInvalid()
@@ -102,11 +107,22 @@ class LogcatActivity : BaseActivity<LogcatDesign>() {
         val ticker = ticker(500)
 
         var initial = true
+        var logLabel = queryManagedLogLabel()
+        var messages = emptyList<LogMessage>()
 
         while (isActive) {
             select<Unit> {
                 events.onReceive {
-
+                    when (it) {
+                        Event.ProfileLoaded, Event.ProfileChanged, Event.ActivityStart -> {
+                            val nextLabel = queryManagedLogLabel()
+                            if (nextLabel != logLabel) {
+                                logLabel = nextLabel
+                                design.replaceMessages(messages.map { logLabel?.format(it) ?: it })
+                            }
+                        }
+                        else -> Unit
+                    }
                 }
                 design.requests.onReceive {
                     when (it) {
@@ -122,7 +138,12 @@ class LogcatActivity : BaseActivity<LogcatDesign>() {
                     ticker.onReceive {
                         val snapshot = logcat.snapshot(initial) ?: return@onReceive
 
-                        design.patchMessages(snapshot.messages, snapshot.removed, snapshot.appended)
+                        messages = snapshot.messages
+                        design.patchMessages(
+                            messages.map { logLabel?.format(it) ?: it },
+                            snapshot.removed,
+                            snapshot.appended
+                        )
 
                         initial = false
                     }
@@ -135,6 +156,17 @@ class LogcatActivity : BaseActivity<LogcatDesign>() {
         conn?.apply(this::unbindService)
 
         super.onDestroy()
+    }
+
+    private suspend fun queryManagedLogLabel(): ManagedLogLabel? {
+        val profileName = withProfile {
+            queryActive()?.takeIf { EnterpriseKit.isManaged(it) }
+                ?.name?.trim()?.takeIf { it.isNotEmpty() }
+        } ?: return null
+        val group = withClash {
+            queryProxyGroupNames(uiStore.proxyExcludeNotSelectable).firstOrNull { it != "GLOBAL" }
+        } ?: return null
+        return ManagedLogLabel(group, profileName)
     }
 
     private suspend fun bindLogcatService(): LogcatService {
