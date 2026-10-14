@@ -95,6 +95,15 @@ function desktop() {
     target,
     'release/bundle',
   )
+  if (process.platform === 'darwin') {
+    run('codesign', [
+      '--verify',
+      '--deep',
+      '--strict',
+      '--verbose=2',
+      path.join(bundle, 'macos', 'VergeN.app'),
+    ])
+  }
   const patterns = ['dmg/*.dmg', 'nsis/*.exe', 'deb/*.deb']
   if (signedUpdates) {
     patterns.push(

@@ -76,6 +76,8 @@ VergeN 是基于 [clash-verge-rev](https://github.com/clash-verge-rev/clash-verg
 
 需要沿用仓库变量 `VITE_ENTERPRISE_SERVER_URL`,以及现有 Android 正式签名 secrets: `ANDROID_KEYSTORE_BASE64`、`ANDROID_SIGN_STORE_PASSWORD`、`ANDROID_SIGN_KEY_PASSWORD`(密钥 alias 为 `vergen`)。缺少配置会在开始构建前停止,不会退回 debug 签名。勾选 `signed_updates` 时还需要 `TAURI_SIGNING_PRIVATE_KEY`,以及密钥有密码时的 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`;该密钥必须与已安装客户端内置的公钥匹配,不要重新生成或替换。普通安装包构建不需要 Tauri updater 私钥。
 
+macOS 默认对完整应用包进行 ad-hoc 签名,并在收集安装包前校验签名完整性;校验失败会停止发布。该签名不等于 Apple Developer ID 签名和公证,从网页下载后仍可能需要在「系统设置 → 隐私与安全性」中允许打开。要通过 macOS 的常规分发信任检查,还需配置 Apple Developer ID 签名及公证。`signed_updates` 只控制在线更新签名,与 Apple 应用签名无关。
+
 启用签名更新后,草稿还会包含 Windows EXE 和 Linux DEB 的同名 `.sig`,以及 macOS 的带版本号 `.app.tar.gz` 与同名 `.sig`。DMG 用于首次安装,macOS 客户端内更新使用 `.app.tar.gz`。Linux 仅生成 DEB 安装包,在线更新使用该 DEB 及其同名 `.sig`。
 
 构建产物按系统、架构和用途使用中文命名,例如 `VergeN_0.1.1_苹果电脑_ARM64_安装包.dmg` 和 `VergeN_0.1.1_苹果电脑_ARM64_升级包.app.tar.gz`。Windows 和 Linux 统一标为「安装包」,Android 标为「安卓」。勾选 `signed_updates` 后,Windows 和 Linux 在线更新复用安装包并生成配套 `.sig`,macOS 另生成 `.app.tar.gz` 升级包及其 `.sig`;未勾选时只输出安装包。签名文件始终为对应包名加 `.sig`,文件内容保持不变。GitHub 会改写中文附件名,因此草稿列表使用中文显示名,实际下载文件名使用英文;本地构建产物和运维端均支持中文文件名。不额外生成 ZIP。
