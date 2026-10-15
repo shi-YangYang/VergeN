@@ -249,8 +249,6 @@ func clientUpdaterTarget(r *http.Request) string {
 		switch bundle := query.Get("bundle_type"); bundle {
 		case "deb", "rpm":
 			return "linux-" + arch + "-" + bundle
-		case "appimage":
-			return "linux-" + arch
 		}
 	}
 	return ""

@@ -140,15 +140,6 @@ subprojects {
             }
         }
 
-        sourceSets {
-            getByName("meta") {
-                java.srcDirs("src/foss/java")
-            }
-            getByName("alpha") {
-                java.srcDirs("src/foss/java")
-            }
-        }
-
         signingConfigs {
             val keystore = rootProject.file("signing.properties")
             if (keystore.exists() && rootProject.file("release.keystore").exists()) {

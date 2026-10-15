@@ -90,11 +90,6 @@
         justify-content: end;
         box-sizing: border-box;
         z-index: 2;
-
-        .the-dragbar {
-          margin-top: 5px;
-          app-region: drag;
-        }
       }
 
       .the-content {

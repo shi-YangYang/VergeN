@@ -207,8 +207,6 @@ type settingsView struct {
 
 type settingsPatch struct {
 	ManagedFlags *managedFlags `json:"managed_flags"`
-	// Release with an empty version clears the published manifest.
-	Release *store.Release `json:"release"`
 
 	// Secret pointers follow "present means set": omitted leaves the stored
 	// value untouched, an empty string clears it.

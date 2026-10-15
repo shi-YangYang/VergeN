@@ -218,8 +218,6 @@
     <string name="should_not_be_blank">Không được để trống</string>
     <string name="show_traffic">Hiển thị lưu lượng truy cập</string>
     <string name="show_traffic_summary">Tự động làm mới lưu lượng truy cập trong thông báo</string>
-    <string name="sideload_geoip">Sideload GEOIP</string>
-    <string name="sideload_geoip_summary">Cơ sở dữ liệu GEOIP bên ngoài</string>
     <string name="silent">Im lặng</string>
     <string name="single">Đơn</string>
     <string name="socks_port">Cổng Socks</string>

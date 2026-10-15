@@ -799,10 +799,6 @@ tr.off td {
   padding: 32px;
   gap: 10px;
 }
-.gateway-hero {
-  display: flex;
-  gap: 12px;
-}
 .gateway-btn {
   display: flex;
   align-items: center;
