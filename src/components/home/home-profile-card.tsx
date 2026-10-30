@@ -24,12 +24,12 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useEnterpriseSession } from '@/hooks/use-enterprise'
-import { useVerge } from '@/hooks/use-verge'
 import { useAppRefreshers, useProxiesData } from '@/providers/app-data-context'
 import { updateProfile } from '@/services/cmds'
 import { mutate } from '@/services/mutate'
 import { showNotice } from '@/services/notice-service'
 import type { TranslationKey } from '@/types/generated/i18n-keys'
+import { isManagedSubscriptionProfile } from '@/utils/managed-subscription'
 import { openExternalUrl } from '@/utils/open-external-url'
 
 import { EnhancedCard } from './enhanced-card'
@@ -259,8 +259,8 @@ export const HomeProfileCard = ({
 }: HomeProfileCardProps) => {
   const { t } = useTranslation()
   const { refreshAll } = useAppRefreshers()
-  const { verge } = useVerge()
-  const profileLocked = verge?.enterprise_profile_uid === current?.uid
+  const session = useEnterpriseSession()
+  const profileLocked = isManagedSubscriptionProfile(current, session)
 
   // 更新当前订阅
   const [updating, setUpdating] = useState(false)
