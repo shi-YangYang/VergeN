@@ -32,6 +32,11 @@ overflow-checks = true
 lto = false
 rpath = false
 
+# Dependency artifacts carry only line tables, keeping target/debug small; the
+# workspace crates below still compile with full debuginfo for debugging.
+[profile.dev.package."*"]
+debug = "line-tables-only"
+
 [profile.fast-release]
 inherits = "release"
 codegen-units = 64

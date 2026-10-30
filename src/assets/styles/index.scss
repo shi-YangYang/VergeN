@@ -50,13 +50,6 @@ body {
 //   }
 // }
 
-.user-none {
-  user-select: none;
-  -webkit-user-select: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
-}
-
 [data-dnd-dragging] {
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.32) !important;
 }

@@ -32,7 +32,7 @@ import { EditorViewer } from '@/components/profile/editor-viewer'
 import { GroupsEditorViewer } from '@/components/profile/groups-editor-viewer'
 import { RulesEditorViewer } from '@/components/profile/rules-editor-viewer'
 import { useEditorDocument } from '@/hooks/use-editor-document'
-import { useVerge } from '@/hooks/use-verge'
+import { useEnterpriseSession } from '@/hooks/use-enterprise'
 import {
   getNextUpdateTime,
   readProfileFile,
@@ -48,6 +48,7 @@ import {
 } from '@/store/app-store-context'
 import type { TranslationKey } from '@/types/generated/i18n-keys'
 import { debugLog } from '@/utils/debug'
+import { isManagedSubscriptionProfile } from '@/utils/managed-subscription'
 import { isValidUrl } from '@/utils/network'
 import { openExternalUrl } from '@/utils/open-external-url'
 import parseTraffic from '@/utils/parse-traffic'
@@ -80,10 +81,10 @@ export interface ProfileItemProps {
 }
 
 const ProfileItemBase = (props: ProfileItemProps) => {
-  const { verge } = useVerge()
+  const session = useEnterpriseSession()
   // Managed subscriptions keep their source settings locked.
   const { itemData, ...restOfProps } = props
-  const locked = verge?.enterprise_profile_uid === itemData.uid
+  const locked = isManagedSubscriptionProfile(itemData, session)
   const {
     id,
     index,

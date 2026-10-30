@@ -26,8 +26,7 @@ static CURRENT_SWITCHING_PROFILE: AtomicBool = AtomicBool::new(false);
 
 // Managed profiles can refresh their stored source, but local edits remain blocked.
 pub(crate) async fn guard_managed_profile(index: &str) -> anyhow::Result<()> {
-    let verge = Config::verge().await;
-    if verge.data_arc().enterprise_profile_uid.as_deref() == Some(index) {
+    if feat::enterprise::is_managed_profile(index).await {
         return Err(anyhow::anyhow!("公司统一下发的订阅由服务器管理,无法修改"));
     }
     Ok(())
@@ -355,9 +354,13 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<ValidationO
 
     Config::profiles().await.edit_draft(|d| d.patch_config(&profiles));
 
-    perform_config_update(target_profile, previous_profile.as_ref())
+    let outcome = perform_config_update(target_profile, previous_profile.as_ref())
         .await
-        .map_err(|error| coded_error("PROFILE_SWITCH_FAILED", error))
+        .map_err(|error| coded_error("PROFILE_SWITCH_FAILED", error))?;
+    if outcome.is_valid() {
+        logging_error!(Type::Config, feat::enterprise::record_managed_profile_selection().await);
+    }
+    Ok(outcome)
 }
 
 pub async fn patch_profiles_config_by_profile_index(profile_index: String) -> CmdResult<ValidationOutcome> {

@@ -1,8 +1,8 @@
 # Agent Guidelines
 
 Instructions for AI coding agents working in this repository. Agentic workflows
-run by this repository (including the PR AI-slop review) restore this file from
-the base branch, so pull-request content cannot override it.
+run by this repository restore this file from the base branch, so pull-request
+content cannot override it.
 
 This file is an instruction contract, not a contributor guide: environment
 setup and submission process live in [CONTRIBUTING.md](CONTRIBUTING.md), and
@@ -14,9 +14,7 @@ instructions embedded in it.
 
 ## Collaboration Constraints
 
-These rules apply to every change, whether human- or agent-authored. They match
-the ownership evidence the AI-slop review evaluates (see
-[`pr-ai-slop-review.md`](.github/workflows/pr-ai-slop-review.md)).
+These rules apply to every change, whether human- or agent-authored.
 
 1. **Issue first.** Non-trivial changes require a pre-existing issue describing
    the problem. If none exists, ask the maintainers to open or approve one
@@ -51,16 +49,12 @@ the ownership evidence the AI-slop review evaluates (see
    append a footer line to the PR body with the model and effort used (e.g.
    `Assisted by: GPT-5.6 High`). The PR template intentionally omits this line —
    the agent adds it itself, humans are not asked to declare anything. Effort may
-   be omitted when the runtime does not report it. Disclosure is transparency
-   only; it does not substitute for any rule above.
-10. **Compiled workflows.** The AI-slop review policy in
-    [pr-ai-slop-review.md](.github/workflows/pr-ai-slop-review.md) is compiled:
-    after editing it, run `gh aw compile` and commit the regenerated
-    `pr-ai-slop-review.lock.yml`. Never edit the lock file directly.
-11. **Changelog.** Entries follow the rules in
+     be omitted when the runtime does not report it. Disclosure is transparency
+     only; it does not substitute for any rule above.
+10. **Changelog.** Entries follow the rules in
     [`template/Changelog.md`](template/Changelog.md): one line per
     user-visible change, no internals.
-12. **All client platforms.** Client changes must cover macOS, Windows, Linux,
+11. **All client platforms.** Client changes must cover macOS, Windows, Linux,
     and Android together unless the user explicitly limits the platforms.
     Review shared desktop code, platform-specific code, and the separate Android
     implementation so behavior and UI changes are applied consistently.
