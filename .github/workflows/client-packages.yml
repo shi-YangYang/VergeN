@@ -101,7 +101,7 @@ jobs:
             runner: windows-latest
             target: x86_64-pc-windows-msvc
           - label: linux-x64
-            runner: ubuntu-24.04
+            runner: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
     env:
       CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
@@ -165,7 +165,7 @@ jobs:
           cache: false
       - uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ matrix.target }}-${{ hashFiles('Cargo.toml') }}
+          key: ${{ matrix.runner }}-${{ matrix.target }}-${{ hashFiles('Cargo.toml') }}
           cache-workspace-crates: false
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -178,6 +178,13 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         shell: bash
         run: pnpm package:desktop "$RELEASE_TAG"
+      - name: Check the packaged client loads on Ubuntu 22.04
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          dpkg-deb -x release-local/"${RELEASE_TAG#v}"/desktop/*.deb "$RUNNER_TEMP/vergen-deb"
+          LC_ALL=C ldd "$RUNNER_TEMP/vergen-deb/usr/bin/vergen" 2>&1 | tee "$RUNNER_TEMP/vergen-ldd.log"
+          if grep -q 'not found' "$RUNNER_TEMP/vergen-ldd.log"; then exit 1; fi
       - name: Verify Windows installer signatures and bundled cores
         if: runner.os == 'Windows'
         shell: pwsh
