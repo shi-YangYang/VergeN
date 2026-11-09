@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,8 +18,9 @@ import (
 )
 
 type updaterPackage struct {
-	Name      string `json:"name"`
-	Signature string `json:"signature"`
+	Name          string `json:"name"`
+	Signature     string `json:"signature"`
+	SignatureName string `json:"signature_name"`
 }
 
 type updaterArtifact struct {
@@ -50,35 +50,6 @@ func validReleaseVersion(version string) bool {
 		}
 	}
 	return true
-}
-
-func validUpdaterSignature(signature, version string) bool {
-	if len(signature) > 16<<10 {
-		return false
-	}
-	decoded, err := base64.StdEncoding.DecodeString(signature)
-	if err != nil {
-		return false
-	}
-	lines := strings.Split(strings.TrimSpace(string(decoded)), "\n")
-	if len(lines) != 4 || !strings.HasPrefix(lines[0], "untrusted comment:") || !strings.HasPrefix(lines[2], "trusted comment:") {
-		return false
-	}
-	comment := strings.TrimSpace(strings.TrimPrefix(lines[2], "trusted comment:"))
-	for _, field := range strings.Split(comment, "\t") {
-		if signedVersion, ok := strings.CutPrefix(field, "version:"); ok {
-			if strings.TrimPrefix(signedVersion, "v") != version {
-				return false
-			}
-			break
-		}
-	}
-	packet, err := base64.StdEncoding.DecodeString(strings.TrimSpace(lines[1]))
-	if err != nil || len(packet) != 74 || (string(packet[:2]) != "Ed" && string(packet[:2]) != "ED") {
-		return false
-	}
-	global, err := base64.StdEncoding.DecodeString(strings.TrimSpace(lines[3]))
-	return err == nil && len(global) == 64
 }
 
 func (a *Server) existingPackage(name, platform string) (web.FileRow, error) {
@@ -146,17 +117,9 @@ func (a *Server) publishRelease(w http.ResponseWriter, req releasePayload) {
 			fail(w, http.StatusBadRequest, "invalid_updater", "each updater target requires a matching installer platform")
 			return
 		}
-		if _, err := a.existingPackage(artifact.Name, platform); err != nil {
-			fail(w, http.StatusBadRequest, "invalid_updater", err.Error())
-			return
-		}
-		extensionOK := false
-		for _, extension := range extensions {
-			extensionOK = extensionOK || strings.HasSuffix(strings.ToLower(artifact.Name), extension)
-		}
 		artifact.Signature = strings.TrimSpace(artifact.Signature)
-		if !extensionOK || !validUpdaterSignature(artifact.Signature, release.Version) {
-			fail(w, http.StatusBadRequest, "invalid_updater", "select the matching updater package and its generated .sig file for this version")
+		if !hasPackageExtension(artifact.Name, extensions) || !a.verifyUpdaterPackage(target, release.Version, artifact) {
+			fail(w, http.StatusBadRequest, "invalid_updater", "updater package and signature must match this platform, version and the client signing key")
 			return
 		}
 		manifest.Platforms[target] = updaterArtifact{URL: fileURL(artifact.Name), Signature: artifact.Signature}

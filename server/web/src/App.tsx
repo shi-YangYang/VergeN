@@ -23,6 +23,7 @@ import {
   listReleases,
   listPackages,
   uploadPackage,
+  verifyPackageSignature,
   deletePackage,
   fetchPublicReleases,
   getDashboard,
@@ -49,6 +50,12 @@ import {
 } from './api'
 import { PLATFORM_GLYPHS, type PlatformKey } from './assets/platform-glyphs'
 import { Select } from './components/Select'
+import {
+  acceptsPackage,
+  normalizeReleaseVersion,
+  packageMatchesVersion,
+} from './release-files'
+import { deleteHistoricalReleases, nextReleaseVersion } from './release-history'
 
 type Tab =
   | 'users'
@@ -455,8 +462,8 @@ const INSTALLER_PLATFORMS: {
   {
     key: 'windows',
     label: 'Windows · x64',
-    accept: '.exe,.msi',
-    hint: 'EXE / MSI 安装包',
+    accept: '.exe',
+    hint: 'EXE 安装包',
   },
   {
     key: 'macos',
@@ -489,7 +496,7 @@ const UPDATER_TARGETS: {
     key: 'windows-x86_64',
     platform: 'windows',
     label: 'Windows',
-    accept: '.exe,.msi',
+    accept: '.exe',
     hint: '安装包及同名 .sig 文件',
   },
   {
@@ -507,12 +514,6 @@ const UPDATER_TARGETS: {
     hint: '.deb 安装包及同名 .sig 文件',
   },
 ]
-
-function acceptsPackage(name: string, accept: string) {
-  return accept
-    .split(',')
-    .some((extension) => name.toLowerCase().endsWith(extension.toLowerCase()))
-}
 
 function PackageUpload({
   label,
@@ -545,6 +546,7 @@ function PackageUpload({
 
 function ReleasePage() {
   const [releases, setReleases] = useState<AdminRelease[]>([])
+  const [selectedHistory, setSelectedHistory] = useState<number[]>([])
   const [packages, setPackages] = useState<PackageFile[]>([])
   const [loading, setLoading] = useState(true)
   const [version, setVersion] = useState('')
@@ -566,6 +568,13 @@ function ReleasePage() {
   })
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const historicalReleases = releases.slice(1)
+  const selectedHistoricalReleases = historicalReleases.filter((release) =>
+    selectedHistory.includes(release.id),
+  )
+  const currentPackages = packages.filter((item) =>
+    packageMatchesVersion(item.name, version),
+  )
   const selectedPlatforms = INSTALLER_PLATFORMS.filter(
     ({ key }) => selected[key],
   )
@@ -595,6 +604,18 @@ function ReleasePage() {
       ])
       setReleases(releaseData.releases)
       setPackages(packageData.packages)
+      setVersion(
+        (value) =>
+          value ||
+          nextReleaseVersion(
+            releaseData.releases.map((release) => release.version),
+          ),
+      )
+      setSelectedHistory((value) =>
+        value.filter((id) =>
+          releaseData.releases.slice(1).some((release) => release.id === id),
+        ),
+      )
     } catch (err) {
       setError(alertContext(err))
     } finally {
@@ -643,6 +664,12 @@ function ReleasePage() {
       setError(`请选择 ${accept} 格式的文件`)
       return
     }
+    if (!packageMatchesVersion(file.name, version)) {
+      setError(
+        `请选择 v${normalizeReleaseVersion(version)} 的文件，并保留构建生成的文件名（VergeN_版本号_…）`,
+      )
+      return
+    }
     if (file.size > 512 * 1024 * 1024) {
       setError('单个文件不能超过 512 MiB')
       return
@@ -651,15 +678,19 @@ function ReleasePage() {
     setProgress({ name: file.name, loaded: 0, total: file.size, speed: 0 })
     const started = performance.now()
     try {
-      const data = await uploadPackage(file, (loaded, total) => {
-        const seconds = (performance.now() - started) / 1000
-        setProgress({
-          name: file.name,
-          loaded,
-          total,
-          speed: seconds > 0 ? loaded / seconds : 0,
-        })
-      })
+      const data = await uploadPackage(
+        file,
+        { platform, kind: targetKey ? 'updater' : 'installer' },
+        (loaded, total) => {
+          const seconds = (performance.now() - started) / 1000
+          setProgress({
+            name: file.name,
+            loaded,
+            total,
+            speed: seconds > 0 ? loaded / seconds : 0,
+          })
+        },
+      )
       setPackages((value) => [
         ...value.filter((item) => item.name !== data.package.name),
         data.package,
@@ -681,7 +712,14 @@ function ReleasePage() {
   }
 
   const readSignature = async (file: File, key: string) => {
+    if (busy) return
     setError('')
+    setMessage('')
+    setSignatures((value) => {
+      const next = { ...value }
+      delete next[key]
+      return next
+    })
     if (!file.name.endsWith('.sig') || file.size > 64 * 1024) {
       setError('请选择构建生成的 .sig 签名文件（最多 64 KiB）')
       return
@@ -690,12 +728,22 @@ function ReleasePage() {
       setError(`请选择与更新文件配套的 ${updates[key]}.sig`)
       return
     }
+    setBusy(`verify-${key}`)
     try {
       const text = (await file.text()).trim()
       if (!text) throw new Error('签名文件为空，请重新选择')
+      await verifyPackageSignature({
+        target: key,
+        version: normalizeReleaseVersion(version),
+        name: updates[key],
+        signature_name: file.name,
+        signature: text,
+      })
       setSignatures((value) => ({ ...value, [key]: { name: file.name, text } }))
     } catch (err) {
       setError(alertContext(err))
+    } finally {
+      setBusy('')
     }
   }
 
@@ -712,6 +760,7 @@ function ReleasePage() {
           {
             name: updates[key],
             signature: signatures[key].text,
+            signature_name: signatures[key].name,
           },
         ]),
       )
@@ -724,7 +773,12 @@ function ReleasePage() {
         ),
         updater,
       })
-      setVersion('')
+      setVersion(
+        nextReleaseVersion([
+          ...releases.map((release) => release.version),
+          data.release.version,
+        ]),
+      )
       setNotes('')
       setSelected({})
       setUpdates({})
@@ -757,6 +811,38 @@ function ReleasePage() {
       await reload()
     } catch (err) {
       setError(alertContext(err))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const removeSelectedHistory = async () => {
+    if (busy || !selectedHistoricalReleases.length) return
+    const versions = selectedHistoricalReleases
+      .map((release) => `v${release.version}`)
+      .join('、')
+    if (
+      !window.confirm(
+        `删除选中的 ${selectedHistoricalReleases.length} 个历史版本（${versions}）？这些版本将从下载页移除，安装包文件仍然保留。`,
+      )
+    )
+      return
+    setBusy('delete-history')
+    setError('')
+    setMessage('')
+    try {
+      const { deleted, failed } = await deleteHistoricalReleases(
+        releases,
+        selectedHistory,
+        deleteRelease,
+      )
+      setSelectedHistory(failed.map((release) => release.id))
+      if (deleted.length) setMessage(`已删除 ${deleted.length} 个历史版本`)
+      if (failed.length)
+        setError(
+          `以下版本删除失败，可重试：${failed.map((release) => `v${release.version}（${alertContext(release.error)}）`).join('、')}`,
+        )
+      await reload()
     } finally {
       setBusy('')
     }
@@ -824,11 +910,23 @@ function ReleasePage() {
               <input
                 placeholder="例如 0.1.1"
                 value={version}
-                onChange={(e) => setVersion(e.target.value)}
+                onChange={(e) => {
+                  const next = e.target.value
+                  if (
+                    normalizeReleaseVersion(next) !==
+                    normalizeReleaseVersion(version)
+                  ) {
+                    setSelected({})
+                    setUpdates({})
+                    setSignatures({})
+                  }
+                  setVersion(next)
+                }}
                 required
               />
               <span className="muted">
-                与安装包的版本一致，每次发布使用新版本号。
+                默认按已发布最高版本加 0.0.1，满 10 进位（如 0.1.9 →
+                0.2.0）。可手动修改，需与安装包版本一致。
               </span>
             </label>
             <label>
@@ -850,8 +948,8 @@ function ReleasePage() {
             <span className="step-number">2</span> 选择安装包
           </legend>
           <p className="muted">
-            从 GitHub
-            草稿下载后上传，或选择已有文件。只需选择本次要发布的平台，单个文件最多
+            先填写版本号，再从 GitHub
+            草稿下载并上传对应文件。这里只显示当前版本的文件，旧版本仍可在下方「文件库」中查看。单个文件最多
             512 MiB。
           </p>
           <div className="release-package-grid">
@@ -871,11 +969,11 @@ function ReleasePage() {
                   <Select
                     label={`${PLATFORM_LABELS[platform.key]} 安装包`}
                     value={selected[platform.key] ?? ''}
-                    disabled={!!busy || loading}
+                    disabled={!!busy || loading || !version.trim()}
                     onChange={(name) => selectInstaller(platform.key, name)}
                     options={[
                       { value: '', label: '暂不发布此平台' },
-                      ...packages
+                      ...currentPackages
                         .filter(
                           (item) =>
                             item.platform === platform.key &&
@@ -894,7 +992,7 @@ function ReleasePage() {
                   <PackageUpload
                     label={`上传 ${PLATFORM_LABELS[platform.key]} 安装包`}
                     accept={platform.accept}
-                    disabled={!!busy || loading}
+                    disabled={!!busy || loading || !version.trim()}
                     onFile={(file) => void upload(file, platform.key)}
                   />
                 </div>
@@ -972,7 +1070,7 @@ function ReleasePage() {
                         }}
                         options={[
                           { value: '', label: '此平台不启用在线更新' },
-                          ...packages
+                          ...currentPackages
                             .filter(
                               (item) =>
                                 item.platform === target.platform &&
@@ -1006,10 +1104,13 @@ function ReleasePage() {
                         signatures[target.key] ? 'release-ready' : 'muted'
                       }
                     >
-                      {signatures[target.key]?.name ??
-                        (updates[target.key]
-                          ? '还需选择配套 .sig 文件'
-                          : '未启用')}
+                      {busy === `verify-${target.key}`
+                        ? '正在校验签名与更新文件…'
+                        : signatures[target.key]
+                          ? `${signatures[target.key].name} · 校验通过`
+                          : updates[target.key]
+                            ? '还需选择配套 .sig 文件'
+                            : '未启用'}
                     </span>
                   </div>
                 </div>
@@ -1046,6 +1147,41 @@ function ReleasePage() {
           <h2>已发布版本</h2>
           <span className="muted">{releases.length} 个版本</span>
         </div>
+        {historicalReleases.length > 0 && (
+          <div className="row-form release-history-actions">
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={
+                  selectedHistoricalReleases.length ===
+                  historicalReleases.length
+                }
+                disabled={!!busy || loading}
+                onChange={(event) =>
+                  setSelectedHistory(
+                    event.target.checked
+                      ? historicalReleases.map((release) => release.id)
+                      : [],
+                  )
+                }
+              />
+              全选历史版本
+            </label>
+            <span className="muted">
+              已选择 {selectedHistoricalReleases.length} 个
+            </span>
+            <button
+              type="button"
+              className="ghost"
+              disabled={
+                !!busy || loading || selectedHistoricalReleases.length === 0
+              }
+              onClick={() => void removeSelectedHistory()}
+            >
+              {busy === 'delete-history' ? '正在删除…' : '删除所选版本'}
+            </button>
+          </div>
+        )}
         {loading && <p className="muted">加载中…</p>}
         {!loading && releases.length === 0 && (
           <p className="muted">
@@ -1063,7 +1199,25 @@ function ReleasePage() {
             <article className="release-history-item" key={release.id}>
               <div className="release-section-heading">
                 <div className="row-form">
-                  <strong>v{release.version}</strong>
+                  {index > 0 ? (
+                    <label className="check">
+                      <input
+                        type="checkbox"
+                        checked={selectedHistory.includes(release.id)}
+                        disabled={!!busy || loading}
+                        onChange={(event) =>
+                          setSelectedHistory((value) =>
+                            event.target.checked
+                              ? [...value, release.id]
+                              : value.filter((id) => id !== release.id),
+                          )
+                        }
+                      />
+                      <strong>v{release.version}</strong>
+                    </label>
+                  ) : (
+                    <strong>v{release.version}</strong>
+                  )}
                   {index === 0 && <span className="pill">当前版本</span>}
                   <span className="muted">
                     {new Date(release.pub_date * 1000).toLocaleString('zh-CN')}

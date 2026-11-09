@@ -149,7 +149,10 @@ async function request<T>(
       clearToken()
       location.reload()
     }
-    const message = data?.error?.message ?? `请求失败 (${response.status})`
+    const message =
+      data?.error?.code === 'invalid_updater'
+        ? '签名校验失败：请使用所选更新文件同一次构建生成的 .sig 文件，并确认版本号与签名密钥正确'
+        : (data?.error?.message ?? `请求失败 (${response.status})`)
     throw new Error(message)
   }
   return data as T
@@ -280,7 +283,7 @@ export async function createRelease(payload: {
   notes: string
   base_url: string
   packages: Partial<Record<PackageFile['platform'], string>>
-  updater: Record<string, { name: string; signature: string }>
+  updater: Record<string, UpdaterPackage>
 }) {
   return request<{ release: AdminRelease }>('/admin/releases', {
     method: 'POST',
@@ -302,6 +305,20 @@ export interface PackageFile {
 export const listPackages = () =>
   request<{ packages: PackageFile[] }>('/admin/packages')
 
+export interface UpdaterPackage {
+  name: string
+  signature: string
+  signature_name: string
+}
+
+export const verifyPackageSignature = (
+  payload: UpdaterPackage & { target: string; version: string },
+) =>
+  request<null>('/admin/packages/verify-signature', {
+    method: 'POST',
+    body: payload,
+  })
+
 export const deletePackage = (name: string) =>
   request<null>(`/admin/packages/${encodeURIComponent(name)}`, {
     method: 'DELETE',
@@ -309,12 +326,13 @@ export const deletePackage = (name: string) =>
 
 export function uploadPackage(
   file: File,
+  target: { platform: PackageFile['platform']; kind: 'installer' | 'updater' },
   onProgress: (loaded: number, total: number) => void,
 ): Promise<{ package: PackageFile }> {
   const send = (retried: boolean): Promise<{ package: PackageFile }> =>
     new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest()
-      xhr.open('POST', '/api/v1/admin/packages')
+      xhr.open('POST', `/api/v1/admin/packages?${new URLSearchParams(target)}`)
       if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
       xhr.upload.onprogress = (event) => {
         if (event.lengthComputable) onProgress(event.loaded, event.total)
@@ -351,7 +369,9 @@ export function uploadPackage(
               ? '同名安装包已存在，请先删除旧文件，或修改文件名后上传'
               : xhr.status === 413
                 ? '安装包超出上传大小限制，单个文件最多 512 MiB'
-                : (data?.error?.message ?? `上传失败 (${xhr.status})`)
+                : data?.error?.code === 'package_platform_mismatch'
+                  ? '文件格式与所选系统或用途不符，请重新选择文件'
+                  : (data?.error?.message ?? `上传失败 (${xhr.status})`)
           reject(new Error(message))
         } catch (err) {
           reject(err)

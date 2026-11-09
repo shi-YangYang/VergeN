@@ -8,11 +8,47 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/shi-YangYang/VergeN/server/internal/web"
 )
 
 const maxPackageBytes = 512 << 20
+
+func packageExtensions(platform, kind string) []string {
+	if kind == "updater" {
+		switch platform {
+		case "windows":
+			return []string{".exe"}
+		case "macos":
+			return []string{".app.tar.gz"}
+		case "linux":
+			return []string{".deb"}
+		}
+	}
+	if kind == "installer" {
+		switch platform {
+		case "windows":
+			return []string{".exe"}
+		case "macos":
+			return []string{".dmg", ".pkg"}
+		case "linux":
+			return []string{".deb"}
+		case "android":
+			return []string{".apk"}
+		}
+	}
+	return nil
+}
+
+func hasPackageExtension(name string, extensions []string) bool {
+	for _, extension := range extensions {
+		if strings.HasSuffix(strings.ToLower(name), extension) {
+			return true
+		}
+	}
+	return false
+}
 
 func (a *Server) downloadsReady(w http.ResponseWriter) bool {
 	info, err := os.Stat(a.downloads)
@@ -33,6 +69,11 @@ func (a *Server) handleAdminListPackages(w http.ResponseWriter, _ *http.Request)
 
 func (a *Server) handleAdminUploadPackage(w http.ResponseWriter, r *http.Request) {
 	if !a.downloadsReady(w) {
+		return
+	}
+	extensions := packageExtensions(r.URL.Query().Get("platform"), r.URL.Query().Get("kind"))
+	if len(extensions) == 0 {
+		fail(w, http.StatusBadRequest, "invalid_package_target", "select an installer or updater platform before uploading")
 		return
 	}
 	const maxRequestBytes = maxPackageBytes + 64<<10
@@ -56,6 +97,10 @@ func (a *Server) handleAdminUploadPackage(w http.ResponseWriter, r *http.Request
 	name := params["filename"]
 	if _, ok := web.PackageFile(name, 0); err != nil || !ok || part.FormName() != "file" {
 		fail(w, http.StatusBadRequest, "invalid_package", "file must have a plain installer filename")
+		return
+	}
+	if !hasPackageExtension(name, extensions) {
+		fail(w, http.StatusBadRequest, "package_platform_mismatch", "file extension does not match the selected platform and purpose")
 		return
 	}
 	target := filepath.Join(a.downloads, name)
