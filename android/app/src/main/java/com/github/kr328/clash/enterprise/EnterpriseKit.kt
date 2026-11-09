@@ -36,6 +36,7 @@ object EnterpriseKit {
     private lateinit var managedProfiles: SharedPreferences
     private val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val syncLock = Mutex()
+    private var initialSyncComplete = false
 
     lateinit var coordinator: EnterpriseCoordinator
         private set
@@ -85,7 +86,7 @@ object EnterpriseKit {
             } catch (_: Exception) {
                 "?"
             },
-            onSyncRequired = { syncProfiles() },
+            onSyncRequired = { revisionChanged -> syncProfiles(startupOnly = !revisionChanged) },
         )
         coordinator.start(backgroundScope)
     }
@@ -94,21 +95,26 @@ object EnterpriseKit {
      * Mirrors the desktop client: pull bootstrap, reconcile the managed
      * profiles — insert missing ones, commit pending ones (the fetch
      * otherwise never starts), refetch stale ones so admin-driven content
-     * updates arrive without manual interaction. Deletions are not
-     * automated yet — admins disable subscriptions instead.
+     * updates arrive without manual interaction. Obsolete managed profiles
+     * are removed only after the complete replacement set is ready.
      */
-    suspend fun syncProfiles(): Boolean = withContext(Dispatchers.IO) {
+    suspend fun syncProfiles(startupOnly: Boolean = false): Boolean = withContext(Dispatchers.IO) {
         // 匹配/创建/清理必须串行:并发 sync 都看到条目不存在会各自导入
         // (桌面端的 ensure managed profile 出现过同一秒导入两条的情况)。
         syncLock.withLock {
+            if (startupOnly && initialSyncComplete) return@withContext true
             // 服务进程绑定是异步的;刚装完/冷启动时 binder 未就绪,重试直至可用。
             repeat(SYNC_ATTEMPTS) { attempt ->
                 try {
                     // syncNow 走 author():401 时自动用 refresh token 换新再重试。
                     val subscriptions = coordinator.syncNow()
-                    if (subscriptions.isEmpty()) return@withContext true
+                    if (subscriptions.isEmpty()) {
+                        initialSyncComplete = true
+                        return@withContext true
+                    }
 
                     withProfile {
+                        val knownManaged = managedProfiles.getStringSet(KEY_MANAGED, emptySet()).orEmpty().toSet()
                         val syncedUuids = subscriptions.map { subscription ->
                             val existing = queryAll()
                             val active = queryActive()?.uuid
@@ -122,16 +128,16 @@ object EnterpriseKit {
                                 subscriptions.count { it.name.trim() == subscription.name.trim() } == 1
                             val matches = existing.filter {
                                 it.uuid.toString() == boundUuid ||
-                                    (it.uuid.toString() !in boundUuids &&
+                                    (it.uuid.toString() !in boundUuids && isManaged(it) &&
                                         (it.source == subscription.url ||
-                                            (uniqueName && isManaged(it) && it.name.trim() == subscription.name.trim())))
+                                            (uniqueName && it.name.trim() == subscription.name.trim())))
                             }
                             val profile = matches.firstOrNull { it.uuid == active }
                                 ?: matches.firstOrNull { it.uuid.toString() == boundUuid }
                                 ?: matches.firstOrNull { isManaged(it) }
                                 ?: matches.firstOrNull()
                             val uuid = profile?.uuid
-                                ?: create(Profile.Type.Url, subscription.name, subscription.url)
+                                ?: create(Profile.Type.Url, subscription.name, subscription.url).also { markManaged(it) }
                             val changed = profile != null &&
                                 (profile.name != subscription.name || profile.source != subscription.url)
                             try {
@@ -149,28 +155,37 @@ object EnterpriseKit {
                             }
                             markManaged(uuid)
                             if (key != null) managedProfiles.edit().putString(key, uuid.toString()).apply()
-                            matches.filter { it.uuid != uuid }.forEach { duplicate ->
-                                delete(duplicate.uuid)
-                                val managed = managedProfiles.getStringSet(KEY_MANAGED, emptySet())!!.toMutableSet()
-                                managed.remove(duplicate.uuid.toString())
-                                managedProfiles.edit().putStringSet(KEY_MANAGED, managed).apply()
-                            }
                             uuid
                         }
-                        if (queryActive() == null) {
-                            val profile = queryByUUID(syncedUuids.first())
-                            if (profile != null && profile.imported) {
-                                setActive(profile)
-                            }
+                        val retained = syncedUuids.map { it.toString() }.toSet()
+                        val obsolete = queryAll().filter {
+                            it.uuid.toString() in knownManaged && it.uuid.toString() !in retained
+                        }
+                        val active = queryActive()
+                        if (active == null || obsolete.any { it.uuid == active.uuid }) {
+                            val replacement = queryByUUID(syncedUuids.first())
+                            check(replacement?.imported == true) { "Replacement subscription is not ready" }
+                            setActive(replacement)
+                            check(queryActive()?.uuid == replacement.uuid) { "Replacement subscription was not selected" }
+                        }
+                        for (profile in obsolete) {
+                            check(deleteInactive(profile.uuid)) { "Subscription became active; cleanup deferred" }
+                            val managed = managedProfiles.getStringSet(KEY_MANAGED, emptySet()).orEmpty().toMutableSet()
+                            managed.remove(profile.uuid.toString())
+                            val editor = managedProfiles.edit().putStringSet(KEY_MANAGED, managed)
+                            managedProfiles.all.filter { (key, value) ->
+                                key.startsWith("subscription:") && value == profile.uuid.toString()
+                            }.keys.forEach { editor.remove(it) }
+                            editor.apply()
                         }
                     }
+                    initialSyncComplete = true
                     return@withContext true
                 } catch (e: Throwable) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
                     Log.w("sync attempt ${attempt + 1} failed", e)
                     // 只有网络故障值得重试;账停/解析失败直接放弃等用户重进。
-                    if (e !is kotlinx.coroutines.CancellationException &&
-                        !isTransient(e) || attempt == SYNC_ATTEMPTS - 1
-                    ) return@withContext false
+                    if (!isTransient(e) || attempt == SYNC_ATTEMPTS - 1) return@withContext false
                     delay(SYNC_RETRY_MILLIS)
                 }
             }

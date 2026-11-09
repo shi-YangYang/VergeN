@@ -161,9 +161,10 @@ object ProfileProcessor {
         return subscriptionInfo
     }
 
-    suspend fun delete(context: Context, uuid: UUID) {
-        withContext(NonCancellable) {
+    suspend fun delete(context: Context, uuid: UUID, onlyInactive: Boolean = false): Boolean {
+        return withContext(NonCancellable) {
             profileLock.withLock {
+                if (onlyInactive && ServiceStore(context).activeProfile == uuid) return@withLock false
                 ImportedDao().remove(uuid)
                 PendingDao().remove(uuid)
 
@@ -174,6 +175,7 @@ object ProfileProcessor {
                 imported.deleteRecursively()
 
                 context.sendProfileChanged(uuid)
+                true
             }
         }
     }
