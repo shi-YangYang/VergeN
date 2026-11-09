@@ -268,6 +268,10 @@ impl CoreManager {
         self.job_handle.store(handle.map(Arc::new));
     }
 
+    pub(crate) fn is_config_updating(&self) -> bool {
+        self.config_update_in_progress.load(Ordering::Acquire)
+    }
+
     pub(crate) fn try_start_config_update(&self) -> bool {
         !self.config_update_in_progress.swap(true, Ordering::AcqRel)
     }

@@ -1,7 +1,5 @@
 use crate::config::{
-    Config, IProfiles, IVerge, PrfItem, PrfOption,
-    profiles::PROFILE_WRITE_LOCK,
-    profiles::{profiles_patch_item_safe, profiles_save_file_safe},
+    Config, IProfiles, IVerge, PrfItem, PrfOption, profiles::PROFILE_WRITE_LOCK, profiles::profiles_save_file_safe,
     profiles_append_item_safe,
 };
 use crate::core::notify::{Refresh, announce};
@@ -35,6 +33,8 @@ pub struct Announcement {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SubscriptionOption {
+    #[serde(default)]
+    pub id: Option<i64>,
     #[serde(default)]
     pub name: std::string::String,
     #[serde(default)]
@@ -342,6 +342,7 @@ async fn store_bootstrap(server: &str, bootstrap: &BootstrapResponse) -> Result<
         let url = bootstrap.subscription_url.trim();
         if is_http_url(url) {
             options.push(SubscriptionOption {
+                id: None,
                 name: std::string::String::new(),
                 url: url.to_string(),
             });
@@ -362,15 +363,36 @@ async fn store_bootstrap(server: &str, bootstrap: &BootstrapResponse) -> Result<
         set_display_name(d, bootstrap.user.as_ref());
         d.enterprise_managed_flags = Some(flags);
         d.enterprise_announcement = Some(announcement);
+        let previous_options = configured_subscriptions(d);
+        let previous = previous_options.iter().find(|option| {
+            d.enterprise_subscription_url
+                .as_deref()
+                .map(normalize_subscription_url)
+                .as_deref()
+                == Some(normalize_subscription_url(&option.url).as_str())
+        });
+        let replacement = previous.and_then(|previous| {
+            options.iter().find(|option| {
+                if let Some(id) = previous.id {
+                    option.id == Some(id)
+                } else {
+                    !previous.name.trim().is_empty()
+                        && option.name.trim() == previous.name.trim()
+                        && options
+                            .iter()
+                            .filter(|item| item.name.trim() == previous.name.trim())
+                            .count()
+                            == 1
+                }
+            })
+        });
         d.enterprise_subscriptions = Some(list.into());
-        // Never clobber the employee's pick when it is still pickable.
-        let still_enabled = d
-            .enterprise_subscription_url
-            .as_ref()
-            .is_some_and(|u| options.iter().any(|o| u.trim() == o.url));
-        if !still_enabled {
+        if let Some(replacement) = replacement {
+            d.enterprise_subscription_url = Some(normalize_subscription_url(&replacement.url).into());
+        } else if d.enterprise_subscription_url.is_none() {
             d.enterprise_subscription_url = subscription;
         }
+        // A disabled selection keeps its old URL until the replacement is applied to the core.
     })
     .await
 }
@@ -512,14 +534,46 @@ pub(crate) async fn record_managed_profile_selection() -> Result<()> {
     .await
 }
 
-async fn import_managed_profile(subscription: &SubscriptionOption) -> Result<SmartString> {
+fn managed_subscription_key(server: &str, subscription: &SubscriptionOption) -> Option<SmartString> {
+    subscription
+        .id
+        .filter(|id| *id > 0)
+        .map(|id| format!("{}/{id}", server.trim_end_matches('/')).into())
+}
+
+fn matches_managed_profile(
+    item: &PrfItem,
+    subscription: &SubscriptionOption,
+    key: Option<&SmartString>,
+    unique_name: bool,
+) -> bool {
+    if item.itype.as_deref() != Some("remote") {
+        return false;
+    }
+    if let Some(bound) = item.managed_subscription_id.as_ref() {
+        return key == Some(bound);
+    }
+    is_managed_subscription_item(item, &normalize_subscription_url(&subscription.url))
+        || (unique_name
+            && !subscription.name.trim().is_empty()
+            && item.name.as_deref() == Some(format!("公司订阅·{}", subscription.name.trim()).as_str()))
+}
+
+async fn import_managed_profile(subscription: &SubscriptionOption) -> Result<(SmartString, bool)> {
     let subscription_url = normalize_subscription_url(&subscription.url);
     let name: SmartString = if subscription.name.trim().is_empty() {
         "公司订阅".into()
     } else {
         format!("公司订阅·{}", subscription.name.trim()).into()
     };
-    // Match and insert together so concurrent heartbeat and picker calls cannot duplicate a card.
+    let data = Config::verge().await.data_arc();
+    let key = managed_subscription_key(data.enterprise_server_url.as_deref().unwrap_or_default(), subscription);
+    // Legacy cards have no ID. Adopt their company name only when it is unambiguous.
+    let unique_name = configured_subscriptions(&data)
+        .iter()
+        .filter(|option| option.name.trim() == subscription.name.trim())
+        .count()
+        == 1;
     let _write_guard = PROFILE_WRITE_LOCK.lock().await;
     let profiles = Config::profiles().await;
     let snapshot = profiles.data_arc();
@@ -528,7 +582,7 @@ async fn import_managed_profile(subscription: &SubscriptionOption) -> Result<Sma
         .as_ref()
         .into_iter()
         .flatten()
-        .filter(|item| is_managed_subscription_item(item, &subscription_url))
+        .filter(|item| matches_managed_profile(item, subscription, key.as_ref(), unique_name))
         .filter_map(|item| item.uid.clone())
         .collect();
     let uid = snapshot
@@ -537,23 +591,35 @@ async fn import_managed_profile(subscription: &SubscriptionOption) -> Result<Sma
         .filter(|uid| matches.contains(uid))
         .cloned()
         .or_else(|| matches.first().cloned());
+    let mut active_source_changed = false;
     let uid = if let Some(uid) = uid {
-        if snapshot.get_item(&uid)?.name.as_ref() != Some(&name) {
-            profiles_patch_item_safe(
-                &uid,
-                &PrfItem {
-                    name: Some(name),
-                    ..PrfItem::default()
-                },
-            )
-            .await?;
-        }
+        let previous = snapshot.get_item(&uid)?;
+        let source_changed =
+            previous.url.as_deref().map(normalize_subscription_url).as_deref() != Some(subscription_url.as_str());
+        let mut downloaded = if source_changed {
+            Some(PrfItem::from_url(&subscription_url, Some(&name), None, previous.option.as_ref()).await?)
+        } else {
+            None
+        };
         let duplicates: Vec<_> = matches.into_iter().filter(|candidate| candidate != &uid).collect();
-        if !duplicates.is_empty() {
-            let retained_uid = uid.clone();
+        if source_changed
+            || previous.name.as_ref() != Some(&name)
+            || previous.managed_subscription_id != key
+            || !duplicates.is_empty()
+        {
             profiles
-                .with_data_modify(|mut candidate| async move {
-                    candidate.current.get_or_insert(retained_uid);
+                .with_data_modify(|mut candidate| async {
+                    let item = candidate
+                        .items
+                        .as_mut()
+                        .and_then(|items| items.iter_mut().find(|item| item.uid.as_ref() == Some(&uid)))
+                        .ok_or_else(|| anyhow!("Managed profile disappeared during synchronization"))?;
+                    item.name = Some(name);
+                    item.managed_subscription_id = key;
+                    if let Some(ref mut downloaded) = downloaded {
+                        item.url = downloaded.url.clone();
+                        candidate.update_item(&uid, downloaded).await?;
+                    }
                     let mut cleanup = Vec::new();
                     for duplicate in duplicates {
                         let (active, plan) = candidate.plan_delete_item(&duplicate)?;
@@ -568,6 +634,7 @@ async fn import_managed_profile(subscription: &SubscriptionOption) -> Result<Sma
                 })
                 .await?;
         }
+        active_source_changed = source_changed && snapshot.current.as_ref() == Some(&uid);
         uid
     } else {
         let option = PrfOption {
@@ -578,23 +645,22 @@ async fn import_managed_profile(subscription: &SubscriptionOption) -> Result<Sma
             ..PrfOption::default()
         };
         let mut item = PrfItem::from_url(&subscription_url, Some(&name), None, Some(&option)).await?;
+        item.managed_subscription_id = key;
         profiles_append_item_safe(&mut item).await?;
         profiles_save_file_safe().await?;
         item.uid.ok_or_else(|| anyhow!("导入公司订阅失败: 未生成配置 ID"))?
     };
     drop(_write_guard);
     announce(Refresh::Profiles);
-    Ok(uid)
+    Ok((uid, active_source_changed))
 }
 
 fn missing_managed_profiles(subscriptions: &[SubscriptionOption], profiles: &IProfiles) -> bool {
     subscriptions.iter().any(|subscription| {
-        !profiles
-            .items
-            .as_ref()
-            .into_iter()
-            .flatten()
-            .any(|item| is_managed_subscription_item(item, &normalize_subscription_url(&subscription.url)))
+        !profiles.items.as_ref().into_iter().flatten().any(|item| {
+            is_managed_subscription_item(item, &normalize_subscription_url(&subscription.url))
+                && (subscription.id.is_none() || item.managed_subscription_id.is_some())
+        })
     })
 }
 
@@ -626,9 +692,13 @@ async fn sync_managed_profiles(activate_current: bool) -> Result<bool> {
     let subscriptions = subscriptions_from_config().await;
     let mut imported = Vec::new();
     let mut failures = Vec::new();
+    let mut active_source_changed = false;
     for subscription in &subscriptions {
         match import_managed_profile(subscription).await {
-            Ok(uid) => imported.push(uid),
+            Ok((uid, changed)) => {
+                imported.push(uid);
+                active_source_changed |= changed;
+            }
             Err(error) => {
                 logging!(warn, Type::Cmd, "managed profile import failed: {error:#}");
                 failures.push(subscription.name.as_str());
@@ -640,7 +710,7 @@ async fn sync_managed_profiles(activate_current: bool) -> Result<bool> {
     let current = retained_profile_uid(&profiles, &subscriptions, data.enterprise_profile_uid.as_ref());
     let mut activated = false;
     // The first append assigns current without applying its runtime; existing choices stay active.
-    if activate_current || !had_current || current.is_none() {
+    if activate_current || active_source_changed || !had_current || current.is_none() {
         if let Some(uid) = current.or_else(|| imported.first().cloned()) {
             activate_managed_profile(uid).await?;
             activated = true;
@@ -683,7 +753,7 @@ pub async fn select_managed_subscription(url: &str) -> Result<EnterpriseSession>
         .iter()
         .find(|option| normalize_subscription_url(&option.url) == url)
         .ok_or_else(|| anyhow!("该订阅已不可用，请同步后再选择"))?;
-    let uid = import_managed_profile(subscription).await?;
+    let (uid, _) = import_managed_profile(subscription).await?;
     activate_managed_profile(uid).await?;
     let data = Config::verge().await.data_arc();
     Ok(session_from(&data, true))
@@ -703,13 +773,45 @@ mod subscription_tests {
     }
 
     #[test]
+    fn stable_identity_survives_link_rotation_and_adopts_only_unambiguous_legacy_cards() -> Result<()> {
+        let option = SubscriptionOption {
+            id: Some(7),
+            name: "Cloud".into(),
+            url: "https://example.test/new".into(),
+        };
+        let key = managed_subscription_key("https://ops.example.test", &option)
+            .ok_or_else(|| anyhow!("missing subscription key"))?;
+        let mut item = remote("old", "https://example.test/old");
+        item.name = Some("公司订阅·Cloud".into());
+        assert!(matches_managed_profile(&item, &option, Some(&key), true));
+        assert!(!matches_managed_profile(&item, &option, Some(&key), false));
+        item.managed_subscription_id = Some(key.clone());
+        item.name = Some("Previous name".into());
+        assert!(matches_managed_profile(&item, &option, Some(&key), false));
+        let other_server = managed_subscription_key("https://other.example.test", &option)
+            .ok_or_else(|| anyhow!("missing subscription key"))?;
+        assert!(!matches_managed_profile(&item, &option, Some(&other_server), true));
+        let house = SubscriptionOption {
+            id: Some(8),
+            name: "House".into(),
+            url: option.url,
+        };
+        let house_key = managed_subscription_key("https://ops.example.test", &house)
+            .ok_or_else(|| anyhow!("missing subscription key"))?;
+        assert!(!matches_managed_profile(&item, &house, Some(&house_key), true));
+        Ok(())
+    }
+
+    #[test]
     fn cached_options_detect_unimported_cards_even_without_revision_change() {
         let subscriptions = vec![
             SubscriptionOption {
+                id: None,
                 name: "One".into(),
                 url: "https://example.test/one".into(),
             },
             SubscriptionOption {
+                id: None,
                 name: "Two".into(),
                 url: "https://example.test/two/".into(),
             },
@@ -743,10 +845,12 @@ mod subscription_tests {
         };
         let mut options = vec![
             SubscriptionOption {
+                id: None,
                 name: "One".into(),
                 url: "https://example.test/one".into(),
             },
             SubscriptionOption {
+                id: None,
                 name: "Two".into(),
                 url: "https://example.test/two".into(),
             },
@@ -1421,7 +1525,9 @@ async fn heartbeat_once() -> Result<bool> {
         return Ok(false);
     }
     let profiles = Config::profiles().await.data_arc();
-    let missing_profiles = missing_managed_profiles(&configured_subscriptions(&data), &profiles);
+    let options = configured_subscriptions(&data);
+    let missing_profiles =
+        options.iter().any(|option| option.id.is_none()) || missing_managed_profiles(&options, &profiles);
     match body.config_version {
         Some(remote) if Some(remote) != stored_version || missing_profiles => {
             logging!(

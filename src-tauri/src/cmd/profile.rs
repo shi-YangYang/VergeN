@@ -1,7 +1,6 @@
-use super::{CmdResult, StringifyErr as _, WithErrorCode as _, coded_error};
+use super::{CmdResult, WithErrorCode as _, coded_error};
 use crate::cmd::validate::{ValidationNoticeTarget, handle_validation_notice};
 use crate::config::profiles;
-use crate::core::notify::NoticeStatus;
 use crate::utils::window_manager::WindowManager;
 use crate::{
     config::{
@@ -225,115 +224,43 @@ pub async fn delete_profile(index: String) -> CmdResult {
     Ok(())
 }
 
-async fn restore_previous_profile(prev_profile: &String) -> CmdResult<()> {
-    logging!(info, Type::Cmd, "尝试恢复到之前的配置: {}", prev_profile);
-    let restore_profiles = IProfiles {
-        current: Some(prev_profile.to_owned()),
-        items: None,
-    };
-    Config::profiles()
-        .await
-        .edit_draft(|d| d.patch_config(&restore_profiles));
-    Config::profiles().await.apply();
-    crate::process::AsyncHandler::spawn(|| async move {
-        if let Err(e) = profiles_save_file_safe().await {
-            logging!(warn, Type::Cmd, "异步保存恢复配置文件失败: {e:#}");
-        }
-    });
-    Ok(())
-}
-
-async fn commit_current_profile(profiles: &Draft<IProfiles>, current: Option<String>) -> anyhow::Result<()> {
-    profiles.discard();
-    let Some(current) = current else {
-        return Ok(());
-    };
-
+async fn commit_profile_selection<Guard, Update, UpdateFuture>(
+    profiles: &Draft<IProfiles>,
+    patch: IProfiles,
+    update: Update,
+) -> anyhow::Result<Result<(Option<String>, Guard), ValidationOutcome>>
+where
+    Update: FnOnce(IProfiles, IProfiles) -> UpdateFuture + Send,
+    UpdateFuture: std::future::Future<Output = anyhow::Result<Result<Guard, ValidationOutcome>>> + Send,
+    Guard: Send,
+{
     profiles
-        .with_data_modify(|mut committed| async move {
-            committed.patch_config(&IProfiles {
-                current: Some(current),
-                items: None,
-            });
-            Ok((committed, ()))
+        .with_data_modify(|mut candidate| async move {
+            let original = candidate.clone();
+            if let Some(uid) = patch.current.as_ref() {
+                candidate.get_item(uid)?;
+            }
+            candidate.patch_config(&patch);
+            // Background refreshes must never observe an uncommitted selection.
+            match update(candidate.clone(), original.clone()).await? {
+                Ok(guard) => {
+                    let current = candidate.current.clone();
+                    Ok((candidate, Ok((current, guard))))
+                }
+                Err(outcome) => Ok((original, Err(outcome))),
+            }
         })
         .await
 }
 
-async fn handle_success(current_value: Option<&String>) -> CmdResult<ValidationOutcome> {
-    commit_current_profile(&Config::profiles().await, current_value.cloned())
-        .await
-        .stringify_err()?;
-    // Runtime refresh and tray rebuilding happen after saved node selections are restored.
-    profiles::activate_selected_nodes();
-
-    if let Err(e) = profiles_save_file_safe().await {
-        logging!(warn, Type::Cmd, "异步保存配置文件失败: {e:#}");
-    }
-
-    if let Some(current) = current_value
-        && WindowManager::get_main_window().is_some()
-    {
-        handle::Handle::notify_profile_changed(current);
-    }
-
-    logging_error!(Type::Config, Config::sync_dns_override().await);
-    Ok(ValidationOutcome::Valid)
-}
-
-async fn discard_and_restore(current_profile: Option<&String>) -> CmdResult<()> {
-    Config::profiles().await.discard();
-    if let Some(prev_profile) = current_profile {
-        restore_previous_profile(prev_profile).await?;
-    }
-    Ok(())
-}
-
-async fn handle_validation_failure(
-    outcome: ValidationOutcome,
-    current_profile: Option<&String>,
-) -> CmdResult<ValidationOutcome> {
-    logging!(warn, Type::Cmd, "配置验证失败: {}", outcome);
-    discard_and_restore(current_profile).await?;
-    handle_validation_notice(&outcome, ValidationNoticeTarget::Runtime, "运行时配置");
-    Ok(outcome)
-}
-
-async fn handle_update_error<E: std::fmt::Display>(
-    e: E,
-    current_profile: Option<&String>,
-) -> CmdResult<ValidationOutcome> {
-    logging!(warn, Type::Cmd, "更新过程发生错误: {}", e,);
-    discard_and_restore(current_profile).await?;
-    let message: String = e.to_string().into();
-    handle::Handle::notice(NoticeStatus::ConfigValidateBootError, message.as_str());
-    Ok(ValidationOutcome::invalid_from_message(message))
-}
-
-async fn run_profile_config_update_transition<Update, UpdateFuture>(
+async fn run_profile_config_update_transition<Output, Update, UpdateFuture>(
     update_config: Update,
-) -> anyhow::Result<ValidationOutcome>
+) -> anyhow::Result<Output>
 where
     Update: FnOnce() -> UpdateFuture,
-    UpdateFuture: std::future::Future<Output = anyhow::Result<ValidationOutcome>>,
+    UpdateFuture: std::future::Future<Output = anyhow::Result<Output>>,
 {
     update_config().await
-}
-
-async fn perform_config_update(
-    current_value: Option<&String>,
-    current_profile: Option<&String>,
-) -> CmdResult<ValidationOutcome> {
-    defer! {
-        CURRENT_SWITCHING_PROFILE.store(false, Ordering::Release);
-    }
-    let update_result = run_profile_config_update_transition(|| CoreManager::global().update_config_forced()).await;
-
-    match update_result {
-        Ok(outcome) if outcome.is_valid() => handle_success(current_value).await,
-        Ok(outcome) => handle_validation_failure(outcome, current_profile).await,
-        Err(e) => handle_update_error(e, current_profile).await,
-    }
 }
 
 #[tauri::command]
@@ -343,24 +270,40 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<ValidationO
         .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
         .is_err()
     {
-        logging!(info, Type::Cmd, "当前正在切换配置，放弃请求");
         return Ok(ValidationOutcome::Busy);
     }
-    let _profile_write_guard = PROFILE_WRITE_LOCK.lock().await;
-
-    let target_profile = profiles.current.as_ref();
-
-    let previous_profile = Config::profiles().await.data_arc().current.clone();
-
-    Config::profiles().await.edit_draft(|d| d.patch_config(&profiles));
-
-    let outcome = perform_config_update(target_profile, previous_profile.as_ref())
+    defer! { CURRENT_SWITCHING_PROFILE.store(false, Ordering::Release); }
+    let profile_write_guard = PROFILE_WRITE_LOCK.lock().await;
+    let state = Config::profiles().await;
+    let result = commit_profile_selection(&state, profiles, |candidate, original| async move {
+        run_profile_config_update_transition(|| async {
+            CoreManager::global()
+                .update_config_forced_with_profiles(&candidate, &original)
+                .await
+        })
         .await
-        .map_err(|error| coded_error("PROFILE_SWITCH_FAILED", error))?;
-    if outcome.is_valid() {
-        logging_error!(Type::Config, feat::enterprise::record_managed_profile_selection().await);
+    })
+    .await
+    .map_err(|error| coded_error("PROFILE_SWITCH_FAILED", error))?;
+    let (current, config_update_guard) = match result {
+        Ok(committed) => committed,
+        Err(outcome) => {
+            handle_validation_notice(&outcome, ValidationNoticeTarget::Runtime, "运行时配置");
+            return Ok(outcome);
+        }
+    };
+    profiles::activate_selected_nodes();
+    drop(config_update_guard);
+    logging_error!(Type::Config, feat::enterprise::record_managed_profile_selection().await);
+    drop(profile_write_guard);
+    handle::Handle::refresh_clash();
+    if let Some(current) = current.as_ref()
+        && WindowManager::get_main_window().is_some()
+    {
+        handle::Handle::notify_profile_changed(current);
     }
-    Ok(outcome)
+    logging_error!(Type::Config, Config::sync_dns_override().await);
+    Ok(ValidationOutcome::Valid)
 }
 
 pub async fn patch_profiles_config_by_profile_index(profile_index: String) -> CmdResult<ValidationOutcome> {
@@ -482,7 +425,7 @@ pub async fn get_next_update_time(uid: String) -> CmdResult<Option<i64>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{commit_current_profile, run_profile_config_update_transition};
+    use super::{commit_profile_selection, run_profile_config_update_transition};
     use crate::config::{IProfiles, PrfItem};
     use crate::core::validate::ValidationOutcome;
     use clash_verge_draft::Draft;
@@ -517,29 +460,44 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn committing_profile_switch_preserves_profiles_added_after_draft_creation() -> anyhow::Result<()> {
+    async fn switching_keeps_candidate_private_and_busy_preserves_current() -> anyhow::Result<()> {
         let profiles = Draft::new(IProfiles {
-            current: Some("a".into()),
-            items: Some(vec![profile("a"), profile("b")]),
+            current: Some("house".into()),
+            items: Some(vec![profile("house"), profile("cloud")]),
         });
-        profiles.edit_draft(|draft| {
-            draft.patch_config(&IProfiles {
-                current: Some("b".into()),
-                items: None,
-            });
-        });
+        let patch = IProfiles {
+            current: Some("cloud".into()),
+            items: None,
+        };
+        let result = commit_profile_selection(&profiles, patch.clone(), |candidate, _| {
+            let profiles = &profiles;
+            async move {
+                assert_eq!(candidate.current.as_deref(), Some("cloud"));
+                assert_eq!(profiles.latest_arc().current.as_deref(), Some("house"));
+                Ok(Err::<(), _>(ValidationOutcome::Busy))
+            }
+        })
+        .await?;
+        assert!(matches!(result, Err(ValidationOutcome::Busy)));
+        assert_eq!(profiles.data_arc().current.as_deref(), Some("house"));
         profiles
             .with_data_modify(|mut committed| async move {
                 committed.items.get_or_insert_with(Vec::new).push(profile("new"));
                 Ok((committed, ()))
             })
             .await?;
-
-        commit_current_profile(&profiles, Some("b".into())).await?;
-
-        let committed = profiles.data_arc();
-        assert_eq!(committed.current.as_deref(), Some("b"));
-        assert!(committed.get_item("new").is_ok());
+        let switched = commit_profile_selection(&profiles, patch, |candidate, _| {
+            let profiles = &profiles;
+            async move {
+                assert_eq!(profiles.latest_arc().current.as_deref(), Some("house"));
+                assert!(candidate.get_item("new").is_ok());
+                Ok(Ok(()))
+            }
+        })
+        .await?;
+        assert!(switched.is_ok());
+        assert_eq!(profiles.data_arc().current.as_deref(), Some("cloud"));
+        assert!(profiles.data_arc().get_item("new").is_ok());
         Ok(())
     }
 

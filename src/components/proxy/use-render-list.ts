@@ -61,6 +61,7 @@ export const hasRenderableItems = (
 ): boolean => renderList.some((item) => item.type !== 0 || !item.group.hidden)
 
 type GroupCache = {
+  alias: string | null | undefined
   now: string | undefined
   members: ProxyGroupView['members']
   headState: HeadState
@@ -279,9 +280,12 @@ export const useRenderList = (
 
     const retList = renderGroups.flatMap((group) => {
       const headState = headStates[group.name] || DEFAULT_STATE
+      const aliasTarget =
+        renderGroups.indexOf(group) === aliasIndex ? preferredGroupAlias : null
       const cached = cache.get(group.name)
       if (
         cached &&
+        cached.alias === aliasTarget &&
         cached.now === group.now &&
         cached.members === group.members &&
         cached.headState === headState &&
@@ -293,8 +297,6 @@ export const useRenderList = (
       }
 
       anyChanged = true
-      const aliasTarget =
-        renderGroups.indexOf(group) === aliasIndex ? preferredGroupAlias : null
       const ret: IRenderItem[] = [
         {
           type: 0,
@@ -350,6 +352,7 @@ export const useRenderList = (
       }
 
       cache.set(group.name, {
+        alias: aliasTarget,
         now: group.now,
         members: group.members,
         headState,

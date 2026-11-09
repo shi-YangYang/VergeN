@@ -12,7 +12,15 @@ import { useProfiles } from './use-profiles'
  *  devices or when the current pick does not exist in the enabled set. */
 export const useManagedSubscriptionLabel = (): string | null => {
   const session = useEnterpriseSession()
+  const { profiles } = useProfiles()
+  const { proxyView } = useProxiesData()
   if (!session?.enabled || !session.authenticated) return null
+  if (
+    !session.profile_uid ||
+    profiles?.current !== session.profile_uid ||
+    proxyView?.profileUid !== session.profile_uid
+  )
+    return null
   const options: CompanySubscription[] = session.subscriptions ?? []
   const current = session.subscription_url?.trim() ?? ''
   const picked = options.find((option) => option.url === current)

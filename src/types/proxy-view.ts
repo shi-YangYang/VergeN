@@ -1,4 +1,5 @@
 export interface ProxyViewV1 {
+  profileUid?: string | null
   schemaVersion: 1
   orderSource: 'runtime' | 'fallback'
   providerState: 'ready' | 'unavailable'

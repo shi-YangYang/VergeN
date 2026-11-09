@@ -23,6 +23,7 @@ pub struct ProxyViewBuilder;
 #[derive(Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProxyViewV1 {
+    pub profile_uid: Option<String>,
     pub schema_version: u8,
     pub order_source: ProxyViewOrderSource,
     pub provider_state: ProxyViewProviderState,
@@ -276,6 +277,7 @@ impl ProxyViewBuilder {
         let standalone = build_standalone(&core_node_ids);
 
         ProxyViewV1 {
+            profile_uid: None,
             schema_version: 1,
             order_source,
             provider_state,

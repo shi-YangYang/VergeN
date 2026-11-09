@@ -956,6 +956,9 @@ func TestSubscriptionManagement(t *testing.T) {
 	if len(subs) != 2 {
 		t.Fatalf("bootstrap subscriptions = %v", subs)
 	}
+	if subs[0].(map[string]any)["id"] != float64(idA) || subs[1].(map[string]any)["id"] != float64(idB) {
+		t.Fatalf("bootstrap must preserve subscription IDs after editing URLs: %v", subs)
+	}
 
 	// Disabling A leaves B as the remaining pick.
 	code, _ = doJSON(t, h, "POST", "/api/v1/admin/subscriptions/"+itoa(idA)+"/enable", adminToken,

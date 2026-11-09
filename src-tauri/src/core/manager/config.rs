@@ -163,6 +163,7 @@ impl CoreManager {
 
         Config::runtime().await.edit_draft(|d| {
             *d = IRuntime {
+                profile_uid: None,
                 config: Some(clash_config.to_owned()),
                 dns_override: None,
                 exists_keys: HashSet::new(),

@@ -149,6 +149,7 @@ export interface EnterpriseSession {
 
 /** Mirrors feat::enterprise::SubscriptionOption on the wire. */
 export interface CompanySubscription {
+  id?: number | null
   name: string
   url: string
 }

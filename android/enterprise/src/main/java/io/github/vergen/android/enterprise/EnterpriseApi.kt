@@ -68,7 +68,7 @@ data class LoginResponse(
 )
 
 @Serializable
-data class BootstrapSubscription(val name: String, val url: String)
+data class BootstrapSubscription(val name: String, val url: String, val id: Long? = null)
 
 @Serializable
 data class BootstrapResponse(
