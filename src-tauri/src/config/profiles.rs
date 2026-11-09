@@ -279,7 +279,7 @@ impl IProfiles {
     }
 
     /// Updates fields returned by a remote profile refresh.
-    async fn update_item(&mut self, uid: &str, item: &mut PrfItem) -> Result<()> {
+    pub(crate) async fn update_item(&mut self, uid: &str, item: &mut PrfItem) -> Result<()> {
         if self.items.is_none() {
             self.items = Some(vec![]);
         }
@@ -289,6 +289,7 @@ impl IProfiles {
         if let Some(items) = self.items.as_mut() {
             for each in items.iter_mut() {
                 if each.uid.as_deref() == Some(uid) {
+                    anyhow::ensure!(each.url == item.url, "Subscription source changed while refreshing");
                     each.extra = item.extra;
                     each.updated = item.updated;
                     each.home = item.home.to_owned();
@@ -1093,6 +1094,30 @@ mod tests {
             }),
             ..PrfItem::default()
         }
+    }
+
+    #[tokio::test]
+    async fn stale_subscription_download_cannot_replace_rotated_source() -> Result<()> {
+        let mut profiles = IProfiles {
+            current: Some("house".into()),
+            items: Some(vec![PrfItem {
+                uid: Some("house".into()),
+                url: Some("https://example.test/new".into()),
+                updated: Some(2),
+                ..PrfItem::default()
+            }]),
+        };
+        let mut old_download = PrfItem {
+            url: Some("https://example.test/old".into()),
+            updated: Some(1),
+            file_data: Some("old nodes".into()),
+            ..PrfItem::default()
+        };
+        let result = profiles.update_item("house", &mut old_download).await;
+        assert!(result.is_err_and(|error| error.to_string().contains("source changed")));
+        assert_eq!(profiles.get_item("house")?.updated, Some(2));
+        assert_eq!(old_download.file_data.as_deref(), Some("old nodes"));
+        Ok(())
     }
 
     #[tokio::test]

@@ -110,7 +110,10 @@ pub async fn get_proxy_view() -> CmdResult<ProxyViewV1> {
 
 pub(crate) async fn proxy_view(provider_timeout: Option<std::time::Duration>) -> CmdResult<ProxyViewV1> {
     let runtime = Config::runtime().await;
-    let latest_runtime = runtime.latest_arc();
+    let latest_runtime = runtime.data_arc();
+    if crate::core::CoreManager::global().is_config_updating() {
+        return Err("Proxy configuration is changing".into());
+    }
     let runtime_group_order = runtime_group_order(latest_runtime.config.as_ref());
     let group_scopes = runtime_group_scopes(latest_runtime.config.as_ref());
 
@@ -126,12 +129,19 @@ pub(crate) async fn proxy_view(provider_timeout: Option<std::time::Duration>) ->
     });
     let proxies = proxies.stringify_err()?;
 
-    Ok(ProxyViewBuilder::build(ProxyViewInput {
+    if crate::core::CoreManager::global().is_config_updating()
+        || !std::sync::Arc::ptr_eq(&latest_runtime, &runtime.data_arc())
+    {
+        return Err("Proxy configuration changed while reading nodes".into());
+    }
+    let mut view = ProxyViewBuilder::build(ProxyViewInput {
         runtime_group_order,
         group_scopes,
         proxies,
         providers,
-    }))
+    });
+    view.profile_uid = latest_runtime.profile_uid.as_ref().map(ToString::to_string);
+    Ok(view)
 }
 
 #[tauri::command]

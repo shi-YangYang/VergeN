@@ -109,31 +109,52 @@ object EnterpriseKit {
                     if (subscriptions.isEmpty()) return@withContext true
 
                     withProfile {
-                        val existing = queryAll()
                         val syncedUuids = subscriptions.map { subscription ->
-                            // 重复项清理:保留已登记过的那个,其余删除。
-                            val matches = existing.filter { it.source == subscription.url }
-                            val keep = matches.firstOrNull { isManaged(it) } ?: matches.firstOrNull()
-                            matches.filter { it.uuid != keep?.uuid }.forEach { duplicate ->
-                                delete(duplicate.uuid)
-                                Log.d("managed duplicate removed: ${subscription.name}")
+                            val existing = queryAll()
+                            val active = queryActive()?.uuid
+                            val key = subscription.id?.takeIf { it > 0 }?.let {
+                                "subscription:$VERGEN_SERVER_URL:$it"
                             }
-                            val profile = keep
+                            val boundUuid = key?.let { managedProfiles.getString(it, null) }
+                            val boundUuids = managedProfiles.all.filterKeys { it.startsWith("subscription:") }
+                                .values.toSet()
+                            val uniqueName = subscription.name.isNotBlank() &&
+                                subscriptions.count { it.name.trim() == subscription.name.trim() } == 1
+                            val matches = existing.filter {
+                                it.uuid.toString() == boundUuid ||
+                                    (it.uuid.toString() !in boundUuids &&
+                                        (it.source == subscription.url ||
+                                            (uniqueName && isManaged(it) && it.name.trim() == subscription.name.trim())))
+                            }
+                            val profile = matches.firstOrNull { it.uuid == active }
+                                ?: matches.firstOrNull { it.uuid.toString() == boundUuid }
+                                ?: matches.firstOrNull { isManaged(it) }
+                                ?: matches.firstOrNull()
                             val uuid = profile?.uuid
                                 ?: create(Profile.Type.Url, subscription.name, subscription.url)
-                                    .also { Log.d("managed profile created: ${subscription.name}") }
-                            val renamed = profile != null && profile.name != subscription.name
-                            if (profile != null && renamed) {
-                                patch(uuid, subscription.name, profile.source, profile.interval, profile.ageSecretKey)
-                            }
-                            if (profile == null || profile.pending || renamed) {
-                                commit(uuid, null)
-                                Log.d("managed profile committed: ${subscription.name}")
-                            } else if (System.currentTimeMillis() - profile.updatedAt > REFETCH_MILLIS) {
-                                update(uuid)
-                                Log.d("managed profile refetched: ${subscription.name}")
+                            val changed = profile != null &&
+                                (profile.name != subscription.name || profile.source != subscription.url)
+                            try {
+                                if (profile != null && changed) {
+                                    patch(uuid, subscription.name, subscription.url, profile.interval, profile.ageSecretKey)
+                                }
+                                if (profile == null || profile.pending || changed) {
+                                    commit(uuid, null)
+                                } else if (System.currentTimeMillis() - profile.updatedAt > REFETCH_MILLIS) {
+                                    update(uuid)
+                                }
+                            } catch (error: Throwable) {
+                                if (profile?.imported == true && changed) release(uuid)
+                                throw error
                             }
                             markManaged(uuid)
+                            if (key != null) managedProfiles.edit().putString(key, uuid.toString()).apply()
+                            matches.filter { it.uuid != uuid }.forEach { duplicate ->
+                                delete(duplicate.uuid)
+                                val managed = managedProfiles.getStringSet(KEY_MANAGED, emptySet())!!.toMutableSet()
+                                managed.remove(duplicate.uuid.toString())
+                                managedProfiles.edit().putStringSet(KEY_MANAGED, managed).apply()
+                            }
                             uuid
                         }
                         if (queryActive() == null) {

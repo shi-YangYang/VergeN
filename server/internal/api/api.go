@@ -407,6 +407,7 @@ func (a *Server) handlePublicRelease(w http.ResponseWriter, _ *http.Request) {
 }
 
 type bootstrapSubscription struct {
+	ID   int64  `json:"id"`
 	Name string `json:"name"`
 	URL  string `json:"url"`
 }
@@ -430,6 +431,7 @@ func (a *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 	// chose one; the list carries every candidate for client-side switching.
 	for _, sub := range enabled {
 		resp.Subscriptions = append(resp.Subscriptions, bootstrapSubscription{
+			ID:   sub.ID,
 			Name: sub.Name,
 			URL:  sub.URL,
 		})

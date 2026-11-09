@@ -35,6 +35,9 @@ pub struct PrfItem {
     #[serde(rename = "type")]
     pub itype: Option<String>,
 
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub managed_subscription_id: Option<String>,
+
     pub name: Option<String>,
 
     pub file: Option<String>,
@@ -220,6 +223,7 @@ impl PrfItem {
         }
         Ok(Self {
             uid: Some(uid),
+            managed_subscription_id: None,
             itype: Some("local".into()),
             name: Some(name),
             desc: Some(desc),
@@ -400,6 +404,7 @@ impl PrfItem {
 
         Ok(Self {
             uid: Some(uid),
+            managed_subscription_id: None,
             itype: Some("remote".into()),
             name: Some(name),
             desc: desc.cloned(),
@@ -582,6 +587,7 @@ mod url_at_rest_tests {
         // 直接构造,避免触发真实的网络拉取
         let item = PrfItem {
             uid: Some("test-uid".into()),
+            managed_subscription_id: None,
             itype: Some("remote".into()),
             name: Some("公司订阅".into()),
             file: Some("test-sub.yaml".into()),
