@@ -3,7 +3,6 @@ package api
 import (
 	"bytes"
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"mime"
 	"mime/multipart"
@@ -542,7 +541,10 @@ func TestAdminPackages(t *testing.T) {
 		if err := writer.Close(); err != nil {
 			t.Fatal(err)
 		}
-		req := httptest.NewRequest("POST", "/api/v1/admin/packages", &body)
+		req := httptest.NewRequest("POST", "/api/v1/admin/packages?platform=macos&kind=installer", &body)
+		if strings.HasSuffix(name, ".apk") {
+			req.URL.RawQuery = "platform=android&kind=installer"
+		}
 		req.Header.Set("Content-Type", writer.FormDataContentType())
 		req.Header.Set("Authorization", "Bearer "+token)
 		return req
@@ -553,6 +555,36 @@ func TestAdminPackages(t *testing.T) {
 		h.ServeHTTP(rec, req)
 		if rec.Code != want {
 			t.Fatalf("upload status=%d want=%d body=%s", rec.Code, want, rec.Body.String())
+		}
+	}
+	for _, test := range []struct {
+		name, target string
+		want         int
+	}{
+		{"windows.exe", "platform=windows&kind=installer", http.StatusCreated},
+		{"linux.deb", "platform=linux&kind=installer", http.StatusCreated},
+		{"android.apk", "platform=android&kind=installer", http.StatusCreated},
+		{"mac.app.tar.gz", "platform=macos&kind=updater", http.StatusCreated},
+		{"mac.pkg", "platform=macos&kind=installer", http.StatusCreated},
+		{"windows-update.exe", "platform=windows&kind=updater", http.StatusCreated},
+		{"linux-update.deb", "platform=linux&kind=updater", http.StatusCreated},
+		{"wrong.apk", "platform=windows&kind=installer", http.StatusBadRequest},
+		{"wrong.msi", "platform=windows&kind=installer", http.StatusBadRequest},
+		{"wrong.exe", "platform=android&kind=installer", http.StatusBadRequest},
+		{"wrong.dmg", "platform=macos&kind=updater", http.StatusBadRequest},
+		{"wrong.app.tar.gz", "platform=macos&kind=installer", http.StatusBadRequest},
+		{"wrong.rpm", "platform=linux&kind=installer", http.StatusBadRequest},
+		{"wrong.deb.sig", "platform=linux&kind=updater", http.StatusBadRequest},
+		{"wrong.apk", "platform=android&kind=updater", http.StatusBadRequest},
+		{"wrong.exe", "", http.StatusBadRequest},
+	} {
+		req := upload(test.name, "package contents")
+		req.URL.RawQuery = test.target
+		assertUpload(req, test.want)
+		if test.want == http.StatusCreated {
+			if err := os.Remove(filepath.Join(downloads, test.name)); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 	name := `VergeN "desktop" 1.0.2.dmg`
@@ -608,7 +640,9 @@ func TestAdminPackages(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(downloads, "linked.apk")); err != nil {
 		t.Fatal(err)
 	}
-	assertUpload(upload("linked.apk", "replacement"), http.StatusConflict)
+	linked := upload("linked.apk", "replacement")
+	linked.URL.RawQuery = "platform=android&kind=installer"
+	assertUpload(linked, http.StatusConflict)
 	if code, _ := doJSON(t, h, "DELETE", "/api/v1/admin/packages/linked.apk", token, nil); code != http.StatusNotFound {
 		t.Fatalf("delete symlink: status=%d", code)
 	}
@@ -731,19 +765,59 @@ func TestUnifiedReleasePublishing(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	packet := append([]byte("ED"), make([]byte, 72)...)
-	signature := base64.StdEncoding.EncodeToString([]byte("untrusted comment: test signature\n" + base64.StdEncoding.EncodeToString(packet) + "\ntrusted comment: test\n" + base64.StdEncoding.EncodeToString(make([]byte, 64)) + "\n"))
+	publicKey, sign := testUpdaterSigner(t)
+	sv.updaterPublicKey = publicKey
+	artifact := func(name, version string) updaterPackage {
+		return updaterPackage{Name: name, SignatureName: name + ".sig", Signature: sign([]byte(name), "file:original-name\tversion:"+version)}
+	}
+	signature := artifact("VergeN.exe", "1.2.3").Signature
 	payload := func(version string) map[string]any {
 		return map[string]any{
 			"version": version, "notes": "One published version", "base_url": "https://ops.example.com",
 			"packages": map[string]string{"windows": "VergeN.exe", "macos": "VergeN.dmg", "linux": "VergeN.deb", "android": "VergeN.apk"},
 			"updater": map[string]updaterPackage{
-				"windows-x86_64":   {Name: "VergeN.exe", Signature: signature},
-				"darwin-aarch64":   {Name: "VergeN.app.tar.gz", Signature: signature},
-				"linux-x86_64-deb": {Name: "VergeN.deb", Signature: signature},
-				"linux-x86_64-rpm": {Name: "VergeN.rpm", Signature: signature},
+				"windows-x86_64":   artifact("VergeN.exe", version),
+				"darwin-aarch64":   artifact("VergeN.app.tar.gz", version),
+				"linux-x86_64-deb": artifact("VergeN.deb", version),
+				"linux-x86_64-rpm": artifact("VergeN.rpm", version),
 			},
 		}
+	}
+	verifyRequest := func(file updaterPackage) map[string]any {
+		return map[string]any{"target": "windows-x86_64", "version": "1.2.3", "name": file.Name, "signature_name": file.SignatureName, "signature": file.Signature}
+	}
+	for _, access := range []string{"", token} {
+		want := http.StatusNoContent
+		if access == "" {
+			want = http.StatusUnauthorized
+		}
+		if code, body := doJSON(t, h, "POST", "/api/v1/admin/packages/verify-signature", access, verifyRequest(artifact("VergeN.exe", "1.2.3"))); code != want {
+			t.Fatalf("signature preflight: status=%d body=%v", code, body)
+		}
+	}
+	for label, invalid := range map[string]updaterPackage{
+		"wrong signature filename":                {Name: "VergeN.exe", SignatureName: "VergeN.deb.sig", Signature: signature},
+		"renamed signature from another platform": {Name: "VergeN.exe", SignatureName: "VergeN.exe.sig", Signature: artifact("VergeN.deb", "1.2.3").Signature},
+		"wrong platform":                          artifact("VergeN.deb", "1.2.3"),
+		"wrong version":                           artifact("VergeN.exe", "1.2.2"),
+	} {
+		if code, body := doJSON(t, h, "POST", "/api/v1/admin/packages/verify-signature", token, verifyRequest(invalid)); code != http.StatusBadRequest {
+			t.Fatalf("%s preflight: status=%d body=%v", label, code, body)
+		}
+		request := payload("1.2.3")
+		request["updater"] = map[string]updaterPackage{"windows-x86_64": invalid}
+		if code, body := doJSON(t, h, "POST", "/api/v1/admin/releases", token, request); code != http.StatusBadRequest {
+			t.Fatalf("%s publication: status=%d body=%v", label, code, body)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(downloads, "VergeN.exe"), []byte("changed after preflight"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code, body := doJSON(t, h, "POST", "/api/v1/admin/releases", token, payload("1.2.3")); code != http.StatusBadRequest {
+		t.Fatalf("changed file publication: status=%d body=%v", code, body)
+	}
+	if err := os.WriteFile(filepath.Join(downloads, "VergeN.exe"), []byte("VergeN.exe"), 0o644); err != nil {
+		t.Fatal(err)
 	}
 	for field, value := range map[string]any{
 		"version": "1.02.3", "base_url": "https://ops.example.com/path", "packages": map[string]string{},
@@ -761,9 +835,7 @@ func TestUnifiedReleasePublishing(t *testing.T) {
 		t.Fatalf("invalid signature: status=%d body=%v", code, body)
 	}
 	wrongVersion := payload("1.2.3")
-	decodedSignature, _ := base64.StdEncoding.DecodeString(signature)
-	versionedSignature := base64.StdEncoding.EncodeToString([]byte(strings.Replace(string(decodedSignature), "\ntrusted comment: test", "\ntrusted comment: test\tversion:1.2.2", 1)))
-	wrongVersion["updater"] = map[string]updaterPackage{"windows-x86_64": {Name: "VergeN.exe", Signature: versionedSignature}}
+	wrongVersion["updater"] = map[string]updaterPackage{"windows-x86_64": artifact("VergeN.exe", "1.2.2")}
 	if code, body := doJSON(t, h, "POST", "/api/v1/admin/releases", token, wrongVersion); code != http.StatusBadRequest {
 		t.Fatalf("mismatched signed version: status=%d body=%v", code, body)
 	}

@@ -34,8 +34,9 @@ type Server struct {
 	pollLimiter *auth.Limiter
 	// Directory of published client package files served from /files and
 	// listed on the root landing page; empty disables that section.
-	downloads     string
-	publicationMu sync.Mutex
+	downloads        string
+	publicationMu    sync.Mutex
+	updaterPublicKey string
 }
 
 func NewServer(s *store.Store, downloadsDir string) (*Server, error) {
@@ -44,14 +45,15 @@ func NewServer(s *store.Store, downloadsDir string) (*Server, error) {
 		return nil, err
 	}
 	return &Server{
-		store:       s,
-		secret:      secret,
-		downloads:   downloadsDir,
-		limiter:     auth.NewLimiter(15*time.Minute, 5),
-		accessTTL:   accessTTLDefault,
-		refreshTTL:  refreshTTLDefault,
-		qrSessions:  newDingtalkQrSessions(),
-		pollLimiter: auth.NewLimiter(time.Minute, qrCallPerMinute),
+		store:            s,
+		secret:           secret,
+		downloads:        downloadsDir,
+		updaterPublicKey: desktopUpdaterPublicKey,
+		limiter:          auth.NewLimiter(15*time.Minute, 5),
+		accessTTL:        accessTTLDefault,
+		refreshTTL:       refreshTTLDefault,
+		qrSessions:       newDingtalkQrSessions(),
+		pollLimiter:      auth.NewLimiter(time.Minute, qrCallPerMinute),
 	}, nil
 }
 
@@ -110,6 +112,7 @@ func (a *Server) Handler() (http.Handler, error) {
 	mux.Handle("DELETE /api/v1/admin/releases/{id}", a.admin(a.handleAdminDeleteRelease))
 	mux.Handle("GET /api/v1/admin/packages", a.admin(a.handleAdminListPackages))
 	mux.Handle("POST /api/v1/admin/packages", a.admin(a.handleAdminUploadPackage))
+	mux.Handle("POST /api/v1/admin/packages/verify-signature", a.admin(a.handleAdminVerifySignature))
 	mux.Handle("DELETE /api/v1/admin/packages/{name}", a.admin(a.handleAdminDeletePackage))
 	mux.Handle("GET /api/v1/admin/settings", a.admin(a.handleAdminGetSettings))
 	mux.Handle("POST /api/v1/admin/settings", a.admin(a.handleAdminSetSettings))
