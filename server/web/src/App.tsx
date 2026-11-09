@@ -55,6 +55,7 @@ import {
   normalizeReleaseVersion,
   packageMatchesVersion,
 } from './release-files'
+import { deleteHistoricalReleases, nextReleaseVersion } from './release-history'
 
 type Tab =
   | 'users'
@@ -545,6 +546,7 @@ function PackageUpload({
 
 function ReleasePage() {
   const [releases, setReleases] = useState<AdminRelease[]>([])
+  const [selectedHistory, setSelectedHistory] = useState<number[]>([])
   const [packages, setPackages] = useState<PackageFile[]>([])
   const [loading, setLoading] = useState(true)
   const [version, setVersion] = useState('')
@@ -566,6 +568,10 @@ function ReleasePage() {
   })
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const historicalReleases = releases.slice(1)
+  const selectedHistoricalReleases = historicalReleases.filter((release) =>
+    selectedHistory.includes(release.id),
+  )
   const currentPackages = packages.filter((item) =>
     packageMatchesVersion(item.name, version),
   )
@@ -598,6 +604,18 @@ function ReleasePage() {
       ])
       setReleases(releaseData.releases)
       setPackages(packageData.packages)
+      setVersion(
+        (value) =>
+          value ||
+          nextReleaseVersion(
+            releaseData.releases.map((release) => release.version),
+          ),
+      )
+      setSelectedHistory((value) =>
+        value.filter((id) =>
+          releaseData.releases.slice(1).some((release) => release.id === id),
+        ),
+      )
     } catch (err) {
       setError(alertContext(err))
     } finally {
@@ -755,7 +773,12 @@ function ReleasePage() {
         ),
         updater,
       })
-      setVersion('')
+      setVersion(
+        nextReleaseVersion([
+          ...releases.map((release) => release.version),
+          data.release.version,
+        ]),
+      )
       setNotes('')
       setSelected({})
       setUpdates({})
@@ -788,6 +811,38 @@ function ReleasePage() {
       await reload()
     } catch (err) {
       setError(alertContext(err))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const removeSelectedHistory = async () => {
+    if (busy || !selectedHistoricalReleases.length) return
+    const versions = selectedHistoricalReleases
+      .map((release) => `v${release.version}`)
+      .join('、')
+    if (
+      !window.confirm(
+        `删除选中的 ${selectedHistoricalReleases.length} 个历史版本（${versions}）？这些版本将从下载页移除，安装包文件仍然保留。`,
+      )
+    )
+      return
+    setBusy('delete-history')
+    setError('')
+    setMessage('')
+    try {
+      const { deleted, failed } = await deleteHistoricalReleases(
+        releases,
+        selectedHistory,
+        deleteRelease,
+      )
+      setSelectedHistory(failed.map((release) => release.id))
+      if (deleted.length) setMessage(`已删除 ${deleted.length} 个历史版本`)
+      if (failed.length)
+        setError(
+          `以下版本删除失败，可重试：${failed.map((release) => `v${release.version}（${alertContext(release.error)}）`).join('、')}`,
+        )
+      await reload()
     } finally {
       setBusy('')
     }
@@ -870,7 +925,8 @@ function ReleasePage() {
                 required
               />
               <span className="muted">
-                与安装包的版本一致，每次发布使用新版本号。
+                默认按已发布最高版本加 0.0.1，满 10 进位（如 0.1.9 →
+                0.2.0）。可手动修改，需与安装包版本一致。
               </span>
             </label>
             <label>
@@ -1091,6 +1147,41 @@ function ReleasePage() {
           <h2>已发布版本</h2>
           <span className="muted">{releases.length} 个版本</span>
         </div>
+        {historicalReleases.length > 0 && (
+          <div className="row-form release-history-actions">
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={
+                  selectedHistoricalReleases.length ===
+                  historicalReleases.length
+                }
+                disabled={!!busy || loading}
+                onChange={(event) =>
+                  setSelectedHistory(
+                    event.target.checked
+                      ? historicalReleases.map((release) => release.id)
+                      : [],
+                  )
+                }
+              />
+              全选历史版本
+            </label>
+            <span className="muted">
+              已选择 {selectedHistoricalReleases.length} 个
+            </span>
+            <button
+              type="button"
+              className="ghost"
+              disabled={
+                !!busy || loading || selectedHistoricalReleases.length === 0
+              }
+              onClick={() => void removeSelectedHistory()}
+            >
+              {busy === 'delete-history' ? '正在删除…' : '删除所选版本'}
+            </button>
+          </div>
+        )}
         {loading && <p className="muted">加载中…</p>}
         {!loading && releases.length === 0 && (
           <p className="muted">
@@ -1108,7 +1199,25 @@ function ReleasePage() {
             <article className="release-history-item" key={release.id}>
               <div className="release-section-heading">
                 <div className="row-form">
-                  <strong>v{release.version}</strong>
+                  {index > 0 ? (
+                    <label className="check">
+                      <input
+                        type="checkbox"
+                        checked={selectedHistory.includes(release.id)}
+                        disabled={!!busy || loading}
+                        onChange={(event) =>
+                          setSelectedHistory((value) =>
+                            event.target.checked
+                              ? [...value, release.id]
+                              : value.filter((id) => id !== release.id),
+                          )
+                        }
+                      />
+                      <strong>v{release.version}</strong>
+                    </label>
+                  ) : (
+                    <strong>v{release.version}</strong>
+                  )}
                   {index === 0 && <span className="pill">当前版本</span>}
                   <span className="muted">
                     {new Date(release.pub_date * 1000).toLocaleString('zh-CN')}
