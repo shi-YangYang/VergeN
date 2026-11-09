@@ -44,7 +44,7 @@ class MainActivity : BaseActivity<MainDesign>() {
         }
 
         launch(Dispatchers.IO) {
-            EnterpriseKit.syncProfiles()
+            EnterpriseKit.syncProfiles(startupOnly = true)
         }
 
         val design = MainDesign(this)

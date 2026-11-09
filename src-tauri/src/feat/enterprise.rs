@@ -9,8 +9,15 @@ use clash_verge_draft::DraftTransaction;
 use clash_verge_logging::{Type, logging};
 use serde::{Deserialize, Serialize};
 use smartstring::alias::String as SmartString;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    collections::HashSet,
+    sync::atomic::{AtomicBool, Ordering},
+    time::{SystemTime, UNIX_EPOCH},
+};
 use tauri::{Manager as _, WebviewUrl, WebviewWindowBuilder};
+
+static MANAGED_SYNC_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+static INITIAL_MANAGED_SYNC_COMPLETE: AtomicBool = AtomicBool::new(false);
 
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Refresh the access token this long before its recorded expiry.
@@ -271,6 +278,7 @@ async fn persist_verge_edit(f: impl FnOnce(&mut IVerge)) -> Result<()> {
 }
 
 async fn clear_tokens() -> Result<()> {
+    INITIAL_MANAGED_SYNC_COMPLETE.store(false, Ordering::Release);
     persist_verge_edit(|d| {
         d.enterprise_display_name = None;
         d.enterprise_access_token = None;
@@ -541,25 +549,140 @@ fn managed_subscription_key(server: &str, subscription: &SubscriptionOption) -> 
         .map(|id| format!("{}/{id}", server.trim_end_matches('/')).into())
 }
 
+fn owned_by_server(item: &PrfItem, server: &str) -> bool {
+    let prefix = format!("{}/", server.trim_end_matches('/'));
+    item.managed_subscription_id
+        .as_deref()
+        .and_then(|key| key.strip_prefix(prefix.as_str()))
+        .is_some_and(|suffix| suffix.parse::<i64>().is_ok() || suffix.starts_with("legacy/"))
+}
+
+async fn remember_legacy_managed_profiles(previous: &IVerge, server: &str) -> Result<()> {
+    if previous
+        .enterprise_server_url
+        .as_deref()
+        .map(|url| url.trim_end_matches('/'))
+        != Some(server.trim_end_matches('/'))
+    {
+        return Ok(());
+    }
+    let options = configured_subscriptions(previous);
+    let _write_guard = PROFILE_WRITE_LOCK.lock().await;
+    Config::profiles()
+        .await
+        .with_data_modify(|mut profiles| async move {
+            let mut changed = false;
+            for item in profiles.items.iter_mut().flatten() {
+                if item.itype.as_deref() != Some("remote") || item.managed_subscription_id.is_some() {
+                    continue;
+                }
+                let option = options
+                    .iter()
+                    .find(|option| is_managed_subscription_item(item, &normalize_subscription_url(&option.url)));
+                let owned = item
+                    .uid
+                    .as_ref()
+                    .is_some_and(|uid| previous.enterprise_profile_uid.as_ref() == Some(uid))
+                    || (option.is_some()
+                        && item
+                            .name
+                            .as_deref()
+                            .is_some_and(|name| name == "公司订阅" || name.starts_with("公司订阅·")));
+                if owned && let Some(uid) = item.uid.as_ref() {
+                    item.managed_subscription_id = Some(
+                        option
+                            .and_then(|option| managed_subscription_key(server, option))
+                            .unwrap_or_else(|| format!("{}/legacy/{uid}", server.trim_end_matches('/')).into()),
+                    );
+                    changed = true;
+                }
+            }
+            if changed {
+                profiles.save_file().await?;
+            }
+            Ok((profiles, ()))
+        })
+        .await
+}
+
+fn obsolete_managed_profiles(known: &HashSet<SmartString>, retained: &[SmartString]) -> Vec<SmartString> {
+    if retained.is_empty() {
+        return Vec::new();
+    }
+    known.iter().filter(|uid| !retained.contains(uid)).cloned().collect()
+}
+
+fn plan_managed_cleanup(
+    candidate: &mut IProfiles,
+    obsolete: &[SmartString],
+) -> Result<Vec<crate::config::profiles::ProfileDeletePlan>> {
+    anyhow::ensure!(
+        !candidate.current.as_ref().is_some_and(|uid| obsolete.contains(uid)),
+        "The obsolete subscription became active; cleanup deferred"
+    );
+    let mut cleanup = Vec::new();
+    for uid in obsolete {
+        if candidate.get_item(uid).is_ok() {
+            let (_, plan) = candidate.plan_delete_item(uid)?;
+            cleanup.push(plan);
+        }
+    }
+    Ok(cleanup)
+}
+
+async fn cleanup_managed_profiles(obsolete: &[SmartString]) -> Result<()> {
+    if obsolete.is_empty() {
+        return Ok(());
+    }
+    let _write_guard = PROFILE_WRITE_LOCK.lock().await;
+    Config::profiles()
+        .await
+        .with_data_modify(|mut candidate| async move {
+            let cleanup = plan_managed_cleanup(&mut candidate, obsolete)?;
+            candidate.save_file().await?;
+            for plan in cleanup {
+                plan.cleanup().await;
+            }
+            Ok((candidate, ()))
+        })
+        .await?;
+    announce(Refresh::Profiles);
+    Ok(())
+}
+
 fn matches_managed_profile(
     item: &PrfItem,
     subscription: &SubscriptionOption,
     key: Option<&SmartString>,
+    server: &str,
     unique_name: bool,
 ) -> bool {
     if item.itype.as_deref() != Some("remote") {
         return false;
     }
     if let Some(bound) = item.managed_subscription_id.as_ref() {
-        return key == Some(bound);
+        if key == Some(bound) {
+            return true;
+        }
+        let legacy = item
+            .uid
+            .as_ref()
+            .map(|uid| format!("{}/legacy/{uid}", server.trim_end_matches('/')));
+        if legacy.as_deref() != Some(bound.as_str()) {
+            return false;
+        }
     }
-    is_managed_subscription_item(item, &normalize_subscription_url(&subscription.url))
+    let legacy_company_card = item
+        .name
+        .as_deref()
+        .is_some_and(|name| name == "公司订阅" || name.starts_with("公司订阅·"));
+    (legacy_company_card && is_managed_subscription_item(item, &normalize_subscription_url(&subscription.url)))
         || (unique_name
             && !subscription.name.trim().is_empty()
             && item.name.as_deref() == Some(format!("公司订阅·{}", subscription.name.trim()).as_str()))
 }
 
-async fn import_managed_profile(subscription: &SubscriptionOption) -> Result<(SmartString, bool)> {
+async fn import_managed_profile(subscription: &SubscriptionOption) -> Result<(SmartString, bool, Vec<SmartString>)> {
     let subscription_url = normalize_subscription_url(&subscription.url);
     let name: SmartString = if subscription.name.trim().is_empty() {
         "公司订阅".into()
@@ -582,7 +705,15 @@ async fn import_managed_profile(subscription: &SubscriptionOption) -> Result<(Sm
         .as_ref()
         .into_iter()
         .flatten()
-        .filter(|item| matches_managed_profile(item, subscription, key.as_ref(), unique_name))
+        .filter(|item| {
+            matches_managed_profile(
+                item,
+                subscription,
+                key.as_ref(),
+                data.enterprise_server_url.as_deref().unwrap_or_default(),
+                unique_name,
+            )
+        })
         .filter_map(|item| item.uid.clone())
         .collect();
     let uid = snapshot
@@ -592,6 +723,7 @@ async fn import_managed_profile(subscription: &SubscriptionOption) -> Result<(Sm
         .cloned()
         .or_else(|| matches.first().cloned());
     let mut active_source_changed = false;
+    let mut duplicates = Vec::new();
     let uid = if let Some(uid) = uid {
         let previous = snapshot.get_item(&uid)?;
         let source_changed =
@@ -601,12 +733,8 @@ async fn import_managed_profile(subscription: &SubscriptionOption) -> Result<(Sm
         } else {
             None
         };
-        let duplicates: Vec<_> = matches.into_iter().filter(|candidate| candidate != &uid).collect();
-        if source_changed
-            || previous.name.as_ref() != Some(&name)
-            || previous.managed_subscription_id != key
-            || !duplicates.is_empty()
-        {
+        duplicates = matches.into_iter().filter(|candidate| candidate != &uid).collect();
+        if source_changed || previous.name.as_ref() != Some(&name) || previous.managed_subscription_id != key {
             profiles
                 .with_data_modify(|mut candidate| async {
                     let item = candidate
@@ -620,16 +748,7 @@ async fn import_managed_profile(subscription: &SubscriptionOption) -> Result<(Sm
                         item.url = downloaded.url.clone();
                         candidate.update_item(&uid, downloaded).await?;
                     }
-                    let mut cleanup = Vec::new();
-                    for duplicate in duplicates {
-                        let (active, plan) = candidate.plan_delete_item(&duplicate)?;
-                        anyhow::ensure!(!active, "Cannot remove the active managed profile");
-                        cleanup.push(plan);
-                    }
                     candidate.save_file().await?;
-                    for plan in cleanup {
-                        plan.cleanup().await;
-                    }
                     Ok((candidate, ()))
                 })
                 .await?;
@@ -652,7 +771,7 @@ async fn import_managed_profile(subscription: &SubscriptionOption) -> Result<(Sm
     };
     drop(_write_guard);
     announce(Refresh::Profiles);
-    Ok((uid, active_source_changed))
+    Ok((uid, active_source_changed, duplicates))
 }
 
 fn missing_managed_profiles(subscriptions: &[SubscriptionOption], profiles: &IProfiles) -> bool {
@@ -690,12 +809,26 @@ fn retained_profile_uid(
 async fn sync_managed_profiles(activate_current: bool) -> Result<bool> {
     let had_current = current_profile_uid(&Config::profiles().await.data_arc()).is_some();
     let subscriptions = subscriptions_from_config().await;
+    if subscriptions.is_empty() {
+        return Ok(false);
+    }
+    let data = Config::verge().await.data_arc();
+    let server = data.enterprise_server_url.as_deref().unwrap_or_default();
+    let snapshot = Config::profiles().await.data_arc();
+    let mut known: HashSet<_> = snapshot
+        .items
+        .iter()
+        .flatten()
+        .filter(|item| owned_by_server(item, server))
+        .filter_map(|item| item.uid.clone())
+        .collect();
     let mut imported = Vec::new();
     let mut failures = Vec::new();
     let mut active_source_changed = false;
     for subscription in &subscriptions {
         match import_managed_profile(subscription).await {
-            Ok((uid, changed)) => {
+            Ok((uid, changed, duplicates)) => {
+                known.extend(duplicates);
                 imported.push(uid);
                 active_source_changed |= changed;
             }
@@ -705,9 +838,12 @@ async fn sync_managed_profiles(activate_current: bool) -> Result<bool> {
             }
         }
     }
+    anyhow::ensure!(failures.is_empty(), "部分公司订阅同步失败: {}", failures.join("、"));
+    let obsolete = obsolete_managed_profiles(&known, &imported);
     let profiles = Config::profiles().await.data_arc();
     let data = Config::verge().await.data_arc();
-    let current = retained_profile_uid(&profiles, &subscriptions, data.enterprise_profile_uid.as_ref());
+    let current = retained_profile_uid(&profiles, &subscriptions, data.enterprise_profile_uid.as_ref())
+        .filter(|uid| !obsolete.contains(uid));
     let mut activated = false;
     // The first append assigns current without applying its runtime; existing choices stay active.
     if activate_current || active_source_changed || !had_current || current.is_none() {
@@ -719,10 +855,10 @@ async fn sync_managed_profiles(activate_current: bool) -> Result<bool> {
         let _write_guard = PROFILE_WRITE_LOCK.lock().await;
         record_managed_profile_selection().await?;
     }
+    cleanup_managed_profiles(&obsolete).await?;
     if !imported.is_empty() {
         crate::core::timer::Timer::global().refresh().await?;
     }
-    anyhow::ensure!(failures.is_empty(), "部分公司订阅同步失败: {}", failures.join("、"));
     Ok(activated || !imported.is_empty())
 }
 
@@ -744,6 +880,7 @@ async fn subscriptions_from_config() -> Vec<SubscriptionOption> {
 /// Employee-side switch among the enabled company subscriptions; the url
 /// must be one of the bootstrap-provided options.
 pub async fn select_managed_subscription(url: &str) -> Result<EnterpriseSession> {
+    let _sync_guard = MANAGED_SYNC_LOCK.lock().await;
     let url = url.trim().trim_end_matches('/').to_string();
     if !is_http_url(&url) {
         return Err(anyhow!("订阅地址需为 http(s) 链接"));
@@ -753,7 +890,7 @@ pub async fn select_managed_subscription(url: &str) -> Result<EnterpriseSession>
         .iter()
         .find(|option| normalize_subscription_url(&option.url) == url)
         .ok_or_else(|| anyhow!("该订阅已不可用，请同步后再选择"))?;
-    let (uid, _) = import_managed_profile(subscription).await?;
+    let (uid, _, _) = import_managed_profile(subscription).await?;
     activate_managed_profile(uid).await?;
     let data = Config::verge().await.data_arc();
     Ok(session_from(&data, true))
@@ -773,6 +910,87 @@ mod subscription_tests {
     }
 
     #[test]
+    fn cleanup_removes_only_obsolete_company_cards_and_preserves_active_and_personal() -> Result<()> {
+        let server = "https://ops.example.test";
+        let mut old = remote("old", "https://example.test/retired");
+        old.managed_subscription_id = Some(format!("{server}/1").into());
+        let mut current = remote("current", "https://example.test/current");
+        current.managed_subscription_id = Some(format!("{server}/2").into());
+        let personal = remote("personal", "https://example.test/personal");
+        let mut other = remote("other", "https://example.test/other");
+        other.managed_subscription_id = Some("https://other.example.test/1".into());
+        let mut profiles = IProfiles {
+            current: Some("current".into()),
+            items: Some(vec![old, current, personal, other]),
+        };
+        let known: HashSet<_> = profiles
+            .items
+            .iter()
+            .flatten()
+            .filter(|item| owned_by_server(item, server))
+            .filter_map(|item| item.uid.clone())
+            .collect();
+        assert!(obsolete_managed_profiles(&known, &[]).is_empty());
+        let obsolete = obsolete_managed_profiles(&known, &["current".into()]);
+        assert_eq!(obsolete, vec![SmartString::from("old")]);
+        let mut raced = profiles.clone();
+        raced.current = Some("old".into());
+        assert!(plan_managed_cleanup(&mut raced, &obsolete).is_err());
+        assert!(raced.get_item("old").is_ok());
+        assert_eq!(plan_managed_cleanup(&mut profiles, &obsolete)?.len(), 1);
+        assert!(profiles.get_item("old").is_err());
+        assert!(profiles.get_item("personal").is_ok());
+        assert!(profiles.get_item("other").is_ok());
+        assert_eq!(profiles.current.as_deref(), Some("current"));
+        Ok(())
+    }
+
+    #[test]
+    fn ordinary_heartbeats_do_not_repeat_successful_cleanup() {
+        assert!(managed_sync_needed(false, Some(3), 3, false));
+        assert!(!managed_sync_needed(true, Some(3), 3, false));
+        assert!(managed_sync_needed(true, Some(3), 4, false));
+        assert!(managed_sync_needed(true, Some(3), 3, true));
+    }
+
+    #[test]
+    fn legacy_bindings_can_migrate_without_claiming_personal_or_other_server_cards() {
+        let server = "https://ops.example.test";
+        let subscription = SubscriptionOption {
+            id: Some(7),
+            name: "Cloud".into(),
+            url: "https://example.test/new".into(),
+        };
+        let key = managed_subscription_key(server, &subscription);
+        let mut legacy = remote("old", "https://example.test/old");
+        legacy.name = Some("公司订阅·Cloud".into());
+        legacy.managed_subscription_id = Some(format!("{server}/legacy/old").into());
+        assert!(matches_managed_profile(
+            &legacy,
+            &subscription,
+            key.as_ref(),
+            server,
+            true
+        ));
+        assert!(matches_managed_profile(&legacy, &subscription, None, server, true));
+        assert!(!matches_managed_profile(
+            &legacy,
+            &subscription,
+            None,
+            "https://other.example.test",
+            true
+        ));
+        let personal = remote("personal", &subscription.url);
+        assert!(!matches_managed_profile(
+            &personal,
+            &subscription,
+            key.as_ref(),
+            server,
+            true
+        ));
+    }
+
+    #[test]
     fn stable_identity_survives_link_rotation_and_adopts_only_unambiguous_legacy_cards() -> Result<()> {
         let option = SubscriptionOption {
             id: Some(7),
@@ -783,14 +1001,38 @@ mod subscription_tests {
             .ok_or_else(|| anyhow!("missing subscription key"))?;
         let mut item = remote("old", "https://example.test/old");
         item.name = Some("公司订阅·Cloud".into());
-        assert!(matches_managed_profile(&item, &option, Some(&key), true));
-        assert!(!matches_managed_profile(&item, &option, Some(&key), false));
+        assert!(matches_managed_profile(
+            &item,
+            &option,
+            Some(&key),
+            "https://ops.example.test",
+            true
+        ));
+        assert!(!matches_managed_profile(
+            &item,
+            &option,
+            Some(&key),
+            "https://ops.example.test",
+            false
+        ));
         item.managed_subscription_id = Some(key.clone());
         item.name = Some("Previous name".into());
-        assert!(matches_managed_profile(&item, &option, Some(&key), false));
+        assert!(matches_managed_profile(
+            &item,
+            &option,
+            Some(&key),
+            "https://ops.example.test",
+            false
+        ));
         let other_server = managed_subscription_key("https://other.example.test", &option)
             .ok_or_else(|| anyhow!("missing subscription key"))?;
-        assert!(!matches_managed_profile(&item, &option, Some(&other_server), true));
+        assert!(!matches_managed_profile(
+            &item,
+            &option,
+            Some(&other_server),
+            "https://other.example.test",
+            true
+        ));
         let house = SubscriptionOption {
             id: Some(8),
             name: "House".into(),
@@ -798,7 +1040,13 @@ mod subscription_tests {
         };
         let house_key = managed_subscription_key("https://ops.example.test", &house)
             .ok_or_else(|| anyhow!("missing subscription key"))?;
-        assert!(!matches_managed_profile(&item, &house, Some(&house_key), true));
+        assert!(!matches_managed_profile(
+            &item,
+            &house,
+            Some(&house_key),
+            "https://ops.example.test",
+            true
+        ));
         Ok(())
     }
 
@@ -938,6 +1186,8 @@ async fn activate_session(
     parsed: LoginResponse,
     username: &str,
 ) -> Result<EnterpriseSession> {
+    let _sync_guard = MANAGED_SYNC_LOCK.lock().await;
+    let previous = Config::verge().await.data_arc();
     store_login(
         server,
         username,
@@ -952,9 +1202,13 @@ async fn activate_session(
     let mut provisioned = false;
     match bootstrap_fetch(client, server, &parsed.access_token).await {
         Ok(bootstrap) => {
+            remember_legacy_managed_profiles(&previous, server).await?;
             store_bootstrap(server, &bootstrap).await?;
             match sync_managed_profiles(true).await {
-                Ok(active) => provisioned = active,
+                Ok(active) => {
+                    provisioned = active;
+                    INITIAL_MANAGED_SYNC_COMPLETE.store(true, Ordering::Release);
+                }
                 Err(e) => logging!(warn, Type::Cmd, "managed subscription provisioning failed: {e:#}"),
             }
         }
@@ -1317,6 +1571,12 @@ pub async fn logout() -> Result<EnterpriseSession> {
 
 /// Refresh bootstrap data and re-provision the managed subscription.
 pub async fn sync() -> Result<EnterpriseSession> {
+    let _sync_guard = MANAGED_SYNC_LOCK.lock().await;
+    sync_locked().await
+}
+
+async fn sync_locked() -> Result<EnterpriseSession> {
+    let previous = Config::verge().await.data_arc();
     let server = {
         let data = Config::verge().await.data_arc();
         data.enterprise_server_url
@@ -1334,8 +1594,10 @@ pub async fn sync() -> Result<EnterpriseSession> {
         }
     };
     let bootstrap = bootstrap_fetch(&client, &server, &access).await?;
+    remember_legacy_managed_profiles(&previous, &server).await?;
     store_bootstrap(&server, &bootstrap).await?;
     sync_managed_profiles(false).await?;
+    INITIAL_MANAGED_SYNC_COMPLETE.store(true, Ordering::Release);
     let data = Config::verge().await.data_arc();
     Ok(session_from(&data, true))
 }
@@ -1490,12 +1752,15 @@ struct HeartbeatResponse {
     config_version: Option<i64>,
 }
 
+fn managed_sync_needed(initial_complete: bool, stored: Option<i64>, remote: i64, missing: bool) -> bool {
+    !initial_complete || stored != Some(remote) || missing
+}
+
 async fn heartbeat_once() -> Result<bool> {
     let data = Config::verge().await.data_arc();
     let Some(server) = data.enterprise_server_url.clone().filter(|u| !u.trim().is_empty()) else {
         return Ok(false);
     };
-    let stored_version = data.enterprise_config_version;
     let server = server.to_string();
     let client = http_client()?;
     let access = match ensure_access(&client, &server).await? {
@@ -1524,24 +1789,19 @@ async fn heartbeat_once() -> Result<bool> {
     if !(body.ok) {
         return Ok(false);
     }
-    let profiles = Config::profiles().await.data_arc();
-    let options = configured_subscriptions(&data);
-    let missing_profiles =
-        options.iter().any(|option| option.id.is_none()) || missing_managed_profiles(&options, &profiles);
-    match body.config_version {
-        Some(remote) if Some(remote) != stored_version || missing_profiles => {
-            logging!(
-                info,
-                Type::Cmd,
-                "heartbeat saw bootstrap revision {remote} (stored {}); syncing managed profile",
-                stored_version.unwrap_or_default()
-            );
-            // Re-run the managed provisioning so added subscriptions,
-            // policy flips and announcements land without manual action.
-            sync().await?;
+    if let Some(remote) = body.config_version {
+        let _sync_guard = MANAGED_SYNC_LOCK.lock().await;
+        let current = Config::verge().await.data_arc();
+        let profiles = Config::profiles().await.data_arc();
+        if managed_sync_needed(
+            INITIAL_MANAGED_SYNC_COMPLETE.load(Ordering::Acquire),
+            current.enterprise_config_version,
+            remote,
+            missing_managed_profiles(&configured_subscriptions(&current), &profiles),
+        ) {
+            sync_locked().await?;
             persist_verge_edit(|d| d.enterprise_config_version = Some(remote)).await?;
         }
-        _ => {}
     }
     Ok(true)
 }

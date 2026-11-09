@@ -26,10 +26,11 @@ class EnterpriseCoordinator(
     private val apiHolder: EnterpriseApiHolder,
     private val session: EnterpriseSession,
     private val appVersion: String,
-    private val onSyncRequired: suspend () -> Boolean,
+    private val onSyncRequired: suspend (Boolean) -> Boolean,
 ) {
     private val running = AtomicReference<CoroutineScope?>(null)
     private val authorLock = Mutex()
+    private var initialSyncComplete = false
 
     fun start(scope: CoroutineScope) {
         if (!running.compareAndSet(null, scope)) return
@@ -50,10 +51,12 @@ class EnterpriseCoordinator(
                 val response = api.heartbeat(token, appVersion, stored.configVersion.orEmpty())
                 response.configVersion
             }
-            if (!serverVersion.isNullOrEmpty() && serverVersion != stored()) {
+            val revisionChanged = !serverVersion.isNullOrEmpty() && serverVersion != stored()
+            if (!initialSyncComplete || revisionChanged) {
                 // Sync calls author again, so it must run outside authorLock.
-                if (!onSyncRequired()) return false
-                session.update(configVersion = serverVersion)
+                if (!onSyncRequired(revisionChanged)) return false
+                initialSyncComplete = true
+                if (!serverVersion.isNullOrEmpty()) session.update(configVersion = serverVersion)
             }
             true
         } catch (e: ApiError) {
@@ -101,6 +104,7 @@ class EnterpriseCoordinator(
             }
         }
         session.clear()
+        initialSyncComplete = false
     }
 
     /** Pull bootstrap only (offline-safe); used after app start with a session. */
@@ -110,9 +114,7 @@ class EnterpriseCoordinator(
             author { token ->
                 val bootstrap = api.bootstrap(token)
                 session.updateUser(bootstrap.user)
-                if (stored() != bootstrap.configVersion) {
-                    session.update(configVersion = bootstrap.configVersion)
-                }
+                bootstrap.configVersion?.let { session.update(configVersion = it) }
                 bootstrap.subscriptions
             }
         }

@@ -149,6 +149,13 @@ class ProfileManager(private val context: Context) : IProfileManager,
         ProfileProcessor.delete(context, uuid)
     }
 
+    override suspend fun deleteInactive(uuid: UUID): Boolean {
+        val imported = ImportedDao().queryByUUID(uuid)
+        val removed = ProfileProcessor.delete(context, uuid, onlyInactive = true)
+        if (removed && imported != null) ProfileReceiver.cancelNext(context, imported)
+        return removed
+    }
+
     override suspend fun queryByUUID(uuid: UUID): Profile? {
         return resolveProfile(uuid)
     }
