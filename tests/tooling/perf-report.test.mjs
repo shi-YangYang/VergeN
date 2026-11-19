@@ -14,7 +14,7 @@ import {
   replayValues,
   SCHEMA,
   validVisibility,
-} from './report.mjs'
+} from '../../scripts/perf/report.mjs'
 const latest = (sequence) => {
   const { up, down } = replayValues(sequence)
   return { lastUp: up, lastDown: down }

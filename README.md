@@ -55,6 +55,11 @@ VergeN 是基于 [clash-verge-rev](https://github.com/clash-verge-rev/clash-verg
 - `android/` — Android 客户端(CMFA fork,Kotlin;mihomo 内核以 submodule 引入)
 - `server/` — 运维服务(Go)与面板前端(`server/web`,React,构建产物内嵌)
 - `crates/` — 客户端附属 Rust 组件(内核管理、国际化等)
+- `config/env/` — 桌面开发环境和本地打包配置
+- `scripts/` — 开发、构建和发布工具；`tests/tooling/` 存放工具测试
+- `docs/` — 贡献指南、翻译指南和隐私政策
+
+完整工程入口和测试位置见[技术栈与目录](./constitution/tech-stack.md)。
 
 ## Release(CD)
 
@@ -104,7 +109,9 @@ pnpm package:android 0.1.1 9
 
 `release-version` 会修改仓库中的客户端版本文件。桌面命令构建当前系统和架构的安装包:macOS 上生成 DMG,Windows 上生成 EXE,Linux 上仅生成 DEB;Windows x64 和 Linux x64 安装包应在相应环境构建。Android 命令仅生成 arm64 APK,最后的 `9` 是版本代码示例,正式发布必须使用高于已发布版本的代码。
 
-产物统一放在 `release-local/<版本>/desktop/` 和 `release-local/<版本>/android/`。本地构建配置放在不提交的 `.env.build.local`,用于指定服务端地址、Java 和 Android SDK 路径。构建沿用已有 Android 签名配置,不要更换已发布应用的签名密钥或包名。需要桌面客户端内更新时,设置 `VERGEN_BUILD_UPDATER=true` 和上述 Tauri 签名环境变量,再运行 `pnpm package:desktop`。
+产物统一放在 `release-local/<版本>/desktop/` 和 `release-local/<版本>/android/`。本地构建配置放在不提交的 `config/env/.env.build.local`,用于指定服务端地址、Java 和 Android SDK 路径。构建沿用已有 Android 签名配置,不要更换已发布应用的签名密钥或包名。需要桌面客户端内更新时,设置 `VERGEN_BUILD_UPDATER=true` 和上述 Tauri 签名环境变量,再运行 `pnpm package:desktop`。
+
+旧工作副本升级后，把自己创建的 Vite 环境文件（例如 `.env.local`、`.env.production`）和 `.env.build.local` 从仓库根移入 `config/env/`，保留原文件名。如果目标已有同名文件，先对照合并。本机配置和签名凭证应保留在 Git 之外。
 
 在 Windows 本地签名打包时,先将 PFX 导入当前用户的个人证书存储,再设置 `WINDOWS_CERTIFICATE_THUMBPRINT` 为该证书的 SHA1 指纹;文件签名使用 SHA256。PFX 和密码应保存在仓库外,不要提交或作为发布附件上传。
 
@@ -121,7 +128,7 @@ pnpm package:android 0.1.1 9
 
 ## Development
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for more details.
+See [CONTRIBUTING.md](./docs/CONTRIBUTING.md) for more details.
 
 To run the development server, execute the following commands after all prerequisites for **Tauri** are installed:
 
@@ -165,10 +172,10 @@ Based on or inspired by these projects and so on:
 
 ## Privacy
 
-本应用不收集任何用户数据，配置与日志仅保存在本地。详见[隐私政策](./PRIVACY.md)。
+本应用不收集任何用户数据，配置与日志仅保存在本地。详见[隐私政策](./docs/PRIVACY.md)。
 
 This application does not collect any user data; configuration and logs stay on
-your own device. See the [Privacy Policy](./PRIVACY.md) for details.
+your own device. See the [Privacy Policy](./docs/PRIVACY.md) for details.
 
 ## License
 

@@ -1,5 +1,6 @@
 import HelpOutlineRounded from '@mui/icons-material/HelpOutlineRounded'
 import Alert from '@mui/material/Alert'
+import Button from '@mui/material/Button'
 import IconButton from '@mui/material/IconButton'
 import Portal from '@mui/material/Portal'
 import Snackbar from '@mui/material/Snackbar'
@@ -106,5 +107,22 @@ export function MessageHelp({
     >
       <HelpOutlineRounded fontSize="small" />
     </IconButton>
+  )
+}
+
+export function LoadError({
+  error,
+  onRetry,
+}: {
+  error: string
+  onRetry: () => void
+}) {
+  return (
+    <>
+      <MessageNotice kind="error" text={`加载失败：${error}`} />
+      <Button variant="outlined" onClick={onRetry}>
+        重新加载
+      </Button>
+    </>
   )
 }

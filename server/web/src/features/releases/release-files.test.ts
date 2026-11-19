@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  acceptsPackage,
-  packageMatchesVersion,
-} from '../server/web/src/release-files'
+import { acceptsPackage, packageMatchesVersion } from './release-files'
 
 describe('release file selection', () => {
   it('accepts only the file formats for the selected platform and purpose', () => {

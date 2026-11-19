@@ -44,9 +44,9 @@ export default defineConfig([
             'eslint.config.ts',
             `vite.config.mts`,
             'scripts/*.mjs',
-            'tests/*.ts',
+            'server/web/src/features/releases/*.test.ts',
             'src/polyfills/*.js',
-            'tests/*.mjs',
+            'tests/tooling/*.mjs',
           ],
         },
       },
@@ -144,7 +144,7 @@ export default defineConfig([
     },
   },
   {
-    files: ['scripts/*.mjs'],
+    files: ['scripts/*.mjs', 'tests/tooling/*.mjs'],
 
     languageOptions: {
       globals: {

@@ -8,7 +8,12 @@ import { packageName } from './package-name.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 process.chdir(root)
-const localEnvironment = path.join(root, '.env.build.local')
+const buildEnvPath = 'config/env/.env.build.local'
+let localEnvironment = path.join(root, buildEnvPath)
+if (!fs.existsSync(localEnvironment) && fs.existsSync('.env.build.local')) {
+  console.warn(`Using legacy .env.build.local; move it to ${buildEnvPath}`)
+  localEnvironment = path.join(root, '.env.build.local')
+}
 const env = {
   ...process.env,
   ...(fs.existsSync(localEnvironment)
@@ -60,7 +65,7 @@ function desktop() {
   }
   if (!/^https?:\/\//.test(env.VITE_ENTERPRISE_SERVER_URL ?? '')) {
     throw new Error(
-      'Set VITE_ENTERPRISE_SERVER_URL in .env.build.local before packaging',
+      `Set VITE_ENTERPRISE_SERVER_URL in ${buildEnvPath} before packaging`,
     )
   }
   const signedUpdates = env.VERGEN_BUILD_UPDATER === 'true'
@@ -207,7 +212,7 @@ function android() {
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   if (!/^(?:openjdk|java) 21[.\s]/m.test(java)) {
-    throw new Error('Set JAVA_HOME to JDK 21 in .env.build.local')
+    throw new Error(`Set JAVA_HOME to JDK 21 in ${buildEnvPath}`)
   }
   run(
     process.platform === 'win32' ? 'cmd.exe' : './gradlew',

@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { run } from './draft-release.mjs'
-import { packageName, releaseAssetName } from './package-name.mjs'
+import { run } from '../../scripts/draft-release.mjs'
+import { packageName, releaseAssetName } from '../../scripts/package-name.mjs'
 
 const env = {
   RELEASE_TAG: 'v0.1.1',

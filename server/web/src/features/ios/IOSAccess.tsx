@@ -29,11 +29,10 @@ import {
   importIOSSubscriptions,
   revokeIOSSubscription,
   type IOSSubscription,
-} from '../api'
-import { PLATFORM_GLYPHS } from '../assets/platform-glyphs'
-
-import { useMessage } from './message-context'
-import { MessageHelp } from './Messages'
+} from '../../api'
+import { PLATFORM_GLYPHS } from '../../assets/platform-glyphs'
+import { useMessage } from '../../components/message-context'
+import { MessageHelp } from '../../components/Messages'
 
 const clashMiStoreURL = 'https://apps.apple.com/us/app/clash-mi/id6744321968'
 

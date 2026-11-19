@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import {
-  deleteHistoricalReleases,
-  nextReleaseVersion,
-} from '../server/web/src/release-history'
+import { deleteHistoricalReleases, nextReleaseVersion } from './release-history'
 
 describe('next release version', () => {
   it.each([

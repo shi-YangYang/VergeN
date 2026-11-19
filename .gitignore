@@ -6,6 +6,13 @@ dist/*
 dist-ssr
 release-local/
 *.local
+/.env
+/.env.*
+/config/env/.env
+/config/env/.env.*
+!/config/env/.env.development
+!/config/env/.env.example
+!/config/env/.env.build.example
 update.json
 scripts/_env.sh
 .vscode
