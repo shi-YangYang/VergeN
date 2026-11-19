@@ -848,8 +848,11 @@ label.check {
 .download-version {
   margin-bottom: 18px;
 }
-.download-version-title strong {
+.download-version-head > strong {
   font-size: 1.15rem;
+}
+.download-version-picker {
+  width: min(100%, 20rem);
 }
 .download-notes {
   margin-top: 12px;
@@ -1024,6 +1027,9 @@ label.check {
   .download-current-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
+  }
+  .download-version-picker {
+    width: 100%;
   }
   .platform-card.MuiCardActionArea-root {
     min-height: 120px;

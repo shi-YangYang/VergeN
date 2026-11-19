@@ -15,6 +15,7 @@ import PhoneIphoneRounded from '@mui/icons-material/PhoneIphoneRounded'
 import Accordion from '@mui/material/Accordion'
 import AccordionDetails from '@mui/material/AccordionDetails'
 import AccordionSummary from '@mui/material/AccordionSummary'
+import Autocomplete from '@mui/material/Autocomplete'
 import Button from '@mui/material/Button'
 import CardActionArea from '@mui/material/CardActionArea'
 import Checkbox from '@mui/material/Checkbox'
@@ -1670,7 +1671,14 @@ function GatewayPage() {
 function DownloadPage({ onBack }: { onBack: () => void }) {
   const [downloads, setDownloads] = useState<EmployeeDownloads | null>(null)
   const [error, setError] = useState('')
+  const [selectedReleaseId, setSelectedReleaseId] = useState<number | null>(
+    null,
+  )
   const releases = downloads?.releases ?? null
+  const latest = releases?.[0]
+  const release =
+    releases?.find((item) => item.id === selectedReleaseId) ?? latest
+  const isLatest = release === latest
   const publishedPaths = new Set(
     (releases ?? []).flatMap((release) =>
       [
@@ -1719,61 +1727,76 @@ function DownloadPage({ onBack }: { onBack: () => void }) {
         <div className="muted" style={{ textAlign: 'center', padding: 32 }}>
           加载中…
         </div>
-      ) : releases.length === 0 ? (
+      ) : !release ? (
         <Paper variant="outlined" className="download-version">
           <div className="download-grid">
             <IOSDownloadCard />
           </div>
         </Paper>
       ) : (
-        releases.map((release, index) => (
-          <Paper
-            component="section"
-            variant="outlined"
-            className="download-version"
-            key={release.id}
-          >
-            <div className="download-version-head">
-              <div className="download-version-title">
-                <Chip
-                  label={index === 0 ? '最新版本' : '历史版本'}
-                  color={index === 0 ? 'primary' : 'default'}
-                  variant="outlined"
-                />
-                <strong>v{release.version}</strong>
-              </div>
-              <span className="muted" style={{ fontSize: 12 }}>
-                {release.pub_date
-                  ? new Date(release.pub_date * 1000).toLocaleDateString(
-                      'zh-CN',
-                    )
-                  : ''}
-              </span>
-            </div>
-            {release.notes && (
-              <div className="muted download-notes">{release.notes}</div>
+        <Paper
+          component="section"
+          variant="outlined"
+          className="download-version"
+        >
+          <div className="download-version-head">
+            {releases.length > 1 ? (
+              <Autocomplete
+                className="download-version-picker"
+                size="small"
+                disableClearable
+                openOnFocus
+                options={releases}
+                value={release}
+                getOptionKey={(item) => item.id}
+                getOptionLabel={(item) => `v${item.version}`}
+                onChange={(_, item) => setSelectedReleaseId(item.id)}
+                noOptionsText="没有匹配的版本"
+                openText="展开版本列表"
+                closeText="收起版本列表"
+                renderInput={(params) => (
+                  <TextField {...params} label="选择版本" />
+                )}
+              />
+            ) : (
+              <strong>v{release.version}</strong>
             )}
-            <div
-              className={
-                index === 0
-                  ? 'download-grid download-current-grid'
-                  : 'download-grid'
-              }
-            >
-              {(
-                [
-                  ['windows', 'Windows', release.win_url],
-                  ['macos', 'macOS', release.mac_url],
-                  ['linux', 'Linux', release.linux_url],
-                  ['android', 'Android', release.android_url],
-                ] as const
-              ).map(([key, label, url]) => (
-                <PlatformCard key={key} kind={key} label={label} url={url} />
-              ))}
-              {index === 0 && <IOSDownloadCard />}
+            <div className="download-version-title">
+              <Chip
+                label={isLatest ? '最新版本' : '历史版本'}
+                color={isLatest ? 'primary' : 'default'}
+                variant="outlined"
+              />
+              {release.pub_date > 0 && (
+                <span className="muted">
+                  {new Date(release.pub_date * 1000).toLocaleDateString(
+                    'zh-CN',
+                  )}
+                </span>
+              )}
             </div>
-          </Paper>
-        ))
+          </div>
+          {release.notes && (
+            <div className="muted download-notes">{release.notes}</div>
+          )}
+          <div
+            className={
+              isLatest ? 'download-grid download-current-grid' : 'download-grid'
+            }
+          >
+            {(
+              [
+                ['windows', 'Windows', release.win_url],
+                ['macos', 'macOS', release.mac_url],
+                ['linux', 'Linux', release.linux_url],
+                ['android', 'Android', release.android_url],
+              ] as const
+            ).map(([key, label, url]) => (
+              <PlatformCard key={key} kind={key} label={label} url={url} />
+            ))}
+            {isLatest && <IOSDownloadCard />}
+          </div>
+        </Paper>
       )}
       {packages.length > 0 && (
         <Accordion className="download-version download-legacy" disableGutters>
