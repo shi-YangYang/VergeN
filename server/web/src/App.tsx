@@ -712,7 +712,7 @@ function GatewayPage() {
         <GatewayHeroMedia />
         <div className="gateway-intro">
           <h1 id="gateway-title">
-            公司 <span>VPN</span>
+            企业 <span>VPN</span>
           </h1>
           <p>用公司钉钉登录，下载客户端或领取 iOS 订阅。</p>
           <Button href="/download" endIcon={<ArrowForwardRounded />}>
