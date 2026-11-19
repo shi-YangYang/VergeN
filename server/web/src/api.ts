@@ -302,6 +302,13 @@ export interface PackageFile {
   kind?: 'installer' | 'updater'
 }
 
+export async function downloadAdminPackage(name: string) {
+  const { url } = await request<{ url: string }>(
+    `/admin/packages/${encodeURIComponent(name)}/download`,
+  )
+  window.location.assign(url)
+}
+
 export const listPackages = () =>
   request<{ packages: PackageFile[] }>('/admin/packages')
 
@@ -384,8 +391,7 @@ export function uploadPackage(
   return send(false)
 }
 
-// Gateway download page: intentionally unauthenticated.
-export interface PublicRelease {
+export interface DownloadRelease {
   id: number
   version: string
   notes: string
@@ -397,14 +403,58 @@ export interface PublicRelease {
   created_at: number
 }
 
-export interface PublicDownloads {
-  releases: PublicRelease[]
+export interface EmployeeDownloads {
+  releases: DownloadRelease[]
   packages: PackageFile[]
 }
 
-export async function fetchPublicReleases(): Promise<PublicDownloads> {
-  const response = await fetch('/api/v1/public/releases')
+export async function fetchDownloadReleases(): Promise<EmployeeDownloads> {
+  const response = await fetch('/api/v1/download/releases', {
+    cache: 'no-store',
+  })
+  if (response.status === 401) {
+    window.location.replace('/download/login')
+    throw new Error('正在跳转到公司钉钉登录…')
+  }
   if (!response.ok) throw new Error(`请求失败 (${response.status})`)
-  const data = (await response.json()) as PublicDownloads
-  return { releases: data.releases ?? [], packages: data.packages ?? [] }
+  const data = (await response.json()) as EmployeeDownloads
+  return {
+    releases: data.releases ?? [],
+    packages: data.packages ?? [],
+  }
+}
+
+export interface IOSSubscription {
+  address_preview: string
+  id: number
+  status: 'available' | 'assigned' | 'revoked'
+  employee: string
+  assigned_at: number
+}
+
+export const listIOSSubscriptions = () =>
+  request<{ items: IOSSubscription[] | null }>('/admin/ios/subscriptions')
+export const getIOSSubscriptionAddress = (id: number) =>
+  request<{ url: string }>(`/admin/ios/subscriptions/${id}`)
+export const importIOSSubscriptions = (text: string) =>
+  request<{ added: number; skipped: number }>(
+    '/admin/ios/subscriptions/import',
+    { method: 'POST', body: { text } },
+  )
+export const revokeIOSSubscription = (id: number) =>
+  request('/admin/ios/subscriptions/' + id, { method: 'DELETE' })
+
+export async function claimIOSSubscription(): Promise<string> {
+  const response = await fetch('/api/v1/download/ios/claim', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    cache: 'no-store',
+  })
+  if (response.status === 401) {
+    window.location.assign('/download/login')
+    throw new Error('正在跳转到钉钉登录…')
+  }
+  const result = await response.json()
+  if (!response.ok) throw new Error(result.error?.message || '领取失败，请重试')
+  return result.url
 }

@@ -786,6 +786,53 @@ tr.off td {
   opacity: 0.55;
   cursor: not-allowed;
 }
+.ios-card,
+.ios-card:hover {
+  background: var(--card);
+}
+.ios-card small {
+  font-size: 12px;
+}
+.ios-dialog {
+  width: min(400px, calc(100% - 24px));
+  padding: 20px;
+  border: 1px solid var(--divider-strong);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--text);
+}
+.ios-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+.ios-dialog p,
+.ios-manual-copy {
+  font-size: 14px;
+  line-height: 1.5;
+}
+.ios-dialog-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.ios-dialog-actions a {
+  display: grid;
+  place-items: center;
+  min-height: 44px;
+  border: 1px solid var(--divider-strong);
+  border-radius: 8px;
+  color: var(--primary);
+  text-decoration: none;
+}
+.ios-manual-copy {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+@media (min-width: 761px) {
+  .download-current-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
 .pill {
   display: inline-block;
   background: color-mix(in srgb, var(--primary) 14%, transparent);
@@ -990,5 +1037,131 @@ tr.off td {
   .release-section-heading,
   .release-publish-bar {
     flex-wrap: wrap;
+  }
+}
+
+.ios-pool-heading,
+.ios-pool-toolbar,
+.ios-pool-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.ios-pool h2 {
+  margin: 0;
+  font-size: 22px;
+}
+.ios-pool-toolbar {
+  margin: 20px 0 12px;
+}
+.ios-pool-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 3px;
+  background: var(--card-sub);
+  border: 1px solid var(--divider);
+  border-radius: 8px;
+}
+.ios-pool-filters button {
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  padding: 6px 9px;
+  border-radius: 5px;
+}
+.ios-pool-filters button[aria-pressed="true"] {
+  color: var(--primary);
+  background: var(--card);
+  box-shadow: 0 1px 3px var(--divider-strong);
+}
+.ios-pool-filters span,
+.ios-pool-pager {
+  font-variant-numeric: tabular-nums;
+}
+.ios-pool-scroll {
+  border: 1px solid var(--divider-strong);
+  border-radius: 8px;
+}
+.ios-pool-scroll table {
+  min-width: 780px;
+  margin: 0;
+}
+.ios-pool-scroll thead {
+  background: var(--card-sub);
+}
+.ios-pool-scroll tr:last-child td {
+  border-bottom: 0;
+}
+.ios-pool-scroll td {
+  padding-block: 9px;
+}
+.ios-pool-scroll th,
+.ios-pool-scroll .action-buttons {
+  white-space: nowrap;
+}
+.ios-address-preview {
+  font:
+    12px ui-monospace,
+    monospace;
+  white-space: nowrap;
+}
+.ios-state {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 5px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.ios-state.available {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 9%, transparent);
+}
+.ios-state.assigned {
+  background: color-mix(in srgb, #24ae68 18%, transparent);
+}
+.ios-state.revoked {
+  background: var(--card-sub);
+  color: var(--text-secondary);
+}
+.ios-pool .ios-revoke {
+  color: var(--error);
+}
+.ios-pool-empty {
+  text-align: center;
+  height: 100px;
+  color: var(--text-secondary);
+}
+.ios-pool-pager {
+  margin-top: 14px;
+  font-size: 13px;
+}
+.ios-pool-pager .action-buttons {
+  align-items: center;
+  gap: 10px;
+}
+.ios-import-dialog {
+  width: min(540px, calc(100% - 24px));
+}
+.ios-import-dialog textarea {
+  resize: vertical;
+}
+.ios-import-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.ios-address-dialog input {
+  width: 100%;
+  margin-bottom: 14px;
+}
+@media (max-width: 760px) {
+  .ios-pool-toolbar input {
+    width: 100%;
+  }
+  .ios-pool-filters {
+    max-width: 100%;
   }
 }

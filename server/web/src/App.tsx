@@ -22,10 +22,11 @@ import {
   deleteRelease,
   listReleases,
   listPackages,
+  downloadAdminPackage,
   uploadPackage,
   verifyPackageSignature,
   deletePackage,
-  fetchPublicReleases,
+  fetchDownloadReleases,
   getDashboard,
   getSettings,
   hasToken,
@@ -41,7 +42,7 @@ import {
   type AdminAnnouncement,
   type AdminRelease,
   type AdminSettings,
-  type PublicDownloads,
+  type EmployeeDownloads,
   type PackageFile,
   type AdminSubscription,
   type AdminUser,
@@ -49,6 +50,7 @@ import {
   type SettingsPatch,
 } from './api'
 import { PLATFORM_GLYPHS, type PlatformKey } from './assets/platform-glyphs'
+import { IOSDownloadCard, IOSSettingsPage } from './components/IOSAccess'
 import { Select } from './components/Select'
 import {
   acceptsPackage,
@@ -61,6 +63,7 @@ type Tab =
   | 'users'
   | 'subscription'
   | 'release'
+  | 'ios'
   | 'dingtalk'
   | 'announcement'
   | 'dashboard'
@@ -69,6 +72,7 @@ const TABS: [Tab, string][] = [
   ['users', '员工账号'],
   ['subscription', '订阅管理'],
   ['release', '客户端发布'],
+  ['ios', 'iOS 设置'],
   ['dingtalk', '钉钉接入'],
   ['announcement', '公告管理'],
   ['dashboard', '在线看板'],
@@ -1280,12 +1284,17 @@ function ReleasePage() {
               {packages.map((item) => (
                 <tr key={item.name}>
                   <td data-label="文件名">
-                    <a
-                      href={`/files/${encodeURIComponent(item.name)}`}
-                      download
+                    <button
+                      type="button"
+                      className="ghost"
+                      onClick={() =>
+                        void downloadAdminPackage(item.name).catch((err) =>
+                          setError(alertContext(err)),
+                        )
+                      }
                     >
                       {item.name}
-                    </a>
+                    </button>
                   </td>
                   <td data-label="平台 / 用途">
                     {PLATFORM_LABELS[item.platform]} ·{' '}
@@ -1410,9 +1419,9 @@ function DingtalkPage() {
             />
           </label>
           <label>
-            企业 CorpId(可选)
+            企业 CorpId（员工下载必填）
             <input
-              placeholder="留空则不校验登录组织"
+              placeholder="填写公司 CorpId 以启用员工下载"
               value={corpId}
               onChange={(e) => setCorpId(e.target.value)}
             />
@@ -1451,7 +1460,7 @@ function GatewayPage() {
         </button>
         <button
           className="gateway-btn ghost"
-          onClick={() => navigate('/download')}
+          onClick={() => window.location.assign('/download')}
         >
           下载客户端
         </button>
@@ -1461,7 +1470,7 @@ function GatewayPage() {
 }
 
 function DownloadPage({ onBack }: { onBack: () => void }) {
-  const [downloads, setDownloads] = useState<PublicDownloads | null>(null)
+  const [downloads, setDownloads] = useState<EmployeeDownloads | null>(null)
   const [error, setError] = useState('')
   const releases = downloads?.releases ?? null
   const publishedPaths = new Set(
@@ -1487,7 +1496,7 @@ function DownloadPage({ onBack }: { onBack: () => void }) {
   const load = useCallback(async () => {
     setError('')
     try {
-      setDownloads(await fetchPublicReleases())
+      setDownloads(await fetchDownloadReleases())
     } catch (err) {
       setError(alertContext(err))
     }
@@ -1511,10 +1520,11 @@ function DownloadPage({ onBack }: { onBack: () => void }) {
         <div className="muted" style={{ textAlign: 'center', padding: 32 }}>
           加载中…
         </div>
-      ) : releases.length === 0 && packages.length === 0 ? (
-        <div className="download-empty">
-          <div style={{ fontSize: 40 }}>📦</div>
-          管理员尚未发布客户端,敬请期待。
+      ) : releases.length === 0 ? (
+        <div className="download-version">
+          <div className="download-grid">
+            <IOSDownloadCard />
+          </div>
         </div>
       ) : (
         releases.map((release, index) => (
@@ -1535,7 +1545,13 @@ function DownloadPage({ onBack }: { onBack: () => void }) {
             {release.notes && (
               <div className="muted download-notes">{release.notes}</div>
             )}
-            <div className="download-grid">
+            <div
+              className={
+                index === 0
+                  ? 'download-grid download-current-grid'
+                  : 'download-grid'
+              }
+            >
               {(
                 [
                   ['windows', 'Windows', release.win_url],
@@ -1546,6 +1562,7 @@ function DownloadPage({ onBack }: { onBack: () => void }) {
               ).map(([key, label, url]) => (
                 <PlatformCard key={key} kind={key} label={label} url={url} />
               ))}
+              {index === 0 && <IOSDownloadCard />}
             </div>
           </div>
         ))
@@ -2036,6 +2053,31 @@ function RouterShell() {
   const [tab, setTab] = useState<Tab>('users')
 
   if (downloadMatch) {
+    const error = new URLSearchParams(window.location.search).get('login_error')
+    if (error !== null) {
+      const messages: Record<string, string> = {
+        config: '请联系管理员配置钉钉应用和企业 CorpId。',
+        expired: '授权已过期，请重新登录。',
+        canceled: '钉钉授权未完成。',
+        corp: '请使用本公司组织的钉钉账号。',
+        disabled: '该账号已停用，请联系管理员。',
+        busy: '登录过于频繁，请稍后再试。',
+      }
+      return (
+        <div className="login-wrap">
+          <div className="gateway-card">
+            <h2>员工下载</h2>
+            <p role="alert">{messages[error] ?? '钉钉登录失败，请重试。'}</p>
+            <button
+              className="gateway-btn"
+              onClick={() => window.location.replace('/download/login')}
+            >
+              重新使用钉钉登录
+            </button>
+          </div>
+        </div>
+      )
+    }
     return <DownloadPage onBack={() => navigate('/')} />
   }
 
@@ -2096,6 +2138,7 @@ function RouterShell() {
         {tab === 'users' && <UsersPanel />}
         {tab === 'subscription' && <SubscriptionsPage />}
         {tab === 'release' && <ReleasePage />}
+        {tab === 'ios' && <IOSSettingsPage />}
         {tab === 'dingtalk' && <DingtalkPage />}
         {tab === 'announcement' && <AnnouncementPage />}
         {tab === 'dashboard' && <DashboardPanel />}

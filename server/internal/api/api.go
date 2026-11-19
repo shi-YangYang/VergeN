@@ -23,6 +23,7 @@ const (
 )
 
 type Server struct {
+	iosPool    func(context.Context, iosPoolRequest) (iosPoolReply, error)
 	store      *store.Store
 	secret     []byte
 	limiter    *auth.Limiter
@@ -46,6 +47,7 @@ func NewServer(s *store.Store, downloadsDir string) (*Server, error) {
 	}
 	return &Server{
 		store:            s,
+		iosPool:          runIOSPool,
 		secret:           secret,
 		downloads:        downloadsDir,
 		updaterPublicKey: desktopUpdaterPublicKey,
@@ -63,14 +65,11 @@ func (a *Server) Handler() (http.Handler, error) {
 		return nil, err
 	}
 	mux := http.NewServeMux()
-	// The embedded admin SPA owns the public surfaces: "/" (gateway),
-	// "/login" and "/download" are its client-side routes, so those paths
-	// serve the app shell; "/admin" keeps the ops prefix. Only /files is
-	// a plain server route.
 	mux.Handle("GET /{$}", adminPanel)
 	mux.Handle("GET /login", adminPanel)
-	mux.Handle("GET /download", adminPanel)
-	mux.HandleFunc("GET /files/{name}", web.Files(a.downloads))
+	mux.HandleFunc("GET /download", a.serveDownloadPage(adminPanel))
+	mux.HandleFunc("GET /download/login", a.startDownloadLogin)
+	mux.HandleFunc("GET /files/{name}", a.servePackage)
 	mux.Handle("GET /admin", adminPanel)
 	mux.Handle("GET /admin/{path...}", adminPanel)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -81,13 +80,16 @@ func (a *Server) Handler() (http.Handler, error) {
 	mux.HandleFunc("POST /api/v1/auth/refresh", a.handleRefresh)
 	mux.HandleFunc("POST /api/v1/auth/logout", a.handleLogout)
 	mux.HandleFunc("GET /api/v1/auth/capabilities", a.handleAuthCapabilities)
-	// Public distribution surface for the gateway page: the manifest is
-	// meant to be handed to employees without signing in.
-	mux.HandleFunc("GET /api/v1/public/releases", a.handlePublicRelease)
+	mux.HandleFunc("POST /api/v1/download/ios/claim", a.handleIOSClaim)
+	mux.Handle("GET /api/v1/admin/ios/subscriptions", a.admin(a.handleIOSPool))
+	mux.Handle("POST /api/v1/admin/ios/subscriptions/import", a.admin(a.handleIOSImport))
+	mux.Handle("GET /api/v1/admin/ios/subscriptions/{id}", a.admin(a.handleIOSPool))
+	mux.Handle("DELETE /api/v1/admin/ios/subscriptions/{id}", a.admin(a.handleIOSPool))
+	mux.HandleFunc("GET /api/v1/download/releases", a.handleDownloadReleases)
 	mux.HandleFunc("POST /api/v1/auth/dingtalk/qr/start", a.handleDingtalkQrStart)
 	mux.HandleFunc("POST /api/v1/auth/dingtalk/qr/poll", a.handleDingtalkQrPoll)
 	mux.HandleFunc("POST /api/v1/auth/dingtalk/qr/cancel", a.handleDingtalkQrCancel)
-	mux.HandleFunc("GET /api/v1/auth/dingtalk/callback", a.handleDingtalkCallback)
+	mux.HandleFunc("GET "+dingtalkCallbackPath, a.handleDingtalkCallback)
 	mux.Handle("GET /api/v1/client/bootstrap", a.authed(a.handleBootstrap))
 	mux.Handle("POST /api/v1/client/heartbeat", a.authed(a.handleHeartbeat))
 	mux.Handle("GET /api/v1/client/update", a.authed(a.handleClientUpdate))
@@ -110,6 +112,7 @@ func (a *Server) Handler() (http.Handler, error) {
 	mux.Handle("GET /api/v1/admin/releases", a.admin(a.handleAdminListReleases))
 	mux.Handle("POST /api/v1/admin/releases", a.admin(a.handleAdminCreateRelease))
 	mux.Handle("DELETE /api/v1/admin/releases/{id}", a.admin(a.handleAdminDeleteRelease))
+	mux.Handle("GET /api/v1/admin/packages/{name}/download", a.admin(a.handleAdminPackageDownload))
 	mux.Handle("GET /api/v1/admin/packages", a.admin(a.handleAdminListPackages))
 	mux.Handle("POST /api/v1/admin/packages", a.admin(a.handleAdminUploadPackage))
 	mux.Handle("POST /api/v1/admin/packages/verify-signature", a.admin(a.handleAdminVerifySignature))
@@ -392,17 +395,26 @@ func (a *Server) handleAuthCapabilities(w http.ResponseWriter, _ *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]bool{"dingtalk_qr": ok})
 }
 
-// handlePublicReleases exposes the published client manifest list without
-// auth: versions/notes/URLs are public by design (the download page), and
-// no internal fields are included.
-func (a *Server) handlePublicRelease(w http.ResponseWriter, _ *http.Request) {
+func (a *Server) handleDownloadReleases(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "private, no-store")
+	if a.downloadUser(r) == nil {
+		fail(w, http.StatusUnauthorized, "download_login_required", "请用公司钉钉登录下载页")
+		return
+	}
 	list, err := a.store.ListReleases()
 	if err != nil {
 		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
 		return
 	}
 	out := make([]*store.Release, 0, len(list))
-	out = append(out, list...)
+	for _, release := range list {
+		for _, link := range []*string{&release.WinURL, &release.MacURL, &release.LinuxURL, &release.AndroidURL} {
+			if name := a.localPackageName(r, *link); name != "" {
+				*link = "/files/" + url.PathEscape(name)
+			}
+		}
+		out = append(out, release)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"releases": out,
 		"packages": web.Packages(a.downloads),
@@ -513,6 +525,12 @@ func (a *Server) handleClientUpdate(w http.ResponseWriter, request *http.Request
 			url = r.LinuxURL
 		}
 	}
+	url, err = a.packageURL(request, url)
+	if err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "could not issue update download")
+		return
+	}
+	w.Header().Set("Cache-Control", "private, no-store")
 	writeJSON(w, http.StatusOK, map[string]any{
 		"version":           r.Version,
 		"notes":             r.Notes,
@@ -545,9 +563,13 @@ func (a *Server) handleClientUpdater(w http.ResponseWriter, request *http.Reques
 		fail(w, http.StatusNotFound, "no_release", "no updater manifest published")
 		return
 	}
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(raw))
+	manifest, err := a.signManifestURLs(request, raw)
+	if err != nil {
+		fail(w, http.StatusInternalServerError, "internal_error", "could not prepare update manifest")
+		return
+	}
+	w.Header().Set("Cache-Control", "private, no-store")
+	writeJSON(w, http.StatusOK, manifest)
 }
 
 type heartbeatReq struct {
