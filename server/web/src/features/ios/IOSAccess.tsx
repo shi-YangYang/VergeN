@@ -20,6 +20,7 @@ import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
+import useMediaQuery from '@mui/material/useMediaQuery'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
@@ -33,6 +34,7 @@ import {
 import { PLATFORM_GLYPHS } from '../../assets/platform-glyphs'
 import { useMessage } from '../../components/message-context'
 import { MessageHelp } from '../../components/Messages'
+import { PHONE_LAYOUT_QUERY } from '../../components/PhoneLayout'
 
 const clashMiStoreURL = 'https://apps.apple.com/us/app/clash-mi/id6744321968'
 
@@ -244,6 +246,7 @@ function IOSImportDialog({
 }
 
 export function IOSSettingsPage() {
+  const phone = useMediaQuery(PHONE_LAYOUT_QUERY)
   const [items, setItems] = useState<IOSSubscription[]>([])
   const [filter, setFilter] = useState<(typeof filters)[number]>('all')
   const [query, setQuery] = useState('')
@@ -310,6 +313,90 @@ export function IOSSettingsPage() {
       return `已撤销订阅 #${row.id}`
     })
   }
+
+  const emptyLabel = busy
+    ? '正在读取订阅地址…'
+    : loadFailed
+      ? '订阅地址读取失败'
+      : items.length === 0
+        ? '暂无订阅地址'
+        : '没有匹配的订阅地址'
+  const rows = visible.map((row) => {
+    const status = (
+      <Chip
+        label={statusLabels[row.status]}
+        variant="outlined"
+        color={
+          row.status === 'assigned'
+            ? 'success'
+            : row.status === 'available'
+              ? 'primary'
+              : 'default'
+        }
+      />
+    )
+    const assignedTime = row.assigned_at
+      ? new Date(row.assigned_at * 1000).toLocaleString('zh-CN', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : '—'
+    const actions = (
+      <div className="action-buttons">
+        <Button variant="outlined" onClick={() => setSelected(row)}>
+          查看地址
+        </Button>
+        {row.status !== 'revoked' && (
+          <Button
+            variant="outlined"
+            color="error"
+            disabled={busy}
+            onClick={() => revoke(row)}
+          >
+            撤销
+          </Button>
+        )}
+      </div>
+    )
+    if (phone) {
+      return (
+        <Paper
+          component="li"
+          variant="outlined"
+          className="ios-address-card"
+          key={row.id}
+        >
+          <div className="ios-card-heading">
+            <strong>订阅 #{row.id}</strong>
+            {status}
+          </div>
+          <code>{row.address_preview}</code>
+          {(row.employee || row.assigned_at > 0) && (
+            <div className="ios-card-owner">
+              {row.employee && <span>领取员工 · {row.employee}</span>}
+              {row.assigned_at > 0 && <span>领取时间 · {assignedTime}</span>}
+            </div>
+          )}
+          {actions}
+        </Paper>
+      )
+    }
+    return (
+      <TableRow key={row.id}>
+        <TableCell>#{row.id}</TableCell>
+        <TableCell className="ios-address-preview">
+          {row.address_preview}
+        </TableCell>
+        <TableCell>{status}</TableCell>
+        <TableCell>{row.employee || '—'}</TableCell>
+        <TableCell>{assignedTime}</TableCell>
+        <TableCell>{actions}</TableCell>
+      </TableRow>
+    )
+  })
 
   return (
     <Paper
@@ -381,91 +468,53 @@ export function IOSSettingsPage() {
           }}
         />
       </div>
-      <div
-        className="table-scroll ios-pool-scroll"
-        role="region"
-        aria-label="订阅地址表"
-        tabIndex={0}
-      >
-        <Table aria-label="iOS 订阅地址" aria-busy={busy}>
-          <TableHead>
-            <TableRow>
-              {['编号', '订阅地址', '状态', '领取员工', '领取时间', '操作'].map(
-                (title) => (
+      {phone ? (
+        <div aria-busy={busy}>
+          {visible.length > 0 ? (
+            <ul className="ios-address-list" aria-label="iOS 订阅地址">
+              {rows}
+            </ul>
+          ) : (
+            <p className="ios-pool-empty">{emptyLabel}</p>
+          )}
+        </div>
+      ) : (
+        <div
+          className="table-scroll ios-pool-scroll"
+          role="region"
+          aria-label="订阅地址表"
+          tabIndex={0}
+        >
+          <Table aria-label="iOS 订阅地址" aria-busy={busy}>
+            <TableHead>
+              <TableRow>
+                {[
+                  '编号',
+                  '订阅地址',
+                  '状态',
+                  '领取员工',
+                  '领取时间',
+                  '操作',
+                ].map((title) => (
                   <TableCell scope="col" key={title}>
                     {title}
                   </TableCell>
-                ),
+                ))}
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {rows}
+              {visible.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="ios-pool-empty">
+                    {emptyLabel}
+                  </TableCell>
+                </TableRow>
               )}
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {visible.map((row) => (
-              <TableRow key={row.id}>
-                <TableCell>#{row.id}</TableCell>
-                <TableCell className="ios-address-preview">
-                  {row.address_preview}
-                </TableCell>
-                <TableCell>
-                  <Chip
-                    label={statusLabels[row.status]}
-                    variant="outlined"
-                    color={
-                      row.status === 'assigned'
-                        ? 'success'
-                        : row.status === 'available'
-                          ? 'primary'
-                          : 'default'
-                    }
-                  />
-                </TableCell>
-                <TableCell>{row.employee || '—'}</TableCell>
-                <TableCell>
-                  {row.assigned_at
-                    ? new Date(row.assigned_at * 1000).toLocaleString('zh-CN', {
-                        year: 'numeric',
-                        month: '2-digit',
-                        day: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })
-                    : '—'}
-                </TableCell>
-                <TableCell>
-                  <div className="action-buttons">
-                    <Button variant="outlined" onClick={() => setSelected(row)}>
-                      查看地址
-                    </Button>
-                    {row.status !== 'revoked' && (
-                      <Button
-                        variant="outlined"
-                        color="error"
-                        disabled={busy}
-                        onClick={() => revoke(row)}
-                      >
-                        撤销
-                      </Button>
-                    )}
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-            {visible.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={6} className="ios-pool-empty">
-                  {busy
-                    ? '正在读取订阅地址…'
-                    : loadFailed
-                      ? '订阅地址读取失败'
-                      : items.length === 0
-                        ? '暂无订阅地址'
-                        : '没有匹配的订阅地址'}
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
+            </TableBody>
+          </Table>
+        </div>
+      )}
       {matches.length > 0 && (
         <footer className="ios-pool-pager">
           <span>

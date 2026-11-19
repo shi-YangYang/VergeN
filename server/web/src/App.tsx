@@ -2,6 +2,7 @@ import AdminPanelSettingsOutlined from '@mui/icons-material/AdminPanelSettingsOu
 import AppsRounded from '@mui/icons-material/AppsRounded'
 import ArrowForwardRounded from '@mui/icons-material/ArrowForwardRounded'
 import CampaignOutlined from '@mui/icons-material/CampaignOutlined'
+import CloseRounded from '@mui/icons-material/CloseRounded'
 import CloudUploadOutlined from '@mui/icons-material/CloudUploadOutlined'
 import ContactsOutlined from '@mui/icons-material/ContactsOutlined'
 import GroupsOutlined from '@mui/icons-material/GroupsOutlined'
@@ -9,7 +10,10 @@ import InsertChartOutlined from '@mui/icons-material/InsertChartOutlined'
 import LinkRounded from '@mui/icons-material/LinkRounded'
 import LogoutRounded from '@mui/icons-material/LogoutRounded'
 import MenuRounded from '@mui/icons-material/MenuRounded'
+import MoreHorizRounded from '@mui/icons-material/MoreHorizRounded'
 import PhoneIphoneRounded from '@mui/icons-material/PhoneIphoneRounded'
+import BottomNavigation from '@mui/material/BottomNavigation'
+import BottomNavigationAction from '@mui/material/BottomNavigationAction'
 import Button from '@mui/material/Button'
 import Checkbox from '@mui/material/Checkbox'
 import Chip from '@mui/material/Chip'
@@ -90,6 +94,7 @@ import {
   MessageProvider,
   LoadError,
 } from './components/Messages'
+import { CreateFormSection, PHONE_LAYOUT_QUERY } from './components/PhoneLayout'
 import { Select } from './components/Select'
 import { IOSSettingsPage } from './features/ios/IOSAccess'
 import {
@@ -202,24 +207,26 @@ function SubscriptionsPage() {
 
   return (
     <Paper component="section" variant="outlined" className="panel">
-      <form className="create-form" onSubmit={create}>
-        <TextField
-          label="名称(可选)"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <TextField
-          label="订阅 URL"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-        />
-        <Button type="submit">添加订阅</Button>
-      </form>
+      <CreateFormSection label="添加订阅">
+        <form className="create-form" onSubmit={create}>
+          <TextField
+            label="名称(可选)"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <TextField
+            label="订阅 URL"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+          />
+          <Button type="submit">添加订阅</Button>
+        </form>
+      </CreateFormSection>
       {loadError && (
         <LoadError error={loadError} onRetry={() => void reload()} />
       )}
       <div className="table-scroll">
-        <Table className="mobile-cards">
+        <Table className="mobile-cards records-table">
           <TableHead>
             <TableRow>
               <TableCell>ID</TableCell>
@@ -232,8 +239,12 @@ function SubscriptionsPage() {
           <TableBody>
             {subs?.map((sub) => (
               <TableRow key={sub.id} className={sub.enabled ? '' : 'off'}>
-                <TableCell data-label="ID">{sub.id}</TableCell>
-                <TableCell data-label="名称">{sub.name || '-'}</TableCell>
+                <TableCell className="record-id" data-label="ID">
+                  {sub.id}
+                </TableCell>
+                <TableCell className="record-name" data-label="名称">
+                  {sub.name || '-'}
+                </TableCell>
                 <TableCell
                   data-label="URL"
                   className="url-cell"
@@ -399,24 +410,26 @@ function AnnouncementPage() {
 
   return (
     <Paper component="section" variant="outlined" className="panel">
-      <form className="create-form" onSubmit={create}>
-        <TextField
-          label="标题"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-        />
-        <TextField
-          label="内容(可选)"
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-        />
-        <Button type="submit">添加公告</Button>
-      </form>
+      <CreateFormSection label="添加公告">
+        <form className="create-form" onSubmit={create}>
+          <TextField
+            label="标题"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+          <TextField
+            label="内容(可选)"
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+          />
+          <Button type="submit">添加公告</Button>
+        </form>
+      </CreateFormSection>
       {loadError && (
         <LoadError error={loadError} onRetry={() => void reload()} />
       )}
       <div className="table-scroll">
-        <Table className="mobile-cards">
+        <Table className="mobile-cards records-table">
           <TableHead>
             <TableRow>
               <TableCell>ID</TableCell>
@@ -429,8 +442,12 @@ function AnnouncementPage() {
           <TableBody>
             {items?.map((item) => (
               <TableRow key={item.id} className={item.enabled ? '' : 'off'}>
-                <TableCell data-label="ID">{item.id}</TableCell>
-                <TableCell data-label="标题">{item.title}</TableCell>
+                <TableCell className="record-id" data-label="ID">
+                  {item.id}
+                </TableCell>
+                <TableCell className="record-name" data-label="标题">
+                  {item.title}
+                </TableCell>
                 <TableCell
                   data-label="内容"
                   className="url-cell announcement-content"
@@ -689,6 +706,29 @@ function GatewayHeroMedia() {
 }
 
 function GatewayPage() {
+  const phone = useMediaQuery(PHONE_LAYOUT_QUERY)
+  const renderPlatform = ({
+    key,
+    architecture,
+  }: (typeof INSTALLER_PLATFORMS)[number]) => {
+    const glyph = PLATFORM_GLYPHS[key]
+    return (
+      <li key={key}>
+        <SvgIcon viewBox={glyph.viewbox} aria-hidden="true">
+          {glyph.paths.map((path) => (
+            <path key={path} d={path} />
+          ))}
+        </SvgIcon>
+        <ListItemText primary={PLATFORM_LABELS[key]} secondary={architecture} />
+      </li>
+    )
+  }
+  const ios = (
+    <li key="ios">
+      <PhoneIphoneRounded />
+      <ListItemText primary="iOS" secondary="Clash Mi" />
+    </li>
+  )
   return (
     <main className="gateway-page">
       <header className="gateway-masthead">
@@ -722,28 +762,34 @@ function GatewayPage() {
       </Paper>
       <section className="gateway-systems" aria-labelledby="systems-title">
         <h2 id="systems-title">支持平台</h2>
-        <List disablePadding aria-labelledby="systems-title">
-          {INSTALLER_PLATFORMS.map(({ key, architecture }) => {
-            const glyph = PLATFORM_GLYPHS[key]
-            return (
-              <li key={key}>
-                <SvgIcon viewBox={glyph.viewbox} aria-hidden="true">
-                  {glyph.paths.map((path) => (
-                    <path key={path} d={path} />
-                  ))}
-                </SvgIcon>
-                <ListItemText
-                  primary={PLATFORM_LABELS[key]}
-                  secondary={architecture}
-                />
-              </li>
-            )
-          })}
-          <li>
-            <PhoneIphoneRounded />
-            <ListItemText primary="iOS" secondary="Clash Mi" />
-          </li>
-        </List>
+        {phone ? (
+          <>
+            <List
+              disablePadding
+              aria-label="手机平台"
+              className="gateway-phone-platforms"
+            >
+              {INSTALLER_PLATFORMS.filter(({ key }) => key === 'android').map(
+                renderPlatform,
+              )}
+              {ios}
+            </List>
+            <List
+              disablePadding
+              aria-label="电脑平台"
+              className="gateway-desktop-platforms"
+            >
+              {INSTALLER_PLATFORMS.filter(({ key }) => key !== 'android').map(
+                renderPlatform,
+              )}
+            </List>
+          </>
+        ) : (
+          <List disablePadding aria-labelledby="systems-title">
+            {INSTALLER_PLATFORMS.map(renderPlatform)}
+            {ios}
+          </List>
+        )}
       </section>
     </main>
   )
@@ -920,37 +966,39 @@ function UsersPanel() {
         {users && <Chip variant="outlined" label={`${users.length} 个账号`} />}
       </div>
       <Paper component="section" variant="outlined" className="panel">
-        <form className="create-form" onSubmit={create}>
-          <TextField
-            label="用户名"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-          />
-          <TextField
-            label="初始密码(至少 4 位)"
-            type="password"
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-          />
-          <Select
-            label="账号角色"
-            value={newRole}
-            onChange={(value) => setNewRole(value as 'user' | 'admin')}
-            disabled={busy}
-            options={[
-              { value: 'user', label: '员工' },
-              { value: 'admin', label: '管理员' },
-            ]}
-          />
-          <Button type="submit" disabled={busy}>
-            创建账号
-          </Button>
-        </form>
+        <CreateFormSection label="创建账号">
+          <form className="create-form" onSubmit={create}>
+            <TextField
+              label="用户名"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+            />
+            <TextField
+              label="初始密码(至少 4 位)"
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+            />
+            <Select
+              label="账号角色"
+              value={newRole}
+              onChange={(value) => setNewRole(value as 'user' | 'admin')}
+              disabled={busy}
+              options={[
+                { value: 'user', label: '员工' },
+                { value: 'admin', label: '管理员' },
+              ]}
+            />
+            <Button type="submit" disabled={busy}>
+              创建账号
+            </Button>
+          </form>
+        </CreateFormSection>
         {loadError && (
           <LoadError error={loadError} onRetry={() => void reload()} />
         )}
         <div className="table-scroll">
-          <Table className="mobile-cards">
+          <Table className="mobile-cards records-table">
             <TableHead>
               <TableRow>
                 <TableCell>ID</TableCell>
@@ -965,8 +1013,14 @@ function UsersPanel() {
             <TableBody>
               {users?.map((user) => (
                 <TableRow key={user.id}>
-                  <TableCell data-label="ID">{user.id}</TableCell>
-                  <TableCell data-label="姓名 / 账号" title={user.username}>
+                  <TableCell className="record-id" data-label="ID">
+                    {user.id}
+                  </TableCell>
+                  <TableCell
+                    className="record-name"
+                    data-label="姓名 / 账号"
+                    title={user.username}
+                  >
                     {user.display_name || user.username}
                   </TableCell>
                   <TableCell data-label="钉钉">
@@ -1221,8 +1275,15 @@ function RouterShell() {
   const [user, setUser] = useState<string>('')
   const [tab, setTab] = useState<Tab>('users')
 
+  const phone = useMediaQuery(PHONE_LAYOUT_QUERY)
   const compact = useMediaQuery('(max-width: 960px)')
   const [menuOpen, setMenuOpen] = useState(false)
+  const primaryTabs = ['users', 'subscription', 'release'] as const
+  const selectTab = (value: Tab) => {
+    setTab(value)
+    setMenuOpen(false)
+    window.scrollTo(0, 0)
+  }
   const title = TABS.find(([key]) => key === tab)![1]
 
   if (downloadMatch) {
@@ -1292,27 +1353,42 @@ function RouterShell() {
   return (
     <div className="shell">
       <Drawer
+        anchor={phone ? 'bottom' : 'left'}
         variant={compact ? 'temporary' : 'permanent'}
         open={!compact || menuOpen}
         onClose={() => setMenuOpen(false)}
-        slotProps={{ paper: { className: 'sidebar' } }}
+        slotProps={{
+          paper: { className: phone ? 'sidebar phone-menu' : 'sidebar' },
+        }}
       >
         <div className="sidebar-brand">
-          <img src={mark} alt="" /> VergeN
+          {phone ? (
+            <>
+              <span>更多管理</span>
+              <IconButton
+                aria-label="关闭导航"
+                onClick={() => setMenuOpen(false)}
+              >
+                <CloseRounded />
+              </IconButton>
+            </>
+          ) : (
+            <>
+              <img src={mark} alt="" /> VergeN
+            </>
+          )}
         </div>
         <List component="nav" aria-label="运维导航" className="sidebar-links">
-          {TABS.map(([key, label]) => {
+          {TABS.filter(
+            ([key]) => !phone || !primaryTabs.some((item) => item === key),
+          ).map(([key, label]) => {
             const Icon = tabIcons[key]
             return (
               <ListItemButton
                 key={key}
                 selected={tab === key}
                 aria-current={tab === key ? 'page' : undefined}
-                onClick={() => {
-                  setTab(key)
-                  setMenuOpen(false)
-                  window.scrollTo(0, 0)
-                }}
+                onClick={() => selectTab(key)}
               >
                 <ListItemIcon>
                   <Icon fontSize="small" />
@@ -1342,7 +1418,9 @@ function RouterShell() {
       </Drawer>
       <div className="workspace">
         <header className="workbar">
-          {compact ? (
+          {phone ? (
+            <img src={mark} alt="" className="phone-workbar-mark" />
+          ) : compact ? (
             <IconButton
               aria-label="打开运维导航"
               aria-expanded={menuOpen}
@@ -1370,6 +1448,43 @@ function RouterShell() {
           </MessageProvider>
         </main>
       </div>
+      {phone && (
+        <BottomNavigation
+          component="nav"
+          aria-label="快捷导航"
+          className="phone-navigation"
+          showLabels
+          value={
+            primaryTabs.some((key) => key === tab) && !menuOpen ? tab : 'more'
+          }
+          onChange={(_, value: Tab | 'more') => {
+            if (value === 'more') setMenuOpen(true)
+            else selectTab(value)
+          }}
+        >
+          {primaryTabs.map((key) => {
+            const Icon = tabIcons[key]
+            return (
+              <BottomNavigationAction
+                key={key}
+                value={key}
+                label={
+                  { users: '员工', subscription: '订阅', release: '发布' }[key]
+                }
+                icon={<Icon />}
+                aria-current={tab === key ? 'page' : undefined}
+              />
+            )
+          })}
+          <BottomNavigationAction
+            value="more"
+            label="更多"
+            icon={<MoreHorizRounded />}
+            aria-haspopup="dialog"
+            aria-expanded={menuOpen}
+          />
+        </BottomNavigation>
+      )}
     </div>
   )
 }

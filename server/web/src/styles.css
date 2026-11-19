@@ -1047,3 +1047,287 @@ label.check {
     font-size: 1.65rem;
   }
 }
+
+@media (max-width: 760px) {
+  .gateway-page,
+  .download-wrap,
+  .workspace-main {
+    padding-inline: max(16px, env(safe-area-inset-left))
+      max(16px, env(safe-area-inset-right));
+  }
+  .gateway-masthead {
+    min-height: 64px;
+    padding-top: env(safe-area-inset-top);
+  }
+  .gateway-hero.MuiPaper-root {
+    align-items: flex-end;
+    min-height: clamp(235px, 38vh, 330px);
+    padding: 24px 20px;
+  }
+  .gateway-intro {
+    width: 100%;
+  }
+  .gateway-intro .MuiButton-root {
+    width: 100%;
+    margin-top: 18px;
+    justify-content: space-between;
+  }
+  .gateway-systems .MuiList-root {
+    border: 0;
+    padding: 0;
+    gap: 8px;
+  }
+  .gateway-systems .gateway-phone-platforms {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .gateway-phone-platforms li {
+    padding: 12px;
+    gap: 10px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+  }
+  .gateway-systems .gateway-desktop-platforms {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-top: 16px;
+  }
+  .gateway-desktop-platforms li {
+    border: 0;
+    padding: 0;
+    gap: 6px;
+  }
+  .gateway-systems li:first-child {
+    padding-inline-start: 0;
+  }
+  .gateway-phone-platforms li:first-child {
+    padding-inline-start: 12px;
+  }
+  .gateway-page,
+  .download-wrap {
+    padding-bottom: max(24px, env(safe-area-inset-bottom));
+  }
+  .login-wrap {
+    padding-block: max(20px, env(safe-area-inset-top))
+      max(20px, env(safe-area-inset-bottom));
+  }
+  .download-hero {
+    margin-bottom: 16px;
+    padding: 16px 18px;
+  }
+  .download-hero h1 {
+    margin-top: 6px;
+  }
+  .download-phone-apps,
+  .desktop-installers {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+  }
+  .download-phone-apps {
+    margin: 18px 0 12px;
+  }
+  .download-phone-apps .platform-card,
+  .desktop-installers .platform-card {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    min-height: 60px;
+    padding: 12px;
+  }
+  .download-phone-apps .platform-card {
+    border-color: var(--accent);
+  }
+  .download-phone-apps svg,
+  .desktop-installers svg {
+    margin: 0;
+  }
+  .download-phone-apps .platform-card > .muted,
+  .desktop-installers .platform-card > .muted {
+    margin: 0 0 0 auto;
+  }
+  .download-phone-details.MuiAccordion-root {
+    border-top: 1px solid var(--line);
+    border-radius: 0;
+  }
+  .download-phone-details::before {
+    display: none;
+  }
+  .download-phone-details .MuiAccordionSummary-root {
+    padding-inline: 0;
+  }
+  .download-phone-details .MuiAccordionDetails-root {
+    padding: 0 0 12px;
+    margin: 0;
+  }
+
+  .workspace-main {
+    padding-top: 16px;
+    padding-bottom: calc(84px + env(safe-area-inset-bottom));
+  }
+  .workbar {
+    height: auto;
+    min-height: 48px;
+    padding-top: env(safe-area-inset-top);
+  }
+  .phone-workbar-mark {
+    width: 22px;
+    height: 22px;
+  }
+  .phone-navigation.MuiBottomNavigation-root {
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 1000;
+    height: calc(60px + env(safe-area-inset-bottom));
+    padding: 2px env(safe-area-inset-right) env(safe-area-inset-bottom)
+      env(safe-area-inset-left);
+    border-top: 1px solid var(--line);
+    background: var(--paper);
+  }
+  .phone-navigation .MuiBottomNavigationAction-root {
+    min-width: 0;
+    max-width: none;
+    gap: 2px;
+  }
+  .phone-navigation .Mui-selected {
+    font-weight: 700;
+  }
+  .phone-menu.MuiPaper-root {
+    width: 100%;
+    max-height: 85vh;
+    border-radius: 20px 20px 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+    background: var(--paper);
+  }
+  .phone-menu .sidebar-brand {
+    height: 60px;
+    justify-content: space-between;
+    font-size: 1.1rem;
+    letter-spacing: normal;
+  }
+  .phone-menu .sidebar-links {
+    padding: 12px 0;
+  }
+  .phone-menu .sidebar-foot {
+    margin-top: 0;
+  }
+  .phone-menu .MuiIconButton-root {
+    width: 44px;
+    height: 44px;
+  }
+  .phone-create.MuiAccordion-root {
+    margin: 0 0 16px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface);
+  }
+  .phone-create .MuiAccordionSummary-content {
+    align-items: center;
+    color: var(--brand-tone);
+  }
+  .phone-create .create-form {
+    margin: 0;
+  }
+  .mobile-cards td.actions {
+    display: block;
+  }
+  .mobile-cards td.actions::before {
+    display: none;
+  }
+  .records-table tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    padding-block: 12px;
+  }
+  .records-table tbody td {
+    grid-column: 1 / -1;
+  }
+  .records-table td.record-name {
+    display: block;
+    grid-column: 1;
+    grid-row: 1;
+    font-size: 1rem;
+    font-weight: 650;
+  }
+  .records-table td.record-id {
+    display: block;
+    grid-column: 2;
+    grid-row: 1;
+    width: auto;
+    padding-left: 8px;
+    color: var(--muted);
+    font-size: 0.8125rem;
+  }
+  .records-table td.record-name::before {
+    display: none;
+  }
+  .records-table td.record-id::before {
+    content: "#";
+  }
+  .release-page > [hidden] {
+    display: none;
+  }
+  .phone-release-sections .MuiToggleButton-root {
+    min-height: 44px;
+    font-weight: 600;
+  }
+  .package-progress,
+  .release-signature,
+  .release-ready {
+    overflow-wrap: anywhere;
+  }
+  .ios-pool-heading .row-form {
+    flex-wrap: wrap;
+  }
+  .ios-address-list {
+    display: grid;
+    gap: 10px;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .ios-address-card.MuiPaper-root {
+    display: grid;
+    gap: 10px;
+    min-width: 0;
+    padding: 14px;
+    border-color: var(--line);
+  }
+  .ios-card-heading,
+  .ios-card-owner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .ios-card-owner {
+    color: var(--muted);
+    font-size: 0.8125rem;
+    overflow-wrap: anywhere;
+  }
+  .ios-address-card code {
+    color: var(--brand-tone);
+  }
+  .ios-address-card .action-buttons {
+    border-top: 1px solid var(--line);
+    padding-top: 10px;
+  }
+  .ios-address-card .MuiButton-root {
+    flex: 1;
+  }
+  .MuiDialog-container .MuiDialog-paper {
+    width: calc(100% - 24px);
+    max-width: 440px;
+    margin: 12px;
+  }
+  .MuiDialog-container .MuiDialogActions-root {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+}
+@media (max-width: 760px) and (prefers-color-scheme: dark) {
+  .phone-workbar-mark {
+    filter: invert(1);
+  }
+}
