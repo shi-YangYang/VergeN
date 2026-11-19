@@ -23,7 +23,6 @@ const (
 )
 
 type Server struct {
-	iosPool    func(context.Context, iosPoolRequest) (iosPoolReply, error)
 	store      *store.Store
 	secret     []byte
 	limiter    *auth.Limiter
@@ -47,7 +46,6 @@ func NewServer(s *store.Store, downloadsDir string) (*Server, error) {
 	}
 	return &Server{
 		store:            s,
-		iosPool:          runIOSPool,
 		secret:           secret,
 		downloads:        downloadsDir,
 		updaterPublicKey: desktopUpdaterPublicKey,

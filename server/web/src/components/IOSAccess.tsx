@@ -1,4 +1,26 @@
-import { useEffect, useRef, useState } from 'react'
+import CloseRounded from '@mui/icons-material/CloseRounded'
+import CloudUploadOutlined from '@mui/icons-material/CloudUploadOutlined'
+import RefreshRounded from '@mui/icons-material/RefreshRounded'
+import SearchRounded from '@mui/icons-material/SearchRounded'
+import Button from '@mui/material/Button'
+import CardActionArea from '@mui/material/CardActionArea'
+import Chip from '@mui/material/Chip'
+import Dialog from '@mui/material/Dialog'
+import DialogActions from '@mui/material/DialogActions'
+import DialogContent from '@mui/material/DialogContent'
+import DialogTitle from '@mui/material/DialogTitle'
+import IconButton from '@mui/material/IconButton'
+import InputAdornment from '@mui/material/InputAdornment'
+import OutlinedInput from '@mui/material/OutlinedInput'
+import Paper from '@mui/material/Paper'
+import Table from '@mui/material/Table'
+import TableBody from '@mui/material/TableBody'
+import TableCell from '@mui/material/TableCell'
+import TableHead from '@mui/material/TableHead'
+import TableRow from '@mui/material/TableRow'
+import ToggleButton from '@mui/material/ToggleButton'
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
   claimIOSSubscription,
@@ -9,6 +31,9 @@ import {
   type IOSSubscription,
 } from '../api'
 import { PLATFORM_GLYPHS } from '../assets/platform-glyphs'
+
+import { useMessage } from './message-context'
+import { MessageHelp } from './Messages'
 
 const clashMiStoreURL = 'https://apps.apple.com/us/app/clash-mi/id6744321968'
 
@@ -28,74 +53,77 @@ function IOSAddressDialog({
   row: IOSSubscription
   onClose: () => void
 }) {
-  const dialogRef = useRef<HTMLDialogElement>(null)
   const fieldRef = useRef<HTMLInputElement>(null)
   const [url, setUrl] = useState('')
-  const [feedback, setFeedback] = useState('')
+  const message = useMessage()
+  const [loading, setLoading] = useState(true)
   useEffect(() => {
-    dialogRef.current?.showModal()
     let active = true
     getIOSSubscriptionAddress(row.id)
       .then((result) => {
-        if (active) setUrl(result.url)
+        if (active) {
+          setUrl(result.url)
+          setLoading(false)
+        }
       })
       .catch((err) => {
-        if (active) setFeedback(err.message)
+        if (active) {
+          setLoading(false)
+          message.error(err.message)
+        }
       })
     return () => {
       active = false
     }
-  }, [row.id])
+  }, [row.id, message])
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(url)
-      setFeedback('已复制订阅地址')
+      message.success('已复制订阅地址')
     } catch {
       fieldRef.current?.focus()
       fieldRef.current?.select()
-      setFeedback('已选中地址，可手动复制')
+      message.info('已选中地址，可手动复制')
     }
   }
   return (
-    <dialog
-      ref={dialogRef}
-      className="ios-dialog ios-address-dialog"
+    <Dialog
+      open
+      maxWidth="sm"
+      fullWidth
       onClose={onClose}
       aria-labelledby="ios-address-title"
     >
-      <div className="release-section-heading">
-        <h2 id="ios-address-title">订阅地址 #{row.id}</h2>
-        <button className="ghost" onClick={() => dialogRef.current?.close()}>
+      <DialogTitle id="ios-address-title">订阅地址 #{row.id}</DialogTitle>
+      <DialogContent className="ios-address-dialog">
+        <p>
+          {row.status === 'available'
+            ? '待领取'
+            : row.status === 'revoked'
+              ? '已撤销'
+              : `领取人 · ${row.employee}`}
+        </p>
+        <OutlinedInput
+          inputRef={fieldRef}
+          slotProps={{ input: { 'aria-label': '完整订阅地址' } }}
+          readOnly
+          value={url}
+          onFocus={(e) => e.currentTarget.select()}
+          placeholder={loading ? '读取中…' : undefined}
+        />
+      </DialogContent>
+      <DialogActions>
+        <Button variant="outlined" onClick={onClose}>
           关闭
-        </button>
-      </div>
-      <p>
-        {row.status === 'available'
-          ? '员工领取后，此地址生效。'
-          : row.status === 'revoked'
-            ? '此地址已撤销。'
-            : `领取人 · ${row.employee}`}
-      </p>
-      <input
-        ref={fieldRef}
-        aria-label="完整订阅地址"
-        readOnly
-        value={url}
-        onFocus={(e) => e.currentTarget.select()}
-        placeholder={feedback ? undefined : '读取中…'}
-      />
-      <div className="row-form">
-        <button
+        </Button>
+        <Button
           disabled={!url || row.status === 'revoked'}
           onClick={() => void copy()}
         >
           复制地址
-        </button>
-        <span className="muted" role="status">
-          {feedback}
-        </span>
-      </div>
-    </dialog>
+        </Button>
+      </DialogActions>
+    </Dialog>
   )
 }
 
@@ -106,25 +134,20 @@ function IOSImportDialog({
   onClose: () => void
   onImported: (added: number, skipped: number) => void
 }) {
-  const dialogRef = useRef<HTMLDialogElement>(null)
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  useEffect(() => {
-    dialogRef.current?.showModal()
-  }, [])
+  const message = useMessage()
 
   const readFile = async (file: File) => {
-    setError('')
     if (file.size > 256 * 1024 || !file.name.toLowerCase().endsWith('.txt')) {
-      setError('请选择 256 KiB 以内的 UTF-8 文本文件（.txt）')
+      message.error('请选择 256 KiB 以内的 UTF-8 文本文件（.txt）')
       return
     }
     setBusy(true)
     try {
       setText(await file.text())
     } catch {
-      setError('文件读取失败，请重新选择')
+      message.error('文件读取失败，请重新选择')
     } finally {
       setBusy(false)
     }
@@ -132,24 +155,24 @@ function IOSImportDialog({
 
   const submit = async () => {
     setBusy(true)
-    setError('')
+
     try {
       const { added, skipped } = await importIOSSubscriptions(text)
       onImported(added, skipped)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '导入失败，请重试')
+      message.error(err instanceof Error ? err.message : '导入失败，请重试')
       setBusy(false)
     }
   }
 
   return (
-    <dialog
-      className="ios-dialog ios-import-dialog"
-      ref={dialogRef}
+    <Dialog
+      open
+      fullWidth
+      maxWidth="sm"
       aria-labelledby="ios-import-title"
-      onClose={onClose}
-      onCancel={(e) => {
-        if (busy) e.preventDefault()
+      onClose={() => {
+        if (!busy) onClose()
       }}
     >
       <form
@@ -159,59 +182,65 @@ function IOSImportDialog({
           void submit()
         }}
       >
-        <h2 id="ios-import-title">导入订阅地址</h2>
-        <label>
-          订阅地址
-          <textarea
-            autoFocus
-            rows={6}
-            spellCheck={false}
-            autoComplete="off"
-            value={text}
+        <DialogTitle id="ios-import-title">
+          导入订阅地址{' '}
+          <MessageHelp label="导入格式说明">
+            请导入家宽机上已启用的链接，每行一条，最多 1000
+            条。重复地址会跳过。支持 256 KiB 以内的 UTF-8 .txt 文件。
+          </MessageHelp>
+        </DialogTitle>
+        <DialogContent className="ios-import-fields">
+          <label>
+            订阅地址
+            <OutlinedInput
+              multiline
+              autoFocus
+              rows={6}
+              spellCheck={false}
+              autoComplete="off"
+              value={text}
+              disabled={busy}
+              placeholder="粘贴家宽订阅地址，每行一条"
+              onChange={(e) => setText(e.target.value)}
+            />
+          </label>
+          <Button
+            variant="outlined"
+            component="label"
+            role={undefined}
+            className="package-upload"
+            startIcon={<CloudUploadOutlined />}
             disabled={busy}
-            placeholder="粘贴家宽订阅地址，每行一条"
-            onChange={(e) => {
-              setText(e.target.value)
-              setError('')
-            }}
-          />
-        </label>
-        <label>
-          从 .txt 文件读取
-          <input
-            type="file"
-            accept=".txt,text/plain"
-            disabled={busy}
-            onChange={(e) => {
-              const file = e.currentTarget.files?.[0]
-              e.currentTarget.value = ''
-              if (file) void readFile(file)
-            }}
-          />
-        </label>
-        <span className="muted">
-          每次最多 1000 条。新地址进入「待领取」，重复地址会跳过。
-        </span>
-        {error && (
-          <span className="error" role="alert">
-            {error}
-          </span>
-        )}
-        <div className="ios-import-actions">
-          <button
+          >
+            从 .txt 文件读取
+            <input
+              type="file"
+              tabIndex={-1}
+              accept=".txt,text/plain"
+              disabled={busy}
+              onChange={(e) => {
+                const file = e.currentTarget.files?.[0]
+                e.currentTarget.value = ''
+                if (file) void readFile(file)
+              }}
+            />
+          </Button>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            variant="outlined"
             type="button"
-            className="ghost"
             disabled={busy}
-            onClick={() => dialogRef.current?.close()}
+            onClick={onClose}
           >
             取消
-          </button>
-          <button type="submit" disabled={busy || !text.trim()}>
+          </Button>
+          <Button type="submit" disabled={busy || !text.trim()}>
             {busy ? '处理中…' : '确认导入'}
-          </button>
-        </div>
+          </Button>
+        </DialogActions>
       </form>
-    </dialog>
+    </Dialog>
   )
 }
 
@@ -222,26 +251,30 @@ export function IOSSettingsPage() {
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<IOSSubscription | null>(null)
   const [busy, setBusy] = useState(true)
-  const [message, setMessage] = useState('')
-  const [error, setError] = useState('')
+  const message = useMessage()
 
-  const run = async (action?: () => Promise<string>) => {
-    setBusy(true)
-    setError('')
-    setMessage('')
-    try {
-      if (action) setMessage(await action())
-      const response = await listIOSSubscriptions()
-      setItems(response.items ?? [])
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setBusy(false)
-    }
-  }
+  const [loadFailed, setLoadFailed] = useState(false)
+  const run = useCallback(
+    async (action?: () => Promise<string>) => {
+      setBusy(true)
+
+      try {
+        if (action) message.success(await action())
+        const response = await listIOSSubscriptions()
+        setItems(response.items ?? [])
+        setLoadFailed(false)
+      } catch (err) {
+        setLoadFailed(true)
+        message.error(err instanceof Error ? err.message : String(err))
+      } finally {
+        setBusy(false)
+      }
+    },
+    [message],
+  )
   useEffect(() => {
     void run()
-  }, [])
+  }, [run])
   const needle = query.trim().toLowerCase()
   const matches = items.filter(
     (row) =>
@@ -269,7 +302,7 @@ export function IOSSettingsPage() {
   const revoke = (row: IOSSubscription) => {
     if (
       !window.confirm(
-        `撤销订阅 #${row.id}${row.employee ? '（' + row.employee + '）' : ''}？链接将失效，已领取的员工无法再次领取。手机已缓存的节点仍可使用。`,
+        `撤销订阅 #${row.id}${row.employee ? '（' + row.employee + '）' : ''}？面板将停止发放此地址，已领取的员工也无法再领取。要停用原链接，请在家宽机上操作。`,
       )
     )
       return
@@ -280,22 +313,44 @@ export function IOSSettingsPage() {
   }
 
   return (
-    <section className="panel ios-pool" aria-label="iOS 订阅地址管理">
+    <Paper
+      variant="outlined"
+      component="section"
+      className="panel ios-pool"
+      aria-label="iOS 订阅地址管理"
+    >
       <div className="ios-pool-heading">
-        <h2>iOS 订阅地址管理</h2>
+        <h1>iOS 订阅地址管理</h1>
         <div className="row-form">
-          <button className="ghost" disabled={busy} onClick={() => void run()}>
+          <Button
+            startIcon={<RefreshRounded />}
+            variant="outlined"
+            disabled={busy}
+            onClick={() => void run()}
+          >
             刷新
-          </button>
-          <button disabled={busy} onClick={() => setImporting(true)}>
+          </Button>
+          <Button
+            startIcon={<CloudUploadOutlined />}
+            disabled={busy}
+            onClick={() => setImporting(true)}
+          >
             导入订阅地址
-          </button>
+          </Button>
         </div>
       </div>
       <div className="ios-pool-toolbar">
-        <div
+        <ToggleButtonGroup
+          size="small"
+          exclusive
+          value={filter}
+          onChange={(_, next: typeof filter | null) => {
+            if (next) {
+              setFilter(next)
+              setPage(1)
+            }
+          }}
           className="ios-pool-filters"
-          role="group"
           aria-label="按订阅状态筛选"
         >
           {filters.map((status) => {
@@ -304,23 +359,21 @@ export function IOSSettingsPage() {
                 ? items.length
                 : items.filter((item) => item.status === status).length
             return (
-              <button
-                key={status}
-                aria-pressed={filter === status}
-                onClick={() => {
-                  setFilter(status)
-                  setPage(1)
-                }}
-              >
+              <ToggleButton key={status} value={status}>
                 {status === 'all' ? '全部' : statusLabels[status]}{' '}
                 <span>{count}</span>
-              </button>
+              </ToggleButton>
             )
           })}
-        </div>
-        <input
+        </ToggleButtonGroup>
+        <OutlinedInput
+          startAdornment={
+            <InputAdornment position="start">
+              <SearchRounded fontSize="small" />
+            </InputAdornment>
+          }
           type="search"
-          aria-label="搜索订阅"
+          slotProps={{ input: { 'aria-label': '搜索订阅' } }}
           placeholder="搜索员工、编号或地址尾号"
           value={query}
           onChange={(e) => {
@@ -329,42 +382,46 @@ export function IOSSettingsPage() {
           }}
         />
       </div>
-      {message && <p role="status">{message}</p>}
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
       <div
         className="table-scroll ios-pool-scroll"
         role="region"
         aria-label="订阅地址表"
         tabIndex={0}
       >
-        <table aria-label="iOS 订阅地址" aria-busy={busy}>
-          <thead>
-            <tr>
+        <Table aria-label="iOS 订阅地址" aria-busy={busy}>
+          <TableHead>
+            <TableRow>
               {['编号', '订阅地址', '状态', '领取员工', '领取时间', '操作'].map(
                 (title) => (
-                  <th scope="col" key={title}>
+                  <TableCell scope="col" key={title}>
                     {title}
-                  </th>
+                  </TableCell>
                 ),
               )}
-            </tr>
-          </thead>
-          <tbody>
+            </TableRow>
+          </TableHead>
+          <TableBody>
             {visible.map((row) => (
-              <tr key={row.id}>
-                <td>#{row.id}</td>
-                <td className="ios-address-preview">{row.address_preview}</td>
-                <td>
-                  <span className={'ios-state ' + row.status}>
-                    {statusLabels[row.status]}
-                  </span>
-                </td>
-                <td>{row.employee || '—'}</td>
-                <td>
+              <TableRow key={row.id}>
+                <TableCell>#{row.id}</TableCell>
+                <TableCell className="ios-address-preview">
+                  {row.address_preview}
+                </TableCell>
+                <TableCell>
+                  <Chip
+                    label={statusLabels[row.status]}
+                    variant="outlined"
+                    color={
+                      row.status === 'assigned'
+                        ? 'success'
+                        : row.status === 'available'
+                          ? 'primary'
+                          : 'default'
+                    }
+                  />
+                </TableCell>
+                <TableCell>{row.employee || '—'}</TableCell>
+                <TableCell>
                   {row.assigned_at
                     ? new Date(row.assigned_at * 1000).toLocaleString('zh-CN', {
                         year: 'numeric',
@@ -374,40 +431,41 @@ export function IOSSettingsPage() {
                         minute: '2-digit',
                       })
                     : '—'}
-                </td>
-                <td>
+                </TableCell>
+                <TableCell>
                   <div className="action-buttons">
-                    <button className="ghost" onClick={() => setSelected(row)}>
+                    <Button variant="outlined" onClick={() => setSelected(row)}>
                       查看地址
-                    </button>
+                    </Button>
                     {row.status !== 'revoked' && (
-                      <button
-                        className="ghost ios-revoke"
+                      <Button
+                        variant="outlined"
+                        color="error"
                         disabled={busy}
                         onClick={() => revoke(row)}
                       >
                         撤销
-                      </button>
+                      </Button>
                     )}
                   </div>
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ))}
             {visible.length === 0 && (
-              <tr>
-                <td colSpan={6} className="ios-pool-empty">
+              <TableRow>
+                <TableCell colSpan={6} className="ios-pool-empty">
                   {busy
                     ? '正在读取订阅地址…'
-                    : error
+                    : loadFailed
                       ? '订阅地址读取失败'
                       : items.length === 0
-                        ? '暂无订阅地址，可在上方导入。'
+                        ? '暂无订阅地址'
                         : '没有匹配的订阅地址'}
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             )}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
       {matches.length > 0 && (
         <footer className="ios-pool-pager">
@@ -415,23 +473,23 @@ export function IOSSettingsPage() {
             第 {start + 1}–{start + visible.length} 条，共 {matches.length} 条
           </span>
           <div className="action-buttons">
-            <button
-              className="ghost"
+            <Button
+              variant="outlined"
               disabled={current <= 1}
               onClick={() => setPage(current - 1)}
             >
               上一页
-            </button>
+            </Button>
             <span>
               {current} / {pages}
             </span>
-            <button
-              className="ghost"
+            <Button
+              variant="outlined"
               disabled={current >= pages}
               onClick={() => setPage(current + 1)}
             >
               下一页
-            </button>
+            </Button>
           </div>
         </footer>
       )}
@@ -444,23 +502,23 @@ export function IOSSettingsPage() {
       {selected && (
         <IOSAddressDialog row={selected} onClose={() => setSelected(null)} />
       )}
-    </section>
+    </Paper>
   )
 }
 
 export function IOSDownloadCard() {
-  const dialogRef = useRef<HTMLDialogElement>(null)
+  const [open, setOpen] = useState(false)
   const manualCopyRef = useRef<HTMLInputElement>(null)
-  const [status, setStatus] = useState<'idle' | 'copied' | 'manual'>('idle')
+  const [manualCopy, setManualCopy] = useState(false)
   const apple = PLATFORM_GLYPHS.macos
 
   const [url, setUrl] = useState('')
-  const [error, setError] = useState('')
+  const message = useMessage()
   const [busy, setBusy] = useState(false)
   const copy = async () => {
     setBusy(true)
-    setStatus('idle')
-    setError('')
+    setManualCopy(false)
+
     const claim = claimIOSSubscription()
     try {
       let copied: Promise<boolean> | undefined
@@ -486,32 +544,34 @@ export function IOSDownloadCard() {
               () => true,
               () => false,
             )
-      )
-        setStatus('copied')
-      else setStatus('manual')
+      ) {
+        message.success('订阅地址已复制')
+      } else {
+        setManualCopy(true)
+        message.info('请长按已选中的地址，选择「复制」。')
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '领取失败，请重试')
+      message.error(err instanceof Error ? err.message : '领取失败，请重试')
     } finally {
       setBusy(false)
     }
   }
   useEffect(() => {
-    if (status === 'manual') {
+    if (manualCopy) {
       manualCopyRef.current?.focus()
       manualCopyRef.current?.select()
     }
-  }, [status])
+  }, [manualCopy])
 
   return (
     <>
-      <button
+      <CardActionArea
         type="button"
         className="platform-card ios-card"
         aria-haspopup="dialog"
         onClick={() => {
-          setError('')
-          setStatus('idle')
-          dialogRef.current?.showModal()
+          setManualCopy(false)
+          setOpen(true)
         }}
       >
         <svg viewBox={apple.viewbox} width="34" height="34" aria-hidden="true">
@@ -519,52 +579,52 @@ export function IOSDownloadCard() {
         </svg>
         <span>iOS</span>
         <small className="muted">使用 Clash Mi</small>
-      </button>
-      <dialog
-        ref={dialogRef}
-        className="ios-dialog"
+      </CardActionArea>
+      <Dialog
+        open={open}
+        onClose={() => setOpen(false)}
+        maxWidth="xs"
+        fullWidth
         aria-labelledby="ios-dialog-title"
       >
-        <div className="release-section-heading">
-          <h2 id="ios-dialog-title">在 iOS 上使用 Clash Mi</h2>
-          <button
-            type="button"
-            className="ghost"
-            aria-label="关闭弹窗"
-            onClick={() => dialogRef.current?.close()}
-          >
-            关闭
-          </button>
-        </div>
-        <p>安装 Clash Mi 后，复制你的专属订阅地址并在应用中导入。</p>
-        <div className="ios-dialog-actions">
-          <a href={clashMiStoreURL} target="_blank" rel="noreferrer">
-            下载 Clash Mi
-          </a>
-          <button type="button" disabled={busy} onClick={() => void copy()}>
-            {busy ? '领取中…' : '复制订阅地址'}
-          </button>
-        </div>
-        {error && (
-          <p role="alert" className="error">
-            {error}
-          </p>
-        )}
-        <div role="status">
-          {status === 'copied' && <p>订阅地址已复制</p>}
-          {status === 'manual' && (
+        <DialogTitle id="ios-dialog-title" className="dialog-heading">
+          <span>
+            在 iOS 上使用 Clash Mi{' '}
+            <MessageHelp label="iOS 订阅使用说明">
+              安装 Clash Mi 后，复制你的专属订阅地址并在应用中导入。
+            </MessageHelp>
+          </span>
+          <IconButton aria-label="关闭弹窗" onClick={() => setOpen(false)}>
+            <CloseRounded />
+          </IconButton>
+        </DialogTitle>
+        {manualCopy && (
+          <DialogContent>
             <label className="ios-manual-copy">
-              请长按地址，选择「复制」
-              <input
-                ref={manualCopyRef}
+              专属订阅地址
+              <OutlinedInput
+                inputRef={manualCopyRef}
                 readOnly
                 value={url}
                 onFocus={(event) => event.currentTarget.select()}
               />
             </label>
-          )}
-        </div>
-      </dialog>
+          </DialogContent>
+        )}
+        <DialogActions className="ios-dialog-actions">
+          <Button
+            variant="outlined"
+            href={clashMiStoreURL}
+            target="_blank"
+            rel="noreferrer"
+          >
+            下载 Clash Mi
+          </Button>
+          <Button type="button" disabled={busy} onClick={() => void copy()}>
+            {busy ? '领取中…' : '复制订阅地址'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   )
 }

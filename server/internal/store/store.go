@@ -74,6 +74,15 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 	active    INTEGER NOT NULL DEFAULT 0,
 	created_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS ios_subscriptions (
+	id          INTEGER PRIMARY KEY,
+	origin      TEXT NOT NULL,
+	token       TEXT NOT NULL UNIQUE,
+	status      TEXT NOT NULL DEFAULT 'available' CHECK(status IN ('available','assigned','revoked')),
+	owner_hash  TEXT UNIQUE,
+	employee    TEXT NOT NULL DEFAULT '',
+	assigned_at INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS releases (
 	id        INTEGER PRIMARY KEY AUTOINCREMENT,
 	version   TEXT NOT NULL,

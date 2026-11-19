@@ -86,9 +86,11 @@ Windows 打包需要 `WINDOWS_CERTIFICATE_BASE64`(带私钥 PFX 文件的 Base64
 
 草稿及附件仅供拥有仓库写入权限的维护者访问;保持草稿状态,不要点击 Publish release。公开仓库的构建日志和输入版本号仍可能公开。员工通过公司钉钉登录 `/download` 后即可下载。运维面板「钉钉接入」中须配置 AppKey、AppSecret 和企业 CorpId，复用客户端的钉钉回调地址。
 
-运维面板「iOS 设置 → 导入订阅地址」支持粘贴一条或多条链接，也可以选择本机的 UTF-8 `.txt` 文件，每行一条完整地址。地址格式为 `<家宽节点 HTTPS 来源>/sub/<64 位小写十六进制密钥>/clash.yaml`。新地址进入待领取列表，重复地址会跳过；若某行无效，改正后再导入整批。员工首次在 iOS 下载弹窗点击复制时领取，同一钉钉身份重复领取返回原地址。撤销后该地址返回 404，该身份无法自动领取新地址。所有地址订阅同一份家宽配置，手机已缓存的节点仍可使用。
+运维面板「iOS 设置 → 导入订阅地址」支持粘贴链接或选择 UTF-8 `.txt` 文件，每行一条，最多 1000 条。先在家宽机启用个人链接，格式为 `https://主机[:端口]/sub/<64 位小写十六进制密钥>/clash.yaml`。列表、领取人、领取时间和撤销记录保存在运维服务的 SQLite 数据库（默认 `vergen.db`）。同一员工再次复制会拿到原地址。
 
-家宽机的 Nginx 在现有订阅站点引入 `server/ops/ios-pool/nginx.conf`。受限 SSH 命令 `server/ops/ios-pool/manage.py` 管理 `/var/lib/vergen-ios-pool` 下的 available、assigned、revoked 目录；origin 文件填写该站点的 HTTPS 来源（含端口）。运维服务通过 `/etc/vergen/ios-ssh.conf` 中的 vergen-ios 主机连接，使用限定此命令的 SSH 密钥及固定的 known_hosts。
+面板撤销后，该地址停止发放，已领取的钉钉账号无法再领取。要使已复制的链接失效，请在家宽机停用对应密钥。使用仓库旧版 Nginx 配置时，只有 `/var/lib/vergen-ios-pool/assigned/` 中的密钥能下载订阅。
+
+如旧地址池已有领取或撤销记录，先启动新版运维服务以初始化数据库，再从旧地址池目录的离线副本迁移历史，最后从面板导入已启用的待领取链接。迁移命令为 `python3 server/ops/ios-pool/migrate.py <旧地址池目录副本> <vergen.db 路径>`，目标数据库的 iOS 地址表须为空。
 
 ## 本地构建与安装包管理
 
