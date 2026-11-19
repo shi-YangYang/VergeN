@@ -45,7 +45,7 @@ VergeN 是基于 [clash-verge-rev](https://github.com/clash-verge-rev/clash-verg
 - 订阅管理:增删改、启停;客户端通过心跳拉取
 - 公告管理:逐用户认领、可撤回
 - 版本发布:多版本管理(Windows / macOS / Linux / Android),客户端弹窗提示与一键更新
-- 公开下载页与登录/下载中转页
+- 公司钉钉登录后的员工下载页
 - 健康检查 `/healthz`,在线人数与版本分布看板
 
 ## 仓库结构
@@ -55,6 +55,11 @@ VergeN 是基于 [clash-verge-rev](https://github.com/clash-verge-rev/clash-verg
 - `android/` — Android 客户端(CMFA fork,Kotlin;mihomo 内核以 submodule 引入)
 - `server/` — 运维服务(Go)与面板前端(`server/web`,React,构建产物内嵌)
 - `crates/` — 客户端附属 Rust 组件(内核管理、国际化等)
+- `config/env/` — 桌面开发环境和本地打包配置
+- `scripts/` — 开发、构建和发布工具；`tests/tooling/` 存放工具测试
+- `docs/` — 贡献指南、翻译指南和隐私政策
+
+完整工程入口和测试位置见[技术栈与目录](./constitution/tech-stack.md)。
 
 ## Release(CD)
 
@@ -84,7 +89,13 @@ Windows 打包需要 `WINDOWS_CERTIFICATE_BASE64`(带私钥 PFX 文件的 Base64
 
 构建产物按系统、架构和用途使用中文命名,例如 `VergeN_0.1.1_苹果电脑_ARM64_安装包.dmg` 和 `VergeN_0.1.1_苹果电脑_ARM64_升级包.app.tar.gz`。Windows 和 Linux 统一标为「安装包」,Android 标为「安卓」。勾选 `signed_updates` 后,Windows 和 Linux 在线更新复用安装包并生成配套 `.sig`,macOS 另生成 `.app.tar.gz` 升级包及其 `.sig`;未勾选时只输出安装包。签名文件始终为对应包名加 `.sig`,文件内容保持不变。GitHub 会改写中文附件名,因此草稿列表使用中文显示名,实际下载文件名使用英文;本地构建产物和运维端均支持中文文件名。不额外生成 ZIP。
 
-草稿及附件仅供拥有仓库写入权限的维护者访问;保持草稿状态,不要点击 Publish release。公开仓库的构建日志和输入版本号仍可能公开。运维下载页 `/download` 仍是公开页面,上传到该页面即对外提供下载。
+草稿及附件仅供拥有仓库写入权限的维护者访问;保持草稿状态,不要点击 Publish release。公开仓库的构建日志和输入版本号仍可能公开。员工通过公司钉钉登录 `/download` 后即可下载。运维面板「钉钉接入」中须配置 AppKey、AppSecret 和企业 CorpId，复用客户端的钉钉回调地址。
+
+运维面板「iOS 设置 → 导入订阅地址」支持粘贴链接或选择 UTF-8 `.txt` 文件，每行一条，最多 1000 条。先在家宽机启用个人链接，格式为 `https://主机[:端口]/sub/<64 位小写十六进制密钥>/clash.yaml`。列表、领取人、领取时间和撤销记录保存在运维服务的 SQLite 数据库（默认 `vergen.db`）。同一员工再次复制会拿到原地址。
+
+面板撤销后，该地址停止发放，已领取的钉钉账号无法再领取。要使已复制的链接失效，请在家宽机停用对应密钥。使用仓库旧版 Nginx 配置时，只有 `/var/lib/vergen-ios-pool/assigned/` 中的密钥能下载订阅。
+
+如旧地址池已有领取或撤销记录，先启动新版运维服务以初始化数据库，再从旧地址池目录的离线副本迁移历史，最后从面板导入已启用的待领取链接。迁移命令为 `python3 server/ops/ios-pool/migrate.py <旧地址池目录副本> <vergen.db 路径>`，目标数据库的 iOS 地址表须为空。
 
 ## 本地构建与安装包管理
 
@@ -98,7 +109,9 @@ pnpm package:android 0.1.1 9
 
 `release-version` 会修改仓库中的客户端版本文件。桌面命令构建当前系统和架构的安装包:macOS 上生成 DMG,Windows 上生成 EXE,Linux 上仅生成 DEB;Windows x64 和 Linux x64 安装包应在相应环境构建。Android 命令仅生成 arm64 APK,最后的 `9` 是版本代码示例,正式发布必须使用高于已发布版本的代码。
 
-产物统一放在 `release-local/<版本>/desktop/` 和 `release-local/<版本>/android/`。本地构建配置放在不提交的 `.env.build.local`,用于指定服务端地址、Java 和 Android SDK 路径。构建沿用已有 Android 签名配置,不要更换已发布应用的签名密钥或包名。需要桌面客户端内更新时,设置 `VERGEN_BUILD_UPDATER=true` 和上述 Tauri 签名环境变量,再运行 `pnpm package:desktop`。
+产物统一放在 `release-local/<版本>/desktop/` 和 `release-local/<版本>/android/`。本地构建配置放在不提交的 `config/env/.env.build.local`,用于指定服务端地址、Java 和 Android SDK 路径。构建沿用已有 Android 签名配置,不要更换已发布应用的签名密钥或包名。需要桌面客户端内更新时,设置 `VERGEN_BUILD_UPDATER=true` 和上述 Tauri 签名环境变量,再运行 `pnpm package:desktop`。
+
+旧工作副本升级后，把自己创建的 Vite 环境文件（例如 `.env.local`、`.env.production`）和 `.env.build.local` 从仓库根移入 `config/env/`，保留原文件名。如果目标已有同名文件，先对照合并。本机配置和签名凭证应保留在 Git 之外。
 
 在 Windows 本地签名打包时,先将 PFX 导入当前用户的个人证书存储,再设置 `WINDOWS_CERTIFICATE_THUMBPRINT` 为该证书的 SHA1 指纹;文件签名使用 SHA256。PFX 和密码应保存在仓库外,不要提交或作为发布附件上传。
 
@@ -109,13 +122,13 @@ pnpm package:android 0.1.1 9
 3. 如需桌面客户端内更新,勾选在线更新,选择各平台更新文件及同名 `.sig`;签名文件只需选择,无需填写链接或 JSON。未配置的平台使用下载安装,Android 目前仅支持下载安装。
 4. 点击「发布版本」,版本说明、下载链接和在线更新配置一起生效。客户端发现更高版本后提示更新,用户点击后下载、验证签名并安装。
 
-发布记录集中显示在下方,公共 `/download` 页按版本展示。上传本身只准备文件,不会创建版本或向客户端推送更新;未关联版本的安装包仍可在下载页折叠区域找到,文件链接也公开可访问。文件管理收在折叠区域,已被版本引用的文件不能删除;先删除相关版本再清理文件。删除最新版本会恢复上一条发布记录的在线更新配置。同名文件不覆盖,请使用包含版本号的文件名。在线更新的正式服务地址应为 HTTPS。
+发布记录集中显示在下方,员工下载页 `/download`按版本展示。上传本身只准备文件,不会创建版本或向客户端推送更新;未关联版本的安装包仍可在下载页折叠区域找到,本站安装包链接也需授权。文件管理收在折叠区域,已被版本引用的文件不能删除;先删除相关版本再清理文件。删除最新版本会恢复上一条发布记录的在线更新配置。同名文件不覆盖,请使用包含版本号的文件名。在线更新的正式服务地址应为 HTTPS。
 
 安装包保存在 `/var/lib/vergen/downloads`;CD 会为服务账号准备该目录的写入权限。已有手动填写的版本链接继续显示,发布新版本时会同步替换在线更新配置。
 
 ## Development
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for more details.
+See [CONTRIBUTING.md](./docs/CONTRIBUTING.md) for more details.
 
 To run the development server, execute the following commands after all prerequisites for **Tauri** are installed:
 
@@ -159,10 +172,10 @@ Based on or inspired by these projects and so on:
 
 ## Privacy
 
-本应用不收集任何用户数据，配置与日志仅保存在本地。详见[隐私政策](./PRIVACY.md)。
+本应用不收集任何用户数据，配置与日志仅保存在本地。详见[隐私政策](./docs/PRIVACY.md)。
 
 This application does not collect any user data; configuration and logs stay on
-your own device. See the [Privacy Policy](./PRIVACY.md) for details.
+your own device. See the [Privacy Policy](./docs/PRIVACY.md) for details.
 
 ## License
 

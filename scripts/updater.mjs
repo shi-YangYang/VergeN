@@ -1,7 +1,5 @@
 import { context, getOctokit } from '@actions/github'
 
-import { resolveUpdateLog, resolveUpdateLogDefault } from './updatelog.mjs'
-
 const UPDATE_TAG_NAME = 'updater'
 const UPDATE_JSON_FILE = 'update.json'
 const UPDATE_JSON_PROXY = 'update-proxy.json'
@@ -73,9 +71,7 @@ async function processRelease(github, options, tag, isAlpha) {
       tag: tag.name,
     })
 
-    const notes = await resolveUpdateLog(tag.name).catch(() =>
-      resolveUpdateLogDefault().catch(() => 'No changelog available'),
-    )
+    const notes = release.body ?? ''
     const releaseUrl = `https://github.com/${options.owner}/${options.repo}/releases/tag/${tag.name}`
 
     const updateData = {

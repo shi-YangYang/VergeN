@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/shi-YangYang/VergeN/server/internal/store"
 )
 
 const (
@@ -204,16 +206,16 @@ func (a *Server) handleDingtalkQrStart(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusServiceUnavailable, "too_many_sessions", "too many pending QR sessions, try again later")
 		return
 	}
-	callback := a.qrBaseURL(r) + "/api/v1/auth/dingtalk/callback"
-	qr := "https://login.dingtalk.com/oauth2/auth?" + url.Values{
-		"client_id":     {appKey},
-		"redirect_uri":  {callback},
-		"response_type": {"code"},
-		"scope":         {scope},
-		"prompt":        {"consent"},
-		"state":         {state},
+	writeJSON(w, http.StatusOK, map[string]string{"session_id": id, "qr_url": a.dingtalkAuthorizeURL(r, appKey, scope, state)})
+}
+
+const dingtalkCallbackPath = "/api/v1/auth/dingtalk/callback"
+
+func (a *Server) dingtalkAuthorizeURL(r *http.Request, appKey, scope, state string) string {
+	return "https://login.dingtalk.com/oauth2/auth?" + url.Values{
+		"client_id": {appKey}, "redirect_uri": {a.qrBaseURL(r) + dingtalkCallbackPath},
+		"response_type": {"code"}, "scope": {scope}, "prompt": {"consent"}, "state": {state},
 	}.Encode()
-	writeJSON(w, http.StatusOK, map[string]string{"session_id": id, "qr_url": qr})
 }
 
 type dingtalkQrReq struct {
@@ -280,6 +282,10 @@ func (a *Server) handleDingtalkCallback(w http.ResponseWriter, r *http.Request) 
 	code := r.URL.Query().Get("authCode")
 	state := r.URL.Query().Get("state")
 	authError := r.URL.Query().Get("error")
+	if strings.HasPrefix(state, downloadStatePrefix) {
+		a.finishDownloadLogin(w, r, state, code)
+		return
+	}
 
 	title, detail := "登录失败", "链接无效或已过期，请回到客户端重新扫码"
 	androidPackage := ""
@@ -300,40 +306,43 @@ func (a *Server) handleDingtalkCallback(w http.ResponseWriter, r *http.Request) 
 }
 
 func (a *Server) dingtalkFinishCallback(sessionID, code string) (title, detail string) {
-	appKey, appSecret, ready := a.dingtalkReady()
-	if !ready {
-		a.qrSessions.complete(sessionID, "", "服务器钉钉登录未配置")
-		return "登录失败", "服务器钉钉登录未配置，请联系管理员"
-	}
-	identity, userCorpID, err := dingtalkExchangeUser(appKey, appSecret, code)
-	if err != nil {
-		a.qrSessions.complete(sessionID, "", "钉钉验证失败")
-		return "登录失败", fmt.Sprintf("钉钉验证失败：%v", err)
-	}
-	configuredCorp, _, err := a.store.GetSetting(settingDingtalkCorp)
-	if err != nil {
-		a.qrSessions.complete(sessionID, "", "内部错误")
-		return "登录失败", "服务器内部错误，请稍后重试"
-	}
-	if configuredCorp != "" {
-		// Optional organization guard: the scanned account must belong to
-		// the configured corp.
-		if userCorpID != configuredCorp {
-			a.qrSessions.complete(sessionID, "", "组织不符")
-			return "登录失败", "请使用公司组织的钉钉账号扫码"
-		}
-	}
-	u, err := a.store.GetOrCreateDingtalkUser(identity.UnionID, identity.Nick, time.Now())
-	if err != nil {
-		a.qrSessions.complete(sessionID, "", "内部错误")
-		return "登录失败", "服务器内部错误，请稍后重试"
-	}
-	if u.Status != "active" {
-		a.qrSessions.complete(sessionID, "", "已停用")
-		return "登录失败", "该账号已被停用，请联系管理员"
+	u, _, failure := a.resolveDingtalkUser(code, false)
+	if failure != nil {
+		a.qrSessions.complete(sessionID, "", failure.reason)
+		return "登录失败", failure.detail
 	}
 	a.qrSessions.complete(sessionID, u.Username, "")
 	return "登录成功", "已完成验证，请回到 VergeN 客户端查看"
+}
+
+type dingtalkLoginFailure struct {
+	code, reason, detail string
+}
+
+func (a *Server) resolveDingtalkUser(code string, requireCorp bool) (*store.User, string, *dingtalkLoginFailure) {
+	appKey, appSecret, ready := a.dingtalkReady()
+	corp, _, err := a.store.GetSetting(settingDingtalkCorp)
+	if err != nil {
+		return nil, "", &dingtalkLoginFailure{"failed", "内部错误", "服务器内部错误，请稍后重试"}
+	}
+	if !ready || (requireCorp && corp == "") {
+		return nil, "", &dingtalkLoginFailure{"config", "服务器钉钉登录未配置", "请联系管理员配置公司钉钉登录"}
+	}
+	identity, userCorp, err := dingtalkExchangeUser(appKey, appSecret, code)
+	if err != nil {
+		return nil, "", &dingtalkLoginFailure{"failed", "钉钉验证失败", fmt.Sprintf("钉钉验证失败：%v", err)}
+	}
+	if corp != "" && userCorp != corp {
+		return nil, "", &dingtalkLoginFailure{"corp", "组织不符", "请使用公司组织的钉钉账号登录"}
+	}
+	u, err := a.store.GetOrCreateDingtalkUser(identity.UnionID, identity.Nick, time.Now())
+	if err != nil {
+		return nil, "", &dingtalkLoginFailure{"failed", "内部错误", "服务器内部错误，请稍后重试"}
+	}
+	if u.Status != "active" {
+		return nil, "", &dingtalkLoginFailure{"disabled", "已停用", "该账号已被停用，请联系管理员"}
+	}
+	return u, corp, nil
 }
 
 type dingtalkUserAccess struct {

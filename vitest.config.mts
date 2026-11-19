@@ -3,6 +3,7 @@ import path from 'node:path'
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
+  envDir: path.resolve('config/env'),
   resolve: {
     alias: {
       '@': path.resolve('./src'),
@@ -13,7 +14,7 @@ export default defineConfig({
     OS_PLATFORM: `"${process.platform}"`,
   },
   test: {
-    include: ['tests/**/*.test.ts', 'src/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'server/web/src/**/*.test.ts'],
     environment: 'node',
     restoreMocks: true,
   },

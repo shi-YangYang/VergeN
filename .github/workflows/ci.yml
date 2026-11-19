@@ -35,7 +35,7 @@ jobs:
       - name: Unit tests
         run: pnpm test
       - name: Draft release safeguards
-        run: node --test scripts/draft-release.test.mjs
+        run: node --test tests/tooling/draft-release.test.mjs
 
   backend:
     name: Rust checks
@@ -51,7 +51,6 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - uses: Swatinem/rust-cache@v2
       # Tauri's build script validates every externalBin path before any
       # rust code compiles; lint/test don't run the sidecars, so empty
       # placeholders satisfy the check (the release workflow downloads
@@ -82,11 +81,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
       # The server embeds the admin panel with go:embed all:dist; the
       # panel must be built before any go build.
       - uses: pnpm/action-setup@v4
-        with:
-          prefix: server/web
       - uses: actions/setup-node@v4
         with:
           node-version: 24

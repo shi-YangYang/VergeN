@@ -7,11 +7,23 @@ on:
 permissions:
   contents: read
 
+# Concurrent deployments would overwrite the same staged binary and systemd unit.
+concurrency:
+  group: deploy-ops-server-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   server:
     name: Server linux-amd64
     runs-on: ubuntu-latest
     steps:
+      - name: Require the main branch for deployment
+        shell: bash
+        run: |
+          if [ "$GITHUB_REF" != refs/heads/main ]; then
+            echo "::error::Run the server deployment from main."
+            exit 1
+          fi
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4

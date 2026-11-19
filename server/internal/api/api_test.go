@@ -439,7 +439,33 @@ func TestDingtalkQrLoginFlow(t *testing.T) {
 	}
 }
 
-func TestPublicDownloads(t *testing.T) {
+func withEmployeeDownloadSession(t *testing.T, h http.Handler, s *store.Store) http.Handler {
+	t.Helper()
+	sv, err := NewServer(s, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetSetting(settingDingtalkCorp, "test-corp"); err != nil {
+		t.Fatal(err)
+	}
+	u, err := s.GetOrCreateDingtalkUser("test-download-union", "employee", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := auth.IssueAccessToken(sv.downloadSigningKey(), u.ID, webDownloadScope("test-corp", u), time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Host == "" {
+			r.Host = "ops.example.com"
+		}
+		r.AddCookie(&http.Cookie{Name: downloadSessionCookie, Value: token})
+		h.ServeHTTP(w, r)
+	})
+}
+
+func TestEmployeeDownloads(t *testing.T) {
 	_, s := newTestBackend(t)
 	downloads := t.TempDir()
 	sv, err := NewServer(s, downloads)
@@ -450,6 +476,7 @@ func TestPublicDownloads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	h = withEmployeeDownloadSession(t, h, s)
 	packages := map[string]string{
 		"VergeN 1.0.2_x64-setup.exe":         "windows",
 		"VergeN_1.0.2_aarch64.dmg":           "macos",
@@ -466,7 +493,7 @@ func TestPublicDownloads(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	code, body := doJSON(t, h, "GET", "/api/v1/public/releases", "", nil)
+	code, body := doJSON(t, h, "GET", "/api/v1/download/releases", "", nil)
 	if code != http.StatusOK {
 		t.Fatalf("public downloads: status=%d body=%v", code, body)
 	}
@@ -509,6 +536,7 @@ func TestAdminPackages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	h = withEmployeeDownloadSession(t, h, s)
 	userToken, err := auth.IssueAccessToken(sv.secret, user.ID, "user", time.Minute)
 	if err != nil {
 		t.Fatal(err)
@@ -589,7 +617,7 @@ func TestAdminPackages(t *testing.T) {
 	}
 	name := `VergeN "desktop" 1.0.2.dmg`
 	assertUpload(upload(name, "installer contents"), http.StatusCreated)
-	for _, path := range []string{"/api/v1/admin/packages", "/api/v1/public/releases"} {
+	for _, path := range []string{"/api/v1/admin/packages", "/api/v1/download/releases"} {
 		code, body := doJSON(t, h, "GET", path, token, nil)
 		packages, _ := body["packages"].([]any)
 		if code != http.StatusOK || len(packages) != 1 || packages[0].(map[string]any)["name"] != name {
@@ -660,7 +688,7 @@ func TestAdminPackages(t *testing.T) {
 			t.Fatalf("delete package: status=%d want=%d", code, want)
 		}
 	}
-	code, body := doJSON(t, h, "GET", "/api/v1/public/releases", "", nil)
+	code, body := doJSON(t, h, "GET", "/api/v1/download/releases", "", nil)
 	packages, _ := body["packages"].([]any)
 	if code != http.StatusOK || len(packages) != 0 {
 		t.Fatalf("deleted package still published: status=%d body=%v", code, body)
@@ -669,6 +697,7 @@ func TestAdminPackages(t *testing.T) {
 
 func TestClientReleaseManifest(t *testing.T) {
 	h, s := newTestBackend(t)
+	h = withEmployeeDownloadSession(t, h, s)
 	adminToken := adminLoginToken(t, h, s)
 
 	// Publish a release (multi-platform).
@@ -690,8 +719,8 @@ func TestClientReleaseManifest(t *testing.T) {
 	}
 	releaseID := int64(rel["id"].(float64))
 
-	// Public listing shows it without auth.
-	code, body = doJSON(t, h, "GET", "/api/v1/public/releases", "", nil)
+	// The employee download page lists published versions.
+	code, body = doJSON(t, h, "GET", "/api/v1/download/releases", "", nil)
 	if code != http.StatusOK {
 		t.Fatalf("public releases: status=%d", code)
 	}
@@ -759,6 +788,7 @@ func TestUnifiedReleasePublishing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	h = withEmployeeDownloadSession(t, h, s)
 	token := adminLoginToken(t, h, s)
 	for _, name := range []string{"VergeN.exe", "VergeN.dmg", "VergeN.app.tar.gz", "VergeN.deb", "VergeN.rpm", "VergeN.apk"} {
 		if err := os.WriteFile(filepath.Join(downloads, name), []byte(name), 0o644); err != nil {
@@ -891,7 +921,9 @@ func TestUnifiedReleasePublishing(t *testing.T) {
 		{"platform=linux&arch=x86_64&bundle_type=appimage", "VergeN.deb", false},
 	} {
 		code, body := doJSON(t, h, "GET", "/api/v1/client/update?"+test.query, token, nil)
-		if code != http.StatusOK || body["url"] != "https://ops.example.com/files/"+test.filename || body["updater_available"] != test.available {
+		link, _ := body["url"].(string)
+		signedURL, err := url.Parse(link)
+		if err != nil || signedURL.Path != "/files/"+test.filename || signedURL.Query().Get("ticket") == "" || code != http.StatusOK || body["updater_available"] != test.available {
 			t.Fatalf("manual update %s: status=%d body=%v", test.query, code, body)
 		}
 		code, body = doJSON(t, h, "GET", "/api/v1/client/updater?"+test.query, token, nil)
@@ -899,7 +931,7 @@ func TestUnifiedReleasePublishing(t *testing.T) {
 			t.Fatalf("updater %s: status=%d body=%v", test.query, code, body)
 		}
 	}
-	for _, path := range []string{"/api/v1/admin/packages", "/api/v1/public/releases"} {
+	for _, path := range []string{"/api/v1/admin/packages", "/api/v1/download/releases"} {
 		code, body := doJSON(t, h, "GET", path, token, nil)
 		if code != http.StatusOK {
 			t.Fatalf("package listing: status=%d body=%v", code, body)

@@ -27,7 +27,7 @@ From the repository root, initialize the core submodule with
 - `ndk;29.0.14206865`
 - `cmake;3.22.1`
 
-Set the local build paths in `.env.build.local` at the repository root. This file
+Set the local build paths in `config/env/.env.build.local` relative to the repository root. This file
 is ignored by Git and affects packaging commands only:
 
 ```properties

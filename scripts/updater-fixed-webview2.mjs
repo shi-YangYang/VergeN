@@ -1,7 +1,5 @@
 import { context, getOctokit } from '@actions/github'
 
-import { resolveUpdateLog } from './updatelog.mjs'
-
 const UPDATE_TAG_NAME = 'updater'
 const UPDATE_JSON_FILE = 'update-fixed-webview2.json'
 const UPDATE_JSON_PROXY = 'update-fixed-webview2-proxy.json'
@@ -23,7 +21,7 @@ async function resolveUpdater() {
 
   const updateData = {
     name: tag.name,
-    notes: await resolveUpdateLog(tag.name), // use Changelog.md
+    notes: latestRelease.body ?? '',
     pub_date: new Date().toISOString(),
     platforms: {
       'windows-x86_64': { signature: '', url: '' },
