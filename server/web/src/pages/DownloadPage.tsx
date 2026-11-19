@@ -9,6 +9,7 @@ import CardActionArea from '@mui/material/CardActionArea'
 import Chip from '@mui/material/Chip'
 import Paper from '@mui/material/Paper'
 import TextField from '@mui/material/TextField'
+import useMediaQuery from '@mui/material/useMediaQuery'
 import { useCallback, useEffect, useState } from 'react'
 
 import mark from '../../../../src/assets/image/vergen-mark.svg'
@@ -16,10 +17,12 @@ import { fetchDownloadReleases, type EmployeeDownloads } from '../api'
 import { PLATFORM_GLYPHS, type PlatformKey } from '../assets/platform-glyphs'
 import { alertContext } from '../components/message-context'
 import { LoadError } from '../components/Messages'
+import { PHONE_LAYOUT_QUERY } from '../components/PhoneLayout'
 import { IOSDownloadCard } from '../features/ios/IOSAccess'
 import { PLATFORM_LABELS } from '../features/releases/platforms'
 
 export function DownloadPage({ onBack }: { onBack: () => void }) {
+  const phone = useMediaQuery(PHONE_LAYOUT_QUERY)
   const [downloads, setDownloads] = useState<EmployeeDownloads | null>(null)
   const [error, setError] = useState('')
   const [selectedReleaseId, setSelectedReleaseId] = useState<number | null>(
@@ -62,6 +65,14 @@ export function DownloadPage({ onBack }: { onBack: () => void }) {
   useEffect(() => {
     void load()
   }, [load])
+
+  const desktopInstallers = release && (
+    <>
+      <PlatformCard kind="windows" label="Windows" url={release.win_url} />
+      <PlatformCard kind="macos" label="macOS" url={release.mac_url} />
+      <PlatformCard kind="linux" label="Linux" url={release.linux_url} />
+    </>
+  )
 
   return (
     <main className="download-wrap">
@@ -127,26 +138,57 @@ export function DownloadPage({ onBack }: { onBack: () => void }) {
               )}
             </div>
           </div>
-          {release.notes && (
-            <div className="muted download-notes">{release.notes}</div>
+          {phone ? (
+            <>
+              <div className="download-phone-apps">
+                <PlatformCard
+                  kind="android"
+                  label="Android"
+                  url={release.android_url}
+                />
+                {isLatest && <IOSDownloadCard />}
+              </div>
+              <Accordion className="download-phone-details" disableGutters>
+                <AccordionSummary expandIcon={<ExpandMoreRounded />}>
+                  电脑客户端
+                </AccordionSummary>
+                <AccordionDetails className="desktop-installers">
+                  {desktopInstallers}
+                </AccordionDetails>
+              </Accordion>
+              {release.notes && (
+                <Accordion className="download-phone-details" disableGutters>
+                  <AccordionSummary expandIcon={<ExpandMoreRounded />}>
+                    更新说明
+                  </AccordionSummary>
+                  <AccordionDetails className="muted download-notes">
+                    {release.notes}
+                  </AccordionDetails>
+                </Accordion>
+              )}
+            </>
+          ) : (
+            <>
+              {release.notes && (
+                <div className="muted download-notes">{release.notes}</div>
+              )}
+              <div
+                className={
+                  isLatest
+                    ? 'download-grid download-current-grid'
+                    : 'download-grid'
+                }
+              >
+                {desktopInstallers}
+                <PlatformCard
+                  kind="android"
+                  label="Android"
+                  url={release.android_url}
+                />
+                {isLatest && <IOSDownloadCard />}
+              </div>
+            </>
           )}
-          <div
-            className={
-              isLatest ? 'download-grid download-current-grid' : 'download-grid'
-            }
-          >
-            {(
-              [
-                ['windows', 'Windows', release.win_url],
-                ['macos', 'macOS', release.mac_url],
-                ['linux', 'Linux', release.linux_url],
-                ['android', 'Android', release.android_url],
-              ] as const
-            ).map(([key, label, url]) => (
-              <PlatformCard key={key} kind={key} label={label} url={url} />
-            ))}
-            {isLatest && <IOSDownloadCard />}
-          </div>
         </Paper>
       )}
       {packages.length > 0 && (

@@ -14,6 +14,9 @@ import TableBody from '@mui/material/TableBody'
 import TableCell from '@mui/material/TableCell'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
+import ToggleButton from '@mui/material/ToggleButton'
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
+import useMediaQuery from '@mui/material/useMediaQuery'
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 
@@ -31,6 +34,7 @@ import {
 } from '../../api'
 import { useMessage, alertContext } from '../../components/message-context'
 import { MessageHelp } from '../../components/Messages'
+import { PHONE_LAYOUT_QUERY } from '../../components/PhoneLayout'
 import { Select } from '../../components/Select'
 
 import {
@@ -86,6 +90,10 @@ function PackageUpload({
 }
 
 export function ReleasePage() {
+  const phone = useMediaQuery(PHONE_LAYOUT_QUERY)
+  const [phoneSection, setPhoneSection] = useState<'publish' | 'history'>(
+    'publish',
+  )
   const [releases, setReleases] = useState<AdminRelease[]>([])
   const [selectedHistory, setSelectedHistory] = useState<number[]>([])
   const [packages, setPackages] = useState<PackageFile[]>([])
@@ -420,7 +428,24 @@ export function ReleasePage() {
           查看下载页 ↗
         </a>
       </div>
+      {phone && (
+        <ToggleButtonGroup
+          exclusive
+          fullWidth
+          color="primary"
+          value={phoneSection}
+          aria-label="版本管理"
+          className="phone-release-sections"
+          onChange={(_, value: typeof phoneSection | null) => {
+            if (value) setPhoneSection(value)
+          }}
+        >
+          <ToggleButton value="publish">发布版本</ToggleButton>
+          <ToggleButton value="history">历史与文件</ToggleButton>
+        </ToggleButtonGroup>
+      )}
       <Paper
+        hidden={phone && phoneSection !== 'publish'}
         variant="outlined"
         component="form"
         className="panel release-form stack"
@@ -679,6 +704,7 @@ export function ReleasePage() {
       <Paper
         variant="outlined"
         component="section"
+        hidden={phone && phoneSection !== 'history'}
         className="panel release-history"
       >
         <div className="release-section-heading">
@@ -793,7 +819,11 @@ export function ReleasePage() {
           )
         })}
       </Paper>
-      <Accordion className="panel release-library" disableGutters>
+      <Accordion
+        hidden={phone && phoneSection !== 'history'}
+        className="panel release-library"
+        disableGutters
+      >
         <AccordionSummary expandIcon={<ExpandMoreRounded />}>
           文件库 <span className="muted">{packages.length} 个文件</span>
         </AccordionSummary>
