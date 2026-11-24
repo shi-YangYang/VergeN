@@ -17,11 +17,12 @@ import (
 )
 
 const (
-	downloadStatePrefix   = "download."
-	downloadStateCookie   = "vergen_download_state"
-	downloadSessionCookie = "vergen_download_session"
-	downloadSessionTTL    = 8 * time.Hour
-	packageTicketTTL      = 30 * time.Minute
+	downloadStatePrefix     = "download."
+	downloadFileStatePrefix = downloadStatePrefix + "file."
+	downloadStateCookie     = "vergen_download_state"
+	downloadSessionCookie   = "vergen_download_session"
+	downloadSessionTTL      = 8 * time.Hour
+	packageTicketTTL        = 30 * time.Minute
 )
 
 func (a *Server) downloadCookie(r *http.Request, name string) *http.Cookie {
@@ -32,62 +33,102 @@ func (a *Server) downloadCookie(r *http.Request, name string) *http.Cookie {
 	return &http.Cookie{Name: name, Path: "/", HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode}
 }
 
+func downloadFileName(name string) string {
+	if _, ok := web.PackageFile(name, 0); !ok || len(name) > 255 {
+		return ""
+	}
+	return name
+}
+
+func (a *Server) downloadState(r *http.Request, state string) *http.Cookie {
+	name := downloadStateCookie
+	if nonce, ok := strings.CutPrefix(state, downloadFileStatePrefix); ok {
+		// Each outstanding file download must keep its own destination.
+		name += "." + nonce
+	}
+	return a.downloadCookie(r, name)
+}
+
 func (a *Server) startDownloadLogin(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
+	file := downloadFileName(r.URL.Query().Get("file"))
 	appKey, _, ready := a.dingtalkReady()
 	corp, _, err := a.store.GetSetting(settingDingtalkCorp)
 	if err != nil || !ready || corp == "" {
-		downloadLoginError(w, r, "config")
+		downloadLoginError(w, r, "config", file)
 		return
 	}
 	if !a.throttleQr(remoteHost(r), "") {
-		downloadLoginError(w, r, "busy")
+		downloadLoginError(w, r, "busy", file)
 		return
 	}
 	nonce, err := auth.NewRefreshToken()
 	if err != nil {
-		downloadLoginError(w, r, "failed")
+		downloadLoginError(w, r, "failed", file)
 		return
 	}
-	state := a.downloadCookie(r, downloadStateCookie)
-	state.Value, state.MaxAge = downloadStatePrefix+nonce, int(qrSessionTTL.Seconds())
-	http.SetCookie(w, state)
-	http.Redirect(w, r, a.dingtalkAuthorizeURL(r, appKey, "openid corpid", state.Value), http.StatusSeeOther)
+	state := downloadStatePrefix + nonce
+	if file != "" {
+		state = downloadFileStatePrefix + nonce
+	}
+	cookie := a.downloadState(r, state)
+	cookie.Value = state
+	if file != "" {
+		cookie.Value += "|" + url.QueryEscape(file)
+	}
+	cookie.MaxAge = int(qrSessionTTL.Seconds())
+	http.SetCookie(w, cookie)
+	http.Redirect(w, r, a.dingtalkAuthorizeURL(r, appKey, "openid corpid", state), http.StatusSeeOther)
 }
 
-func downloadLoginError(w http.ResponseWriter, r *http.Request, code string) {
-	http.Redirect(w, r, "/download?login_error="+url.QueryEscape(code), http.StatusSeeOther)
+func downloadLoginError(w http.ResponseWriter, r *http.Request, code, file string) {
+	query := url.Values{"login_error": {code}}
+	if file != "" {
+		query.Set("file", file)
+	}
+	http.Redirect(w, r, "/download?"+query.Encode(), http.StatusSeeOther)
 }
 
 func (a *Server) finishDownloadLogin(w http.ResponseWriter, r *http.Request, state, code string) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
-	stateCookie := a.downloadCookie(r, downloadStateCookie)
+	stateCookie := a.downloadState(r, state)
 	original, err := r.Cookie(stateCookie.Name)
-	if err != nil || !hmac.Equal([]byte(original.Value), []byte(state)) {
-		downloadLoginError(w, r, "expired")
+	if err != nil {
+		downloadLoginError(w, r, "expired", "")
 		return
 	}
+	expected, encoded, _ := strings.Cut(original.Value, "|")
+	if !hmac.Equal([]byte(expected), []byte(state)) {
+		downloadLoginError(w, r, "expired", "")
+		return
+	}
+	file, _ := url.QueryUnescape(encoded)
+	file = downloadFileName(file)
 	stateCookie.MaxAge = -1
 	http.SetCookie(w, stateCookie)
 	if code == "" || r.URL.Query().Get("error") != "" {
-		downloadLoginError(w, r, "canceled")
+		downloadLoginError(w, r, "canceled", file)
 		return
 	}
 	u, corp, failure := a.resolveDingtalkUser(code, true)
 	if failure != nil {
-		downloadLoginError(w, r, failure.code)
+		downloadLoginError(w, r, failure.code, file)
 		return
 	}
 	session := a.downloadCookie(r, downloadSessionCookie)
 	session.Value, err = auth.IssueAccessToken(a.downloadSigningKey(), u.ID, webDownloadScope(corp, u), downloadSessionTTL)
 	if err != nil {
-		downloadLoginError(w, r, "failed")
+		downloadLoginError(w, r, "failed", file)
 		return
 	}
 	session.MaxAge = int(downloadSessionTTL.Seconds())
 	http.SetCookie(w, session)
-	http.Redirect(w, r, "/download", http.StatusSeeOther)
+	destination := "/download"
+	if file != "" {
+		destination = "/files/" + url.PathEscape(file)
+	}
+	http.Redirect(w, r, destination, http.StatusSeeOther)
 }
 
 // Download credentials must never be accepted as client or admin API tokens.
@@ -149,6 +190,12 @@ func (a *Server) servePackage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if a.downloadUser(r) == nil {
+		if r.Method == http.MethodGet && !r.URL.Query().Has("ticket") {
+			if name := downloadFileName(r.PathValue("name")); name != "" {
+				http.Redirect(w, r, "/download/login?file="+url.QueryEscape(name), http.StatusSeeOther)
+				return
+			}
+		}
 		fail(w, http.StatusUnauthorized, "download_login_required", "请用公司钉钉登录下载页")
 		return
 	}

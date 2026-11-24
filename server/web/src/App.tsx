@@ -1287,8 +1287,13 @@ function RouterShell() {
   const title = TABS.find(([key]) => key === tab)![1]
 
   if (downloadMatch) {
-    const error = new URLSearchParams(window.location.search).get('login_error')
+    const query = new URLSearchParams(window.location.search)
+    const error = query.get('login_error')
     if (error !== null) {
+      const file = query.get('file')
+      const retry = file
+        ? `/download/login?${new URLSearchParams({ file })}`
+        : '/download/login'
       const messages: Record<string, string> = {
         config: '请联系管理员配置钉钉应用和企业 CorpId。',
         expired: '授权已过期，请重新登录。',
@@ -1309,11 +1314,7 @@ function RouterShell() {
                 kind="warning"
                 text={messages[error] ?? '钉钉登录失败，请重试。'}
               />
-              <Button
-                onClick={() => window.location.replace('/download/login')}
-              >
-                重新使用钉钉登录
-              </Button>
+              <Button href={retry}>重新使用钉钉登录</Button>
             </Paper>
           </main>
         </MessageProvider>
