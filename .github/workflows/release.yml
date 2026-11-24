@@ -150,7 +150,7 @@ jobs:
           UNIT
       - name: Upload server files
         if: env.SKIP_DEPLOY != '1'
-        timeout-minutes: 10
+        timeout-minutes: 20
         shell: bash
         run: |
           set -x
