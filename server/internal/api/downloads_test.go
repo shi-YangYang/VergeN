@@ -2,6 +2,7 @@ package api
 
 import (
 	"io"
+	"mime"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -39,7 +40,7 @@ func TestDownloadDingtalkAccess(t *testing.T) {
 		return rec
 	}
 	const listing = "/api/v1/download/releases"
-	if get("/download").Header().Get("Location") != "/download/login" || get(listing).Code != 401 || get("/files/app.apk").Code != 401 || get("/api/v1/public/releases").Code != 404 {
+	if get("/download").Header().Get("Location") != "/download/login" || get(listing).Code != 401 || get("/api/v1/public/releases").Code != 404 {
 		t.Fatal("unexpected anonymous download access")
 	}
 	set := func(key, value string) {
@@ -65,9 +66,9 @@ func TestDownloadDingtalkAccess(t *testing.T) {
 		}
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
 	})
-	callback := func() *httptest.ResponseRecorder {
+	beginLogin := func(start string) (string, []*http.Cookie) {
 		t.Helper()
-		begin := get("/download/login")
+		begin := get(start)
 		location, err := url.Parse(begin.Header().Get("Location"))
 		if err != nil || location.Host != "login.dingtalk.com" || location.Query().Get("scope") != "openid corpid" || location.Query().Get("redirect_uri") != "https://ops.example.com"+dingtalkCallbackPath {
 			t.Fatal("invalid web authorization redirect")
@@ -76,7 +77,11 @@ func TestDownloadDingtalkAccess(t *testing.T) {
 		if get(path).Header().Get("Location") != "/download?login_error=expired" {
 			t.Fatal("accepted callback from another browser")
 		}
-		return get(path, begin.Result().Cookies()...)
+		return path, begin.Result().Cookies()
+	}
+	callback := func() *httptest.ResponseRecorder {
+		path, cookies := beginLogin("/download/login")
+		return get(path, cookies...)
 	}
 	if callback().Header().Get("Location") != "/download?login_error=corp" {
 		t.Fatal("accepted non-company login")
@@ -101,6 +106,49 @@ func TestDownloadDingtalkAccess(t *testing.T) {
 	if code, _ := doJSON(t, h, "GET", "/api/v1/client/bootstrap", session.Value, nil); code != 401 {
 		t.Fatal("download cookie accepted as a client token")
 	}
+	const name = "VergeN 安卓+测试 0.1.6.apk"
+	filePath := "/files/" + url.PathEscape(name)
+	if err := os.WriteFile(filepath.Join(dir, name), []byte("selected installer"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	anonymous := get(filePath)
+	start := anonymous.Header().Get("Location")
+	if anonymous.Code != http.StatusSeeOther || start != "/download/login?file="+url.QueryEscape(name) {
+		t.Fatalf("anonymous package response: %d %s", anonymous.Code, start)
+	}
+	firstPath, firstCookies := beginLogin(start)
+	otherPath, otherCookies := beginLogin(get("/files/app.apk").Header().Get("Location"))
+	browserCookies := append(firstCookies, otherCookies...)
+	if other := get(otherPath, browserCookies...); other.Header().Get("Location") != "/files/app.apk" {
+		t.Fatal("second file login changed its destination")
+	}
+	authorized := get(firstPath, browserCookies...)
+	if authorized.Code != http.StatusSeeOther || authorized.Header().Get("Location") != filePath {
+		t.Fatal("callback lost the original download")
+	}
+	var fileSession *http.Cookie
+	for _, c := range authorized.Result().Cookies() {
+		if c.Name == session.Name && c.MaxAge > 0 {
+			fileSession = c
+		}
+	}
+	if fileSession == nil {
+		t.Fatal("file login did not create an employee session")
+	}
+	attachment := get(authorized.Header().Get("Location"), fileSession)
+	kind, params, err := mime.ParseMediaType(attachment.Header().Get("Content-Disposition"))
+	if err != nil || attachment.Code != http.StatusOK || attachment.Body.String() != "selected installer" || kind != "attachment" || params["filename"] != name {
+		t.Fatal("the browser did not receive the requested installer")
+	}
+	firstPath, firstCookies = beginLogin(start)
+	canceled, err := url.Parse(get(firstPath+"&error=access_denied", firstCookies...).Header().Get("Location"))
+	if err != nil || canceled.Path != "/download" || canceled.Query().Get("login_error") != "canceled" || canceled.Query().Get("file") != name {
+		t.Fatal("canceling login lost the retry destination")
+	}
+	badPath, badCookies := beginLogin("/download/login?file=" + url.QueryEscape("//example.invalid/test.apk"))
+	if got := get(badPath, badCookies...).Header().Get("Location"); got != "/download" {
+		t.Fatalf("accepted a nonlocal destination: %s", got)
+	}
 	u, err := s.GetUserByDingtalkID("employee-union")
 	if err != nil {
 		t.Fatal(err)
@@ -108,7 +156,7 @@ func TestDownloadDingtalkAccess(t *testing.T) {
 	if _, err := s.SetUserStatus(u.ID, "disabled", time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if get(listing, session).Code != 401 || get("/files/app.apk", session).Code != 401 || callback().Header().Get("Location") != "/download?login_error=disabled" {
+	if get(listing, session).Code != 401 || get("/files/app.apk", session).Header().Get("Location") != "/download/login?file=app.apk" || callback().Header().Get("Location") != "/download?login_error=disabled" {
 		t.Fatal("disabled user retained download access")
 	}
 }
