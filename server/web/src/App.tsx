@@ -427,6 +427,9 @@ function AnnouncementPage() {
           />
           <TextField
             label="内容(可选)"
+            multiline
+            minRows={2}
+            maxRows={8}
             value={content}
             onChange={(e) => setContent(e.target.value)}
           />
@@ -530,6 +533,9 @@ function AnnouncementPage() {
               />
               <TextField
                 label="内容"
+                multiline
+                minRows={2}
+                maxRows={8}
                 value={editContent}
                 onChange={(e) => setEditContent(e.target.value)}
               />

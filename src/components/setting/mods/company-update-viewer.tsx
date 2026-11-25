@@ -14,11 +14,22 @@ import { openExternalUrl } from '@/utils/open-external-url'
 // Release notes are authored by ops in markdown, so they share the update
 // viewer's renderer without its GitHub-flavor extras.
 const LazyReactMarkdown = lazy(async () => {
-  const { default: ReactMarkdown } = await import('react-markdown')
-  const { default: remarkGfm } = await import('remark-gfm')
+  const [
+    { default: ReactMarkdown },
+    { default: remarkGfm },
+    { findAndReplace },
+  ] = await Promise.all([
+    import('react-markdown'),
+    import('remark-gfm'),
+    import('mdast-util-find-and-replace'),
+  ])
+  // Only soft breaks in prose need converting; Markdown already handles hard
+  // breaks and code blocks, which must keep their original spacing.
+  const remarkSoftBreaks = () => (tree: Parameters<typeof findAndReplace>[0]) =>
+    findAndReplace(tree, [/\r\n?|\n/g, () => ({ type: 'break' })])
   return {
     default: (props: { children?: string }) => (
-      <ReactMarkdown remarkPlugins={[remarkGfm]} {...props} />
+      <ReactMarkdown remarkPlugins={[remarkGfm, remarkSoftBreaks]} {...props} />
     ),
   }
 })
