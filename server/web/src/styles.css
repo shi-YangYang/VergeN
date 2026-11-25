@@ -212,6 +212,13 @@ label.check {
   font-size: 0.93rem;
   font-weight: 550;
 }
+.sidebar-links .nav-group {
+  width: 100%;
+}
+.sidebar-links .client-subnav .MuiListItemButton-root {
+  min-height: 40px;
+  padding-inline-start: 24px;
+}
 .sidebar-foot {
   display: flex;
   align-items: center;
@@ -426,22 +433,47 @@ label.check {
 }
 .release-updater-row {
   display: grid;
-  grid-template-columns: minmax(100px, 0.65fr) minmax(0, 1.5fr) minmax(0, 1fr);
-  gap: 18px;
-  align-items: start;
+  grid-template:
+    ". label ." auto
+    "platform select signature" auto
+    ". upload status" auto / minmax(6rem, 0.6fr) minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 8px 18px;
+  align-items: center;
   padding: 16px 0;
   border-bottom: 1px solid var(--line);
 }
-.release-updater-row .MuiButton-root {
+.updater-platform {
+  grid-area: platform;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.updater-label {
+  grid-area: label;
+}
+.updater-select {
+  grid-area: select;
+  min-width: 0;
+}
+.updater-upload {
+  grid-area: upload;
+}
+.updater-signature {
+  grid-area: signature;
+}
+.updater-status {
+  grid-area: status;
+  overflow-wrap: anywhere;
+}
+.updater-upload,
+.updater-status {
   align-self: start;
 }
-.release-signature {
-  display: grid;
-  justify-items: start;
-  gap: 8px;
+.package-upload {
+  max-width: 100%;
 }
-.release-signature span {
-  overflow-wrap: anywhere;
+.release-files .release-section-heading {
+  margin-bottom: 16px;
 }
 .release-ready {
   color: var(--mui-palette-success-main);
@@ -472,11 +504,9 @@ label.check {
 .release-notes {
   margin-block: 10px;
 }
-.release-library,
 .download-legacy {
   padding: 0;
 }
-.release-library::before,
 .download-legacy::before {
   display: none;
 }
@@ -930,9 +960,6 @@ label.check {
   .panel {
     padding: 16px;
   }
-  .panel.release-library {
-    padding: 0;
-  }
   .create-form {
     display: grid;
     grid-template-columns: 1fr;
@@ -995,7 +1022,6 @@ label.check {
   }
   .release-version-fields,
   .release-package-grid,
-  .release-updater-row,
   .two-col {
     grid-template-columns: 1fr;
   }
@@ -1264,15 +1290,19 @@ label.check {
   .records-table td.record-id::before {
     content: "#";
   }
-  .release-page > [hidden] {
-    display: none;
+  .release-updater-row {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "platform" "label" "select" "upload" "signature" "status";
   }
-  .phone-release-sections .MuiToggleButton-root {
+  .updater-platform {
+    margin-bottom: 4px;
+  }
+  .updater-upload .package-upload,
+  .updater-signature .package-upload {
+    width: 100%;
     min-height: 44px;
-    font-weight: 600;
   }
   .package-progress,
-  .release-signature,
   .release-ready {
     overflow-wrap: anywhere;
   }
