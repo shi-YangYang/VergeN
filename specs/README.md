@@ -7,3 +7,4 @@
 | 编号 | 主题 |
 | --- | --- |
 | [001](spec-001-repository-layout/spec.md) | 仓库目录整理 |
+| [008](spec-008-client-management/spec.md) | 运维导航与客户端管理 |

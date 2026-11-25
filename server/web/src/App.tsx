@@ -1,19 +1,10 @@
 import AdminPanelSettingsOutlined from '@mui/icons-material/AdminPanelSettingsOutlined'
 import AppsRounded from '@mui/icons-material/AppsRounded'
 import ArrowForwardRounded from '@mui/icons-material/ArrowForwardRounded'
-import CampaignOutlined from '@mui/icons-material/CampaignOutlined'
 import CloseRounded from '@mui/icons-material/CloseRounded'
-import CloudUploadOutlined from '@mui/icons-material/CloudUploadOutlined'
-import ContactsOutlined from '@mui/icons-material/ContactsOutlined'
-import GroupsOutlined from '@mui/icons-material/GroupsOutlined'
-import InsertChartOutlined from '@mui/icons-material/InsertChartOutlined'
-import LinkRounded from '@mui/icons-material/LinkRounded'
 import LogoutRounded from '@mui/icons-material/LogoutRounded'
 import MenuRounded from '@mui/icons-material/MenuRounded'
-import MoreHorizRounded from '@mui/icons-material/MoreHorizRounded'
 import PhoneIphoneRounded from '@mui/icons-material/PhoneIphoneRounded'
-import BottomNavigation from '@mui/material/BottomNavigation'
-import BottomNavigationAction from '@mui/material/BottomNavigationAction'
 import Button from '@mui/material/Button'
 import Checkbox from '@mui/material/Checkbox'
 import Chip from '@mui/material/Chip'
@@ -25,8 +16,6 @@ import Drawer from '@mui/material/Drawer'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import IconButton from '@mui/material/IconButton'
 import List from '@mui/material/List'
-import ListItemButton from '@mui/material/ListItemButton'
-import ListItemIcon from '@mui/material/ListItemIcon'
 import ListItemText from '@mui/material/ListItemText'
 import OutlinedInput from '@mui/material/OutlinedInput'
 import Paper from '@mui/material/Paper'
@@ -44,6 +33,7 @@ import {
   BrowserRouter,
   Route,
   Routes,
+  useLocation,
   useMatch,
   useNavigate,
 } from 'react-router-dom'
@@ -93,6 +83,8 @@ import heroAnimation from './assets/optical-fiber.gif'
 import heroVideo from './assets/optical-fiber.mp4'
 import heroStill from './assets/optical-fiber.webp'
 import { PLATFORM_GLYPHS } from './assets/platform-glyphs'
+import { adminPage, NAV } from './components/admin-navigation-model'
+import { AdminNavigation, PhoneNavigation } from './components/AdminNavigation'
 import { useMessage, alertContext } from './components/message-context'
 import {
   MessageHelp,
@@ -109,35 +101,6 @@ import {
 } from './features/releases/platforms'
 import { ReleasePage } from './features/releases/ReleasePage'
 import { DownloadPage } from './pages/DownloadPage'
-
-type Tab =
-  | 'users'
-  | 'subscription'
-  | 'release'
-  | 'ios'
-  | 'dingtalk'
-  | 'announcement'
-  | 'dashboard'
-
-const TABS: [Tab, string][] = [
-  ['users', '员工账号'],
-  ['subscription', '订阅管理'],
-  ['release', '客户端发布'],
-  ['ios', 'iOS 设置'],
-  ['dingtalk', '钉钉接入'],
-  ['announcement', '公告管理'],
-  ['dashboard', '在线看板'],
-]
-
-const tabIcons = {
-  users: GroupsOutlined,
-  subscription: LinkRounded,
-  release: CloudUploadOutlined,
-  ios: PhoneIphoneRounded,
-  dingtalk: ContactsOutlined,
-  announcement: CampaignOutlined,
-  dashboard: InsertChartOutlined,
-}
 
 function SubscriptionsPage() {
   const [subs, setSubs] = useState<AdminSubscription[] | null>(null)
@@ -891,9 +854,6 @@ function LoginPage({
   )
 }
 
-const timeOf = (ts: number | null) =>
-  ts ? new Date(ts * 1000).toLocaleString('zh-CN') : '从未'
-
 function UsersPanel() {
   const [users, setUsers] = useState<AdminUser[] | null>(null)
   const message = useMessage()
@@ -1030,7 +990,6 @@ function UsersPanel() {
                 <TableCell>姓名 / 账号</TableCell>
                 <TableCell>钉钉</TableCell>
                 <TableCell>角色</TableCell>
-                <TableCell>最近在线</TableCell>
                 <TableCell>客户端</TableCell>
                 <TableCell>操作</TableCell>
               </TableRow>
@@ -1063,10 +1022,6 @@ function UsersPanel() {
                   </TableCell>
                   <TableCell data-label="角色">
                     {user.role === 'admin' ? '管理员' : '员工'}
-                  </TableCell>
-                  <TableCell data-label="最近在线" title={user.last_os || ''}>
-                    {timeOf(user.last_seen_at)}
-                    {user.last_version ? ` · v${user.last_version}` : ''}
                   </TableCell>
                   <TableCell data-label="客户端">
                     {[user.last_os, user.last_version]
@@ -1110,7 +1065,7 @@ function UsersPanel() {
               ))}
               {!users?.length && !loadError && (
                 <TableRow>
-                  <TableCell colSpan={7} className="empty-cell">
+                  <TableCell colSpan={6} className="empty-cell">
                     {users ? '暂无员工账号' : '加载中…'}
                   </TableCell>
                 </TableRow>
@@ -1327,19 +1282,24 @@ function RouterShell() {
     }
   }, [isDownload, message])
   const [user, setUser] = useState<string>('')
-  const [tab, setTab] = useState<Tab>('users')
+  const { pathname } = useLocation()
+  const { tab, section } = adminPage(pathname)
+  const [groupOverride, setGroupOverride] = useState<{
+    path: string
+    expanded: boolean
+  } | null>(null)
+  const expanded =
+    groupOverride?.path === pathname
+      ? groupOverride.expanded
+      : tab === 'clients'
 
   const phone = useMediaQuery(PHONE_LAYOUT_QUERY)
   const compact = useMediaQuery('(max-width: 960px)')
   const [menuOpen, setMenuOpen] = useState(false)
-  const primaryTabs = ['users', 'subscription', 'release'] as const
-  const selectTab = (value: Tab) => {
-    setTab(value)
+  const closeMenu = () => {
     setMenuOpen(false)
     window.scrollTo(0, 0)
   }
-  const title = TABS.find(([key]) => key === tab)![1]
-
   if (downloadMatch || iosDownloadMatch) {
     const query = new URLSearchParams(window.location.search)
     const error = query.get('login_error')
@@ -1392,24 +1352,25 @@ function RouterShell() {
     )
 
   if (!authed) {
+    const loginPage = (
+      <MessageProvider>
+        <LoginPage
+          onBack={() => navigate('/')}
+          onLogin={(username) => {
+            setUser(username)
+            setAuthed(true)
+            navigate(
+              pathname.startsWith('/admin/') ? pathname : '/admin/dashboard',
+              { replace: true },
+            )
+          }}
+        />
+      </MessageProvider>
+    )
     return (
       <Routes>
-        <Route path="/" element={<GatewayPage />} />
-        <Route
-          path="/login"
-          element={
-            <MessageProvider>
-              <LoginPage
-                onBack={() => navigate('/')}
-                onLogin={(username) => {
-                  setUser(username)
-                  setAuthed(true)
-                  navigate('/', { replace: true })
-                }}
-              />
-            </MessageProvider>
-          }
-        />
+        <Route path="/login" element={loginPage} />
+        <Route path="/admin/*" element={loginPage} />
         <Route path="*" element={<GatewayPage />} />
       </Routes>
     )
@@ -1443,26 +1404,16 @@ function RouterShell() {
             </>
           )}
         </div>
-        <List component="nav" aria-label="运维导航" className="sidebar-links">
-          {TABS.filter(
-            ([key]) => !phone || !primaryTabs.some((item) => item === key),
-          ).map(([key, label]) => {
-            const Icon = tabIcons[key]
-            return (
-              <ListItemButton
-                key={key}
-                selected={tab === key}
-                aria-current={tab === key ? 'page' : undefined}
-                onClick={() => selectTab(key)}
-              >
-                <ListItemIcon>
-                  <Icon fontSize="small" />
-                </ListItemIcon>
-                <ListItemText primary={label} />
-              </ListItemButton>
-            )
-          })}
-        </List>
+        <AdminNavigation
+          tab={tab}
+          section={section}
+          phone={phone}
+          expanded={expanded}
+          onToggle={() =>
+            setGroupOverride({ path: pathname, expanded: !expanded })
+          }
+          onNavigate={closeMenu}
+        />
         <div className="sidebar-foot">
           <AdminPanelSettingsOutlined />
           <span>{user || '管理员'}</span>
@@ -1504,13 +1455,13 @@ function RouterShell() {
           <span>VergeN 运维面板</span>
         </header>
         <main className="workspace-main">
-          {tab !== 'users' && tab !== 'release' && tab !== 'ios' && (
-            <h1>{title}</h1>
+          {tab !== 'users' && tab !== 'clients' && tab !== 'ios' && (
+            <h1>{NAV[tab].label}</h1>
           )}
           <MessageProvider key={tab}>
             {tab === 'users' && <UsersPanel />}
             {tab === 'subscription' && <SubscriptionsPage />}
-            {tab === 'release' && <ReleasePage />}
+            {tab === 'clients' && <ReleasePage section={section} />}
             {tab === 'ios' && <IOSSettingsPage />}
             {tab === 'dingtalk' && <DingtalkPage />}
             {tab === 'announcement' && <AnnouncementPage />}
@@ -1519,41 +1470,15 @@ function RouterShell() {
         </main>
       </div>
       {phone && (
-        <BottomNavigation
-          component="nav"
-          aria-label="快捷导航"
-          className="phone-navigation"
-          showLabels
-          value={
-            primaryTabs.some((key) => key === tab) && !menuOpen ? tab : 'more'
-          }
-          onChange={(_, value: Tab | 'more') => {
-            if (value === 'more') setMenuOpen(true)
-            else selectTab(value)
+        <PhoneNavigation
+          tab={tab}
+          menu={menuOpen}
+          onNavigate={closeMenu}
+          openMenu={(clients) => {
+            if (clients) setGroupOverride({ path: pathname, expanded: true })
+            setMenuOpen(true)
           }}
-        >
-          {primaryTabs.map((key) => {
-            const Icon = tabIcons[key]
-            return (
-              <BottomNavigationAction
-                key={key}
-                value={key}
-                label={
-                  { users: '员工', subscription: '订阅', release: '发布' }[key]
-                }
-                icon={<Icon />}
-                aria-current={tab === key ? 'page' : undefined}
-              />
-            )
-          })}
-          <BottomNavigationAction
-            value="more"
-            label="更多"
-            icon={<MoreHorizRounded />}
-            aria-haspopup="dialog"
-            aria-expanded={menuOpen}
-          />
-        </BottomNavigation>
+        />
       )}
     </div>
   )
