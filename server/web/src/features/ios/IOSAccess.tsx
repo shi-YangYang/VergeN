@@ -22,6 +22,7 @@ import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import useMediaQuery from '@mui/material/useMediaQuery'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useMatch, useNavigate, useSearchParams } from 'react-router-dom'
 
 import {
   claimIOSSubscription,
@@ -554,8 +555,40 @@ export function IOSSettingsPage() {
   )
 }
 
+export function IOSLoginPrompt() {
+  const [query] = useSearchParams()
+  const navigate = useNavigate()
+  const close = () => navigate('/download', { replace: true })
+
+  return (
+    <Dialog
+      open={query.get('login_required') === 'ios'}
+      onClose={close}
+      maxWidth="xs"
+      fullWidth
+      aria-labelledby="ios-login-title"
+      aria-describedby="ios-login-description"
+    >
+      <DialogTitle id="ios-login-title">需要使用公司钉钉登录</DialogTitle>
+      <DialogContent id="ios-login-description">
+        登录后即可打开 Clash Mi 的个人订阅。
+      </DialogContent>
+      <DialogActions>
+        <Button variant="outlined" onClick={close}>
+          取消
+        </Button>
+        <Button href="/download/login?target=%2Fdownload%2Fios">
+          使用钉钉登录
+        </Button>
+      </DialogActions>
+    </Dialog>
+  )
+}
+
 export function IOSDownloadCard() {
-  const [open, setOpen] = useState(false)
+  const open = useMatch('/download/ios') !== null
+  const navigate = useNavigate()
+  const close = () => navigate('/download', { replace: true })
   const manualCopyRef = useRef<HTMLInputElement>(null)
   const [manualCopy, setManualCopy] = useState(false)
   const apple = PLATFORM_GLYPHS.macos
@@ -614,13 +647,10 @@ export function IOSDownloadCard() {
   return (
     <>
       <CardActionArea
-        type="button"
+        component="a"
+        href="/download/ios"
         className="platform-card ios-card"
         aria-haspopup="dialog"
-        onClick={() => {
-          setManualCopy(false)
-          setOpen(true)
-        }}
       >
         <svg viewBox={apple.viewbox} width="34" height="34" aria-hidden="true">
           <path d={apple.paths[0]} fill="currentColor" />
@@ -630,7 +660,7 @@ export function IOSDownloadCard() {
       </CardActionArea>
       <Dialog
         open={open}
-        onClose={() => setOpen(false)}
+        onClose={close}
         maxWidth="xs"
         fullWidth
         aria-labelledby="ios-dialog-title"
@@ -642,7 +672,7 @@ export function IOSDownloadCard() {
               安装 Clash Mi 后，复制你的专属订阅地址并在应用中导入。
             </MessageHelp>
           </span>
-          <IconButton aria-label="关闭弹窗" onClick={() => setOpen(false)}>
+          <IconButton aria-label="关闭弹窗" onClick={close}>
             <CloseRounded />
           </IconButton>
         </DialogTitle>

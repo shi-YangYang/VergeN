@@ -404,18 +404,18 @@ func (s *Store) CreateRefreshToken(userID int64, tokenHash string, expiresAt, no
 	return err
 }
 
-func (s *Store) GetValidRefreshToken(tokenHash string, now int64) (userID, tokenID int64, err error) {
+func (s *Store) GetValidRefreshToken(tokenHash string, now int64) (userID, tokenID, expiresAt int64, err error) {
 	err = s.db.QueryRow(
-		`SELECT id, user_id FROM refresh_tokens
+		`SELECT id, user_id, expires_at FROM refresh_tokens
 		 WHERE token_hash = ? AND revoked_at IS NULL AND expires_at > ?`,
-		tokenHash, now).Scan(&tokenID, &userID)
+		tokenHash, now).Scan(&tokenID, &userID, &expiresAt)
 	if errors.Is(err, sql.ErrNoRows) {
-		return 0, 0, ErrNotFound
+		return 0, 0, 0, ErrNotFound
 	}
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
-	return userID, tokenID, nil
+	return userID, tokenID, expiresAt, nil
 }
 
 func (s *Store) RevokeRefreshToken(tokenID, now int64) error {
@@ -477,8 +477,8 @@ func scanRelease(row interface{ Scan(dest ...any) error }) (*Release, error) {
 	return &r, nil
 }
 
-// ListReleases newest-first.
-func (s *Store) ListReleases() ([]*Release, error) {
+// ListDownloadReleases lists published metadata newest-first, without updater feeds.
+func (s *Store) ListDownloadReleases() ([]*Release, error) {
 	rows, err := s.db.Query(`SELECT ` + releaseCols + ` FROM releases ORDER BY id DESC`)
 	if err != nil {
 		return nil, err
@@ -495,7 +495,18 @@ func (s *Store) ListReleases() ([]*Release, error) {
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	rows.Close()
+	return list, nil
+}
+
+func (s *Store) GetReleaseByID(id int64) (*Release, error) {
+	return scanRelease(s.db.QueryRow(`SELECT `+releaseCols+` FROM releases WHERE id = ?`, id))
+}
+
+func (s *Store) ListReleases() ([]*Release, error) {
+	list, err := s.ListDownloadReleases()
+	if err != nil {
+		return nil, err
+	}
 	for _, r := range list {
 		raw, _, err := s.GetSetting(releaseUpdaterKey(r.ID))
 		if err != nil {

@@ -22,6 +22,7 @@ import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
 import Drawer from '@mui/material/Drawer'
+import FormControlLabel from '@mui/material/FormControlLabel'
 import IconButton from '@mui/material/IconButton'
 import List from '@mui/material/List'
 import ListItemButton from '@mui/material/ListItemButton'
@@ -50,21 +51,26 @@ import {
 import mark from '../../../src/assets/image/vergen-mark.svg'
 
 import {
+  hasToken,
+  login as apiLogin,
+  logout,
+  mayRestoreDevice,
+  refreshAdminAccess,
+  watchDeviceChanges,
+} from './admin-session'
+import {
   createAnnouncement,
   deleteAnnouncement,
   listAnnouncements,
   setAnnouncementEnabled,
   setSubscriptionEnabled,
-  clearToken,
   createSubscription,
   createUser,
   deleteSubscription,
   getDashboard,
   getSettings,
-  hasToken,
   listSubscriptions,
   listUsers,
-  login as apiLogin,
   patchSettings,
   setUserDingtalk,
   setUserPassword,
@@ -754,7 +760,7 @@ function GatewayPage() {
           <h1 id="gateway-title">
             企业 <span>VPN</span>
           </h1>
-          <p>用公司钉钉登录，下载客户端或领取 iOS 订阅。</p>
+          <p>先选择客户端，下载安装包或领取 iOS 订阅时再用公司钉钉登录。</p>
           <Button href="/download" endIcon={<ArrowForwardRounded />}>
             下载客户端
           </Button>
@@ -804,6 +810,7 @@ function LoginPage({
 }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [remember, setRemember] = useState(false)
   const message = useMessage()
   const [loading, setLoading] = useState(false)
 
@@ -813,7 +820,7 @@ function LoginPage({
     setLoading(true)
 
     try {
-      const user = await apiLogin(username, password)
+      const user = await apiLogin(username, password, remember)
       onLogin(user.username)
     } catch (err) {
       message.error(err instanceof Error ? err.message : String(err))
@@ -853,6 +860,16 @@ function LoginPage({
             required
           />
         </label>
+        <FormControlLabel
+          className="check"
+          control={
+            <Checkbox
+              checked={remember}
+              onChange={(event) => setRemember(event.target.checked)}
+            />
+          }
+          label="在此设备保持登录 7 天"
+        />
         <Button type="submit" disabled={loading}>
           {loading ? '登录中…' : '登录'}
         </Button>
@@ -1263,7 +1280,9 @@ function DistTable({
 export function App() {
   return (
     <BrowserRouter>
-      <RouterShell />
+      <MessageProvider>
+        <RouterShell />
+      </MessageProvider>
     </BrowserRouter>
   )
 }
@@ -1271,7 +1290,34 @@ export function App() {
 function RouterShell() {
   const navigate = useNavigate()
   const downloadMatch = useMatch('/download')
+  const iosDownloadMatch = useMatch('/download/ios')
   const [authed, setAuthed] = useState(hasToken)
+  const isDownload = Boolean(downloadMatch || iosDownloadMatch)
+  const [restoring, setRestoring] = useState(
+    () => !isDownload && !hasToken() && mayRestoreDevice(),
+  )
+  const message = useMessage()
+  useEffect(() => {
+    if (isDownload) return
+    const stop = watchDeviceChanges()
+    let active = true
+    if (!hasToken() && mayRestoreDevice()) {
+      void refreshAdminAccess()
+        .then((ok) => {
+          if (active && ok) setAuthed(true)
+        })
+        .catch(() => {
+          if (active) message.error('暂时未能恢复登录，可刷新重试')
+        })
+        .finally(() => {
+          if (active) setRestoring(false)
+        })
+    }
+    return () => {
+      active = false
+      stop()
+    }
+  }, [isDownload, message])
   const [user, setUser] = useState<string>('')
   const [tab, setTab] = useState<Tab>('users')
 
@@ -1286,14 +1332,17 @@ function RouterShell() {
   }
   const title = TABS.find(([key]) => key === tab)![1]
 
-  if (downloadMatch) {
+  if (downloadMatch || iosDownloadMatch) {
     const query = new URLSearchParams(window.location.search)
     const error = query.get('login_error')
     if (error !== null) {
-      const file = query.get('file')
-      const retry = file
-        ? `/download/login?${new URLSearchParams({ file })}`
-        : '/download/login'
+      const retryQuery = new URLSearchParams()
+      for (const key of ['file', 'target']) {
+        const value = query.get(key)
+        if (value) retryQuery.set(key, value)
+      }
+      const search = retryQuery.toString()
+      const retry = search ? `/download/login?${search}` : '/download/login'
       const messages: Record<string, string> = {
         config: '请联系管理员配置钉钉应用和企业 CorpId。',
         expired: '授权已过期，请重新登录。',
@@ -1326,6 +1375,13 @@ function RouterShell() {
       </MessageProvider>
     )
   }
+
+  if (restoring && !hasToken() && mayRestoreDevice())
+    return (
+      <main className="login-wrap" role="status">
+        正在恢复登录…
+      </main>
+    )
 
   if (!authed) {
     return (
@@ -1405,8 +1461,13 @@ function RouterShell() {
           <IconButton
             aria-label="退出登录"
             title="退出登录"
-            onClick={() => {
-              clearToken()
+            onClick={async () => {
+              try {
+                await logout()
+              } catch {
+                message.error('退出登录失败，请检查网络后重试')
+                return
+              }
               setUser('')
               setMenuOpen(false)
               setAuthed(false)

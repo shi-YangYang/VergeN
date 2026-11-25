@@ -1,6 +1,8 @@
 package api
 
 import (
+	"encoding/json"
+	"fmt"
 	"io"
 	"mime"
 	"net/http"
@@ -13,6 +15,7 @@ import (
 	"time"
 
 	"github.com/shi-YangYang/VergeN/server/internal/auth"
+	"github.com/shi-YangYang/VergeN/server/internal/store"
 )
 
 func TestDownloadDingtalkAccess(t *testing.T) {
@@ -40,7 +43,7 @@ func TestDownloadDingtalkAccess(t *testing.T) {
 		return rec
 	}
 	const listing = "/api/v1/download/releases"
-	if get("/download").Header().Get("Location") != "/download/login" || get(listing).Code != 401 || get("/api/v1/public/releases").Code != 404 {
+	if get("/download").Code != http.StatusOK || get(listing).Code != http.StatusOK || get("/api/v1/public/releases").Code != 404 {
 		t.Fatal("unexpected anonymous download access")
 	}
 	set := func(key, value string) {
@@ -97,7 +100,7 @@ func TestDownloadDingtalkAccess(t *testing.T) {
 			session = c
 		}
 	}
-	if session == nil || !session.HttpOnly || !session.Secure || session.SameSite != http.SameSiteLaxMode {
+	if session == nil || session.MaxAge != 30*86400 || !session.HttpOnly || !session.Secure || session.SameSite != http.SameSiteLaxMode {
 		t.Fatal("missing protected session cookie")
 	}
 	if get("/download", session).Code != 200 || get(listing, session).Code != 200 || get("/files/app.apk", session).Body.String() != "installer" {
@@ -149,6 +152,37 @@ func TestDownloadDingtalkAccess(t *testing.T) {
 	if got := get(badPath, badCookies...).Header().Get("Location"); got != "/download" {
 		t.Fatalf("accepted a nonlocal destination: %s", got)
 	}
+	for _, target := range []string{iosDownloadPath, "/download/releases/1/windows"} {
+		start := get(target).Header().Get("Location")
+		if target == iosDownloadPath {
+			if start != "/download?login_required=ios" || get(start).Code != http.StatusOK {
+				t.Fatal("anonymous iOS entry did not return to catalog for login confirmation")
+			}
+			start = "/download/login?target=" + url.QueryEscape(iosDownloadPath)
+		}
+		if start != "/download/login?target="+url.QueryEscape(target) {
+			t.Fatalf("unprotected action %s: %s", target, start)
+		}
+		path, cookies := beginLogin(start)
+		retry, err := url.Parse(get(path+"&error=access_denied", cookies...).Header().Get("Location"))
+		if err != nil || retry.Path != "/download" || retry.Query().Get("target") != target || retry.Query().Get("login_error") != "canceled" {
+			t.Fatalf("lost action after cancellation: %v", retry)
+		}
+		retryQuery := retry.Query()
+		retryQuery.Del("login_error")
+		path, cookies = beginLogin("/download/login?" + retryQuery.Encode())
+		if got := get(path, cookies...).Header().Get("Location"); got != target {
+			t.Fatalf("login returned to %q instead of %q", got, target)
+		}
+		if got := get(start, session).Header().Get("Location"); got != target {
+			t.Fatalf("existing session triggered another login for %s", target)
+		}
+	}
+	for _, invalid := range []string{"//other.example/x", "/download/ios?next=//other", "/download/releases/1/other", "/admin"} {
+		if got := get("/download/login?target="+url.QueryEscape(invalid), session).Header().Get("Location"); got != "/download" {
+			t.Fatalf("unexpected destination for %q: %s", invalid, got)
+		}
+	}
 	u, err := s.GetUserByDingtalkID("employee-union")
 	if err != nil {
 		t.Fatal(err)
@@ -156,8 +190,49 @@ func TestDownloadDingtalkAccess(t *testing.T) {
 	if _, err := s.SetUserStatus(u.ID, "disabled", time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if get(listing, session).Code != 401 || get("/files/app.apk", session).Header().Get("Location") != "/download/login?file=app.apk" || callback().Header().Get("Location") != "/download?login_error=disabled" {
+	if get(listing, session).Code != http.StatusOK || get(iosDownloadPath, session).Code != http.StatusSeeOther || get("/files/app.apk", session).Header().Get("Location") != "/download/login?file=app.apk" || callback().Header().Get("Location") != "/download?login_error=disabled" {
 		t.Fatal("disabled user retained download access")
+	}
+}
+
+func TestPublicCatalogProtectsReleaseLinks(t *testing.T) {
+	h, s := newTestBackend(t)
+	employee := withEmployeeDownloadSession(t, h, s)
+	const external = "https://cdn.example.org/setup.exe?credential=private"
+	history, err := s.CreateRelease(&store.Release{Version: "0.1.0", WinURL: external, MacURL: "/files/VergeN.dmg"}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateRelease(&store.Release{Version: "0.2.0", WinURL: "https://cdn.example.org/latest.exe"}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	serve := func(handler http.Handler, path string) *httptest.ResponseRecorder {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		return rec
+	}
+	rec := serve(h, "/api/v1/download/releases")
+	var catalog struct{ Releases []catalogRelease }
+	if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &catalog) != nil || len(catalog.Releases) != 2 || strings.Contains(rec.Body.String(), "cdn.example") || strings.Contains(rec.Body.String(), "updater_platforms") {
+		t.Fatal("anonymous catalog omitted versions or exposed private link information")
+	}
+	older := catalog.Releases[1]
+	want := fmt.Sprintf("/download/releases/%d/windows", history.ID)
+	if older.WinURL != want || older.MacURL != "/files/VergeN.dmg" || older.AndroidURL != "" {
+		t.Fatalf("unexpected catalog links: %+v", older)
+	}
+	if res := serve(h, older.WinURL); res.Code != http.StatusSeeOther || !strings.HasPrefix(res.Header().Get("Location"), "/download/login?") {
+		t.Fatal("anonymous visitor reached the external URL")
+	}
+	if got := serve(employee, older.WinURL).Header().Get("Location"); got != external {
+		t.Fatalf("expected original version-specific download, got %q", got)
+	}
+	if _, err := s.DeleteRelease(history.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := serve(employee, older.WinURL).Code; got != http.StatusNotFound {
+		t.Fatalf("deleted external release: %d", got)
 	}
 }
 

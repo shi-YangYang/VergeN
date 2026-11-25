@@ -66,6 +66,8 @@ func (a *Server) Handler() (http.Handler, error) {
 	mux.Handle("GET /{$}", adminPanel)
 	mux.Handle("GET /login", adminPanel)
 	mux.HandleFunc("GET /download", a.serveDownloadPage(adminPanel))
+	mux.HandleFunc("GET "+iosDownloadPath, a.serveDownloadPage(adminPanel))
+	mux.HandleFunc("GET /download/releases/{id}/{platform}", a.serveReleaseDownload)
 	mux.HandleFunc("GET /download/login", a.startDownloadLogin)
 	mux.HandleFunc("GET /files/{name}", a.servePackage)
 	mux.Handle("GET /admin", adminPanel)
@@ -75,6 +77,9 @@ func (a *Server) Handler() (http.Handler, error) {
 		_, _ = w.Write([]byte("ok"))
 	})
 	mux.HandleFunc("POST /api/v1/auth/login", a.handleLogin)
+	mux.HandleFunc("POST /api/v1/admin/session/login", a.adminBrowserPOST(a.handleAdminBrowserLogin))
+	mux.HandleFunc("POST /api/v1/admin/session/restore", a.adminBrowserPOST(a.restoreAdminBrowser))
+	mux.HandleFunc("POST /api/v1/admin/session/logout", a.adminBrowserPOST(a.logoutAdminBrowser))
 	mux.HandleFunc("POST /api/v1/auth/refresh", a.handleRefresh)
 	mux.HandleFunc("POST /api/v1/auth/logout", a.handleLogout)
 	mux.HandleFunc("GET /api/v1/auth/capabilities", a.handleAuthCapabilities)
@@ -166,7 +171,7 @@ func (a *Server) authenticate(w http.ResponseWriter, r *http.Request) (*store.Us
 		fail(w, http.StatusUnauthorized, "unauthorized", "missing bearer token")
 		return nil, false
 	}
-	uid, _, err := auth.ParseAccessToken(a.secret, strings.TrimPrefix(header, prefix))
+	uid, scope, err := auth.ParseAccessToken(a.secret, strings.TrimPrefix(header, prefix))
 	if err != nil {
 		fail(w, http.StatusUnauthorized, "invalid_access_token", "access token expired or invalid")
 		return nil, false
@@ -179,6 +184,17 @@ func (a *Server) authenticate(w http.ResponseWriter, r *http.Request) (*store.Us
 	if u.Status != "active" {
 		fail(w, http.StatusForbidden, "account_disabled", "account is disabled")
 		return nil, false
+	}
+	if strings.HasPrefix(scope, adminRememberScope) {
+		owner, _, _, err := a.store.GetValidRefreshToken(scope, time.Now().Unix())
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			fail(w, http.StatusInternalServerError, "internal_error", "could not verify admin session")
+			return nil, false
+		}
+		if err != nil || owner != uid || u.Role != "admin" {
+			fail(w, http.StatusUnauthorized, "invalid_access_token", "admin session expired or revoked")
+			return nil, false
+		}
 	}
 	return u, true
 }
@@ -248,20 +264,26 @@ func (a *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if u := a.passwordUser(w, r, req); u != nil {
+		a.issueSession(w, u)
+	}
+}
+
+func (a *Server) passwordUser(w http.ResponseWriter, r *http.Request, req loginReq) *store.User {
 	if req.Username == "" || req.Password == "" {
 		fail(w, http.StatusBadRequest, "bad_request", "username and password are required")
-		return
+		return nil
 	}
 	// Keyed by ip+username so one source cannot brute force many accounts at once.
 	key := remoteHost(r) + "|" + strings.ToLower(req.Username)
 	if a.limiter.Blocked(key) {
 		fail(w, http.StatusTooManyRequests, "too_many_attempts", "too many failed attempts, try again later")
-		return
+		return nil
 	}
 	u, err := a.store.GetUserByUsername(req.Username)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
-		return
+		return nil
 	}
 	if u != nil {
 		valid, verr := auth.VerifyPassword(u.PasswordHash, req.Password)
@@ -276,16 +298,14 @@ func (a *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if u == nil {
 		a.limiter.RecordFail(key)
 		fail(w, http.StatusUnauthorized, "invalid_credentials", "invalid username or password")
-		return
+		return nil
 	}
 	if u.Status != "active" {
 		fail(w, http.StatusForbidden, "account_disabled", "account is disabled")
-		return
+		return nil
 	}
 	a.limiter.Reset(key)
-	if !a.issueSession(w, u) {
-		return
-	}
+	return u
 }
 
 // issueSessionTokens mints a fresh access/refresh pair. Both password login
@@ -336,7 +356,7 @@ func (a *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now()
-	userID, tokenID, err := a.store.GetValidRefreshToken(auth.HashToken(req.RefreshToken), now.Unix())
+	userID, tokenID, _, err := a.store.GetValidRefreshToken(auth.HashToken(req.RefreshToken), now.Unix())
 	if errors.Is(err, store.ErrNotFound) {
 		fail(w, http.StatusUnauthorized, "invalid_refresh_token", "refresh token expired or revoked")
 		return
@@ -391,32 +411,6 @@ type announcement struct {
 func (a *Server) handleAuthCapabilities(w http.ResponseWriter, _ *http.Request) {
 	_, _, ok := a.dingtalkReady()
 	writeJSON(w, http.StatusOK, map[string]bool{"dingtalk_qr": ok})
-}
-
-func (a *Server) handleDownloadReleases(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Cache-Control", "private, no-store")
-	if a.downloadUser(r) == nil {
-		fail(w, http.StatusUnauthorized, "download_login_required", "请用公司钉钉登录下载页")
-		return
-	}
-	list, err := a.store.ListReleases()
-	if err != nil {
-		fail(w, http.StatusInternalServerError, "internal_error", "internal error")
-		return
-	}
-	out := make([]*store.Release, 0, len(list))
-	for _, release := range list {
-		for _, link := range []*string{&release.WinURL, &release.MacURL, &release.LinuxURL, &release.AndroidURL} {
-			if name := a.localPackageName(r, *link); name != "" {
-				*link = "/files/" + url.PathEscape(name)
-			}
-		}
-		out = append(out, release)
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"releases": out,
-		"packages": web.Packages(a.downloads),
-	})
 }
 
 type bootstrapSubscription struct {

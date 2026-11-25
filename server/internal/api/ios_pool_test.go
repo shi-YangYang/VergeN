@@ -37,6 +37,12 @@ func TestIOSPoolAuthorization(t *testing.T) {
 	if code, _ := doJSON(t, employee, "GET", "/api/v1/download/releases", "", nil); code != 200 {
 		t.Fatal("download page failed")
 	}
+	// Visiting the authenticated subscription dialog must not consume a link.
+	open := httptest.NewRecorder()
+	employee.ServeHTTP(open, httptest.NewRequest(http.MethodGet, iosDownloadPath, nil))
+	if open.Code != http.StatusOK || strings.Contains(open.Body.String(), link) {
+		t.Fatal("opening subscription dialog failed or disclosed the address")
+	}
 	code, list := doJSON(t, h, "GET", adminPath, token, nil)
 	if code != 200 {
 		t.Fatalf("list: %d", code)
