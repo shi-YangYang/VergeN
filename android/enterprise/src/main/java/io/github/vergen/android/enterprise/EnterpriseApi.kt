@@ -1,5 +1,10 @@
 package io.github.vergen.android.enterprise
 
+import kotlinx.coroutines.suspendCancellableCoroutine
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.Response
+import java.io.IOException
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.DeserializationStrategy
@@ -78,6 +83,20 @@ data class BootstrapResponse(
     val subscriptions: List<BootstrapSubscription> = emptyList(),
     val user: EnterpriseUser? = null,
 )
+
+@Serializable
+data class EmployeeAnnouncement(
+    val id: Long,
+    val revision: String,
+    val title: String,
+    val content: String,
+)
+
+@Serializable
+internal data class AnnouncementReceipt(val id: Long, val revision: String)
+
+@Serializable
+private data class AnnouncementResponse(val announcement: EmployeeAnnouncement?)
 
 @Serializable
 data class HeartbeatRequest(
@@ -186,6 +205,55 @@ class EnterpriseApi(
             handle(response)
             decode(BootstrapResponse.serializer(), response.body?.string().orEmpty(), response.code)
         }
+    }
+
+    suspend fun currentAnnouncement(accessToken: String): EmployeeAnnouncement? =
+        announcementRequest("GET", "", null, accessToken) { response ->
+            handle(response)
+            decode(AnnouncementResponse.serializer(), response.body?.string().orEmpty(), response.code).announcement
+        }
+
+    suspend fun acknowledgeAnnouncement(accessToken: String, id: Long, revision: String) {
+        val body = json.encodeToString(AnnouncementReceipt.serializer(), AnnouncementReceipt(id, revision))
+            .toRequestBody(JSON_MEDIA)
+        announcementRequest("POST", "/ack", body, accessToken) { response ->
+            if (response.code != 204) {
+                handle(response)
+                throw ApiError(ErrorKind.HTTP, response.code)
+            }
+        }
+    }
+
+    private suspend fun <T> announcementRequest(
+        method: String,
+        suffix: String,
+        body: okhttp3.RequestBody?,
+        token: String,
+        read: (Response) -> T,
+    ): T = suspendCancellableCoroutine { continuation ->
+        val req = Request.Builder().url(baseUrl.trimEnd('/') + "/api/v1/client/announcement" + suffix)
+            .header("Authorization", "Bearer $token").method(method, body).build()
+        val call = http.newCall(req)
+        continuation.invokeOnCancellation { call.cancel() }
+        call.enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                continuation.resumeWith(Result.failure(ApiError(ErrorKind.NETWORK, original = e)))
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                response.use {
+                    if (!continuation.isActive) return
+                    val result = try {
+                        Result.success(read(it))
+                    } catch (e: IOException) {
+                        Result.failure(ApiError(ErrorKind.NETWORK, original = e))
+                    } catch (e: Exception) {
+                        Result.failure(e)
+                    }
+                    continuation.resumeWith(result)
+                }
+            }
+        })
     }
 
     @Throws(ApiError::class)

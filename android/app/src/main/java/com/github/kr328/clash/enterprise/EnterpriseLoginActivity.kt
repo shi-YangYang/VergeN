@@ -34,6 +34,7 @@ class EnterpriseLoginActivity : AppCompatActivity() {
 
     override fun onCreate(savedState: Bundle?) {
         super.onCreate(savedState)
+        EnterpriseAnnouncementDialog.endSession()
         setContentView(R.layout.activity_enterprise_login)
 
         val username = findViewById<TextInputEditText>(R.id.enterprise_username_input)

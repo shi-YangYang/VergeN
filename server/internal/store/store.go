@@ -100,9 +100,22 @@ CREATE TABLE IF NOT EXISTS announcements (
 	title     TEXT NOT NULL,
 	content   TEXT NOT NULL DEFAULT '',
 	active    INTEGER NOT NULL DEFAULT 0,
+	delivery_revision TEXT NOT NULL DEFAULT '',
 	created_at INTEGER NOT NULL,
 	updated_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS announcement_publications (
+	announcement_id INTEGER NOT NULL,
+	revision TEXT NOT NULL,
+	PRIMARY KEY (announcement_id, revision)
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS announcement_reads (
+	user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	announcement_id INTEGER NOT NULL,
+	revision TEXT NOT NULL,
+	PRIMARY KEY (user_id, announcement_id, revision),
+	FOREIGN KEY (announcement_id, revision) REFERENCES announcement_publications(announcement_id, revision)
+) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS idx_refresh_user ON refresh_tokens(user_id);
 `
 
@@ -127,6 +140,10 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	if err := store.migrateAnnouncement(); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := store.migrateAnnouncementDelivery(); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -248,11 +265,12 @@ func (s *Store) ConfigVersion() (int64, error) {
 	return raw, err
 }
 
+const bumpConfigVersionSQL = `INSERT INTO meta (key, value) VALUES ('config_version', '1')
+	ON CONFLICT(key) DO UPDATE SET value = CAST(CAST(value AS INTEGER) + 1 AS TEXT)`
+
 // BumpConfigVersion invalidates every client's cached bootstrap view.
 func (s *Store) BumpConfigVersion() error {
-	_, err := s.db.Exec(
-		`INSERT INTO meta (key, value) VALUES ('config_version', '1')
-		 ON CONFLICT(key) DO UPDATE SET value = CAST(CAST(value AS INTEGER) + 1 AS TEXT)`)
+	_, err := s.db.Exec(bumpConfigVersionSQL)
 	return err
 }
 
@@ -859,72 +877,99 @@ func (s *Store) ListAnnouncements() ([]*Announcement, error) {
 	return list, rows.Err()
 }
 
-// CurrentAnnouncement resolves the row the login page displays; an empty
-// string means nothing is published.
+// CurrentAnnouncement returns the currently published row, or ErrNotFound.
 func (s *Store) CurrentAnnouncement() (*Announcement, error) {
 	return scanAnnouncement(s.db.QueryRow(
 		`SELECT ` + announcementCols + ` FROM announcements WHERE active = 1 ORDER BY id LIMIT 1`))
 }
 
+// The legacy bootstrap and its heartbeat version must describe the same delivery.
+func commitAnnouncement(tx *sql.Tx, deliveryChanged bool) error {
+	if deliveryChanged {
+		if err := registerCurrentAnnouncement(tx); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(bumpConfigVersionSQL); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 func (s *Store) CreateAnnouncement(title, content string, now time.Time) (*Announcement, error) {
-	// The first announcement becomes the delivered one immediately.
-	var count int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM announcements`).Scan(&count); err != nil {
-		return nil, err
-	}
-	active := 0
-	if count == 0 {
-		active = 1
-	}
-	res, err := s.db.Exec(
-		`INSERT INTO announcements (title, content, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-		title, content, active, now.Unix(), now.Unix())
+	tx, err := s.db.Begin()
 	if err != nil {
 		return nil, err
 	}
-	id, err := res.LastInsertId()
+	defer tx.Rollback()
+	created, err := scanAnnouncement(tx.QueryRow(
+		`INSERT INTO announcements (title, content, active, created_at, updated_at)
+		 VALUES (?, ?, NOT EXISTS (SELECT 1 FROM announcements), ?, ?)
+		 RETURNING `+announcementCols, title, content, now.Unix(), now.Unix()))
 	if err != nil {
 		return nil, err
 	}
-	return scanAnnouncement(s.db.QueryRow(`SELECT `+announcementCols+` FROM announcements WHERE id = ?`, id))
+	if err := commitAnnouncement(tx, created.Enabled); err != nil {
+		return nil, err
+	}
+	return created, nil
+}
+
+// Resolve the requested row before changing either it or the currently delivered row.
+func (s *Store) editAnnouncement(id int64, edit func(*sql.Tx, *Announcement) (bool, error)) (bool, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	target, err := scanAnnouncement(tx.QueryRow(`SELECT `+announcementCols+` FROM announcements WHERE id = ?`, id))
+	if errors.Is(err, ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	changed, err := edit(tx, target)
+	if err != nil {
+		return false, err
+	}
+	if err := commitAnnouncement(tx, changed); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (s *Store) UpdateAnnouncement(id int64, title, content string, now time.Time) (bool, error) {
-	res, err := s.db.Exec(
-		`UPDATE announcements SET title = ?, content = ?, updated_at = ? WHERE id = ?`,
-		title, content, now.Unix(), id)
-	if err != nil {
-		return false, err
-	}
-	n, err := res.RowsAffected()
-	return n > 0, err
+	return s.editAnnouncement(id, func(tx *sql.Tx, target *Announcement) (bool, error) {
+		if title == target.Title && content == target.Content {
+			return false, nil
+		}
+		_, err := tx.Exec(`UPDATE announcements SET title = ?, content = ?, updated_at = ? WHERE id = ?`,
+			title, content, now.Unix(), id)
+		return target.Enabled, err
+	})
 }
 
 func (s *Store) DeleteAnnouncement(id int64) (bool, error) {
-	res, err := s.db.Exec(`DELETE FROM announcements WHERE id = ?`, id)
-	if err != nil {
-		return false, err
-	}
-	n, err := res.RowsAffected()
-	return n > 0, err
+	return s.editAnnouncement(id, func(tx *sql.Tx, target *Announcement) (bool, error) {
+		_, err := tx.Exec(`DELETE FROM announcements WHERE id = ?`, id)
+		return target.Enabled, err
+	})
 }
 
-// EnableAnnouncement makes this row the delivered one and blanks the rest;
-// the login page shows the enabled row only, none when all are off.
 func (s *Store) EnableAnnouncement(id int64, enabled bool) (bool, error) {
-	value := 0
-	if enabled {
-		value = 1
-	}
-	if _, err := s.db.Exec(`UPDATE announcements SET active = 0 WHERE id != ?`, id); err != nil {
-		return false, err
-	}
-	res, err := s.db.Exec(`UPDATE announcements SET active = ? WHERE id = ?`, value, id)
-	if err != nil {
-		return false, err
-	}
-	n, err := res.RowsAffected()
-	return n > 0, err
+	return s.editAnnouncement(id, func(tx *sql.Tx, target *Announcement) (bool, error) {
+		if enabled == target.Enabled {
+			return false, nil
+		}
+		if enabled {
+			if _, err := tx.Exec(`UPDATE announcements SET active = 0 WHERE active = 1`); err != nil {
+				return false, err
+			}
+		}
+		_, err := tx.Exec(`UPDATE announcements SET active = ? WHERE id = ?`, enabled, id)
+		return true, err
+	})
 }
 
 type DashboardStats struct {

@@ -402,7 +402,9 @@ function AnnouncementPage() {
   const remove = async (item: AdminAnnouncement) => {
     if (
       item.enabled &&
-      !window.confirm('该公告正在下发，确认删除？员工登录页将不再显示公告。')
+      !window.confirm(
+        '该公告正在下发，确认删除？删除后将停止向客户端下发这条公告。',
+      )
     ) {
       return
     }

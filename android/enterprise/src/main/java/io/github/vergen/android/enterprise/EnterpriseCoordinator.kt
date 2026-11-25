@@ -27,6 +27,7 @@ class EnterpriseCoordinator(
     private val session: EnterpriseSession,
     private val appVersion: String,
     private val onSyncRequired: suspend (Boolean) -> Boolean,
+    private val onSessionCleared: suspend () -> Unit = {},
 ) {
     private val running = AtomicReference<CoroutineScope?>(null)
     private val authorLock = Mutex()
@@ -97,14 +98,20 @@ class EnterpriseCoordinator(
     }
 
     suspend fun signOut() {
-        val stored = session.load()
-        stored.refreshToken?.let { token ->
-            runCatching {
-                apiHolder.api?.logout(token)
-            }
+        val token = authorLock.withLock {
+            val refresh = session.load().refreshToken
+            clearSession()
+            initialSyncComplete = false
+            refresh
         }
+        if (token != null) withContext(Dispatchers.IO) {
+            try { apiHolder.api?.logout(token) } catch (_: ApiError) { /* Already signed out locally. */ }
+        }
+    }
+
+    private suspend fun clearSession() {
         session.clear()
-        initialSyncComplete = false
+        onSessionCleared()
     }
 
     /** Pull bootstrap only (offline-safe); used after app start with a session. */
@@ -122,6 +129,29 @@ class EnterpriseCoordinator(
 
     val isSignedIn: Boolean
         get() = !session.load().accessToken.isNullOrEmpty()
+
+    val announcementEmployeeId: String?
+        get() = session.announcementEmployeeId
+
+    val loginUsername: String?
+        get() = session.loginUsername
+
+    // This optional UI poll must not hold the heartbeat's authorization lock or
+    // clear/rotate credentials on a stale response. The normal heartbeat refreshes them.
+    suspend fun currentAnnouncement(employeeId: String): EmployeeAnnouncement? =
+        withAnnouncementSession(employeeId) { api, token -> api.currentAnnouncement(token) }
+
+    suspend fun acknowledgeAnnouncement(employeeId: String, id: Long, revision: String) =
+        withAnnouncementSession(employeeId) { api, token -> api.acknowledgeAnnouncement(token, id, revision) }
+
+    private suspend fun <T> withAnnouncementSession(
+        employeeId: String,
+        action: suspend (EnterpriseApi, String) -> T,
+    ): T = withContext(Dispatchers.IO) {
+        val api = apiHolder.api ?: throw ApiError(ErrorKind.NETWORK)
+        val token = session.accessFor(employeeId) ?: throw ApiError(ErrorKind.BAD_CREDENTIALS)
+        action(api, token)
+    }
 
     val accountName: String?
         get() = session.load().let { it.displayName ?: it.username }
@@ -142,14 +172,14 @@ class EnterpriseCoordinator(
                 block(token)
             } catch (e: ApiError) {
                 if (e.kind == ErrorKind.FORBIDDEN) {
-                    session.clear()
+                    clearSession()
                     throw e
                 }
                 if (e.kind != ErrorKind.BAD_CREDENTIALS) throw e
 
                 val refreshToken = session.load().refreshToken
                     ?: run {
-                        session.clear()
+                        clearSession()
                         throw e
                     }
                 try {
@@ -164,7 +194,7 @@ class EnterpriseCoordinator(
                     if (refreshError.kind == ErrorKind.BAD_CREDENTIALS ||
                         refreshError.kind == ErrorKind.FORBIDDEN
                     ) {
-                        session.clear()
+                        clearSession()
                     }
                     throw refreshError
                 }

@@ -94,6 +94,8 @@ func (a *Server) Handler() (http.Handler, error) {
 	mux.HandleFunc("POST /api/v1/auth/dingtalk/qr/cancel", a.handleDingtalkQrCancel)
 	mux.HandleFunc("GET "+dingtalkCallbackPath, a.handleDingtalkCallback)
 	mux.Handle("GET /api/v1/client/bootstrap", a.authed(a.handleBootstrap))
+	mux.Handle("GET /api/v1/client/announcement", a.authed(a.handleClientAnnouncement))
+	mux.Handle("POST /api/v1/client/announcement/ack", a.authed(a.handleAcknowledgeAnnouncement))
 	mux.Handle("POST /api/v1/client/heartbeat", a.authed(a.handleHeartbeat))
 	mux.Handle("GET /api/v1/client/update", a.authed(a.handleClientUpdate))
 	mux.Handle("GET /api/v1/client/updater", a.authed(a.handleClientUpdater))

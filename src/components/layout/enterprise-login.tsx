@@ -19,7 +19,7 @@ import { NoticeManager } from '@/components/layout/notice-manager'
 import { enterpriseActions } from '@/hooks/use-enterprise'
 import { useVerge } from '@/hooks/use-verge'
 import { useCustomTheme } from '@/pages/_layout/hooks'
-import { enterpriseCapabilities, type EnterpriseSession } from '@/services/cmds'
+import { enterpriseCapabilities } from '@/services/cmds'
 import { useQuery } from '@/services/query-client'
 
 const POLL_INTERVAL_MS = 2000
@@ -275,11 +275,7 @@ const PasswordForm = ({ serverUrl }: { serverUrl: string }) => {
   )
 }
 
-export const EnterpriseLogin = ({
-  session,
-}: {
-  session: EnterpriseSession
-}) => {
+export const EnterpriseLogin = () => {
   const { t } = useTranslation()
   useCustomTheme()
   const { verge } = useVerge()
@@ -454,32 +450,7 @@ export const EnterpriseLogin = ({
           ) : null}
 
           {tabs[activeTab].key === 'password' ? (
-            <>
-              <PasswordForm serverUrl={serverUrl} />
-              {session.announcement && (
-                <Box
-                  sx={{
-                    mt: 2,
-                    p: 1.5,
-                    borderRadius: '8px',
-                    bgcolor:
-                      'var(--background-color-alpha, rgba(0, 122, 255, 0.1))',
-                  }}
-                >
-                  <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                    {session.announcement.title}
-                  </Typography>
-                  {session.announcement.content && (
-                    <Typography
-                      variant="body2"
-                      sx={{ color: 'text.secondary' }}
-                    >
-                      {session.announcement.content}
-                    </Typography>
-                  )}
-                </Box>
-              )}
-            </>
+            <PasswordForm serverUrl={serverUrl} />
           ) : (
             <DingtalkQrPanel serverUrl={serverUrl} />
           )}

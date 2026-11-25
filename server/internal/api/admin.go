@@ -493,7 +493,6 @@ func (a *Server) handleAdminCreateAnnouncement(w http.ResponseWriter, r *http.Re
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"announcement": created})
-	_ = a.store.BumpConfigVersion()
 }
 
 func (a *Server) handleAdminUpdateAnnouncement(w http.ResponseWriter, r *http.Request) {
@@ -519,7 +518,6 @@ func (a *Server) handleAdminUpdateAnnouncement(w http.ResponseWriter, r *http.Re
 		fail(w, http.StatusNotFound, "announcement_not_found", "announcement does not exist")
 		return
 	}
-	_ = a.store.BumpConfigVersion()
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -542,7 +540,6 @@ func (a *Server) handleAdminEnableAnnouncement(w http.ResponseWriter, r *http.Re
 		fail(w, http.StatusNotFound, "announcement_not_found", "announcement does not exist")
 		return
 	}
-	_ = a.store.BumpConfigVersion()
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -561,7 +558,6 @@ func (a *Server) handleAdminDeleteAnnouncement(w http.ResponseWriter, r *http.Re
 		fail(w, http.StatusNotFound, "announcement_not_found", "announcement does not exist")
 		return
 	}
-	_ = a.store.BumpConfigVersion()
 	w.WriteHeader(http.StatusNoContent)
 }
 
