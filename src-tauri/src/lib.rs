@@ -189,6 +189,8 @@ mod app_init {
             cmd::get_enterprise_session,
             cmd::enterprise_capabilities,
             cmd::enterprise_login,
+            cmd::enterprise_announcement_current,
+            cmd::enterprise_announcement_ack,
             cmd::enterprise_release_current,
             cmd::enterprise_updater_install,
             cmd::enterprise_dingtalk_qr_start,
@@ -528,10 +530,12 @@ pub fn run() -> std::process::ExitCode {
                 if focused {
                     crate::utils::resolve::window::reload_main_window_if_needed();
                 }
+                if !focused { feat::enterprise::notices::pause(); }
                 event_handlers::handle_window_focus(focused);
             }
-            #[cfg(target_os = "macos")]
             tauri::WindowEvent::Destroyed => {
+                feat::enterprise::notices::pause();
+                #[cfg(target_os = "macos")]
                 event_handlers::handle_window_destroyed();
             }
             _ => {}

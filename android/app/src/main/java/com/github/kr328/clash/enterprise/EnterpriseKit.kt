@@ -13,7 +13,9 @@ import io.github.vergen.android.enterprise.EnterpriseCoordinator
 import io.github.vergen.android.enterprise.EnterpriseSession
 import com.github.kr328.clash.common.log.Log
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
@@ -33,6 +35,8 @@ const val VERGEN_SERVER_URL = "https://106.52.87.40"
 object EnterpriseKit {
     private lateinit var apiHolder: EnterpriseApiHolder
     private lateinit var session: EnterpriseSession
+    lateinit var announcementMigration: Deferred<Unit>
+        private set
     private lateinit var managedProfiles: SharedPreferences
     private val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val syncLock = Mutex()
@@ -72,6 +76,10 @@ object EnterpriseKit {
 
         val appContext = context.applicationContext
         session = EnterpriseSession(appContext)
+        val oldAccount = session.legacyAnnouncementAccount()
+        announcementMigration = backgroundScope.async(Dispatchers.IO) {
+            DeviceAnnouncementOutbox.bindUpgrade(appContext, VERGEN_SERVER_URL, oldAccount)
+        }
         managedProfiles = appContext.getSharedPreferences(
             MANAGED_PREFS_NAME,
             Context.MODE_PRIVATE,
@@ -87,6 +95,11 @@ object EnterpriseKit {
                 "?"
             },
             onSyncRequired = { revisionChanged -> syncProfiles(startupOnly = !revisionChanged) },
+            onSessionCleared = {
+                withContext(Dispatchers.Main.immediate) {
+                    if (coordinator.announcementEmployeeId == null) EnterpriseAnnouncementDialog.endSession()
+                }
+            },
         )
         coordinator.start(backgroundScope)
     }

@@ -172,6 +172,7 @@ export const translationKeys = [
   'login.dingtalk.failed',
   'login.dingtalk.retry',
   'login.announcement.title',
+  'login.announcement.acknowledge',
   'login.feedback.welcome',
   'login.feedback.logout',
   'login.account.logout',

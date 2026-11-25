@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { Outlet, useNavigate } from 'react-router'
 
 import { BaseErrorBoundary } from '@/components/base'
+import { EmployeeAnnouncementDialog } from '@/components/layout/employee-announcement-dialog'
 import { EnterpriseLogin } from '@/components/layout/enterprise-login'
 import { LayoutSidebar } from '@/components/layout/layout-sidebar'
 import { NoticeManager } from '@/components/layout/notice-manager'
@@ -127,7 +128,7 @@ const Layout = () => {
     }
     return (
       <ThemeProvider theme={theme}>
-        <EnterpriseLogin session={enterpriseSession} />
+        <EnterpriseLogin />
       </ThemeProvider>
     )
   }
@@ -136,6 +137,21 @@ const Layout = () => {
     <ThemeProvider theme={theme}>
       {/* 左侧底部窗口控制按钮 */}
       <NoticeManager position={verge?.notice_position} />
+      {enterpriseSession.server_url &&
+        enterpriseSession.username &&
+        enterpriseSession.announcement_account && (
+          <EmployeeAnnouncementDialog
+            key={JSON.stringify([
+              enterpriseSession.announcement_epoch,
+              enterpriseSession.server_url,
+              enterpriseSession.username,
+            ])}
+            account={enterpriseSession.announcement_account}
+            epoch={enterpriseSession.announcement_epoch}
+            server={enterpriseSession.server_url}
+            username={enterpriseSession.username}
+          />
+        )}
       <ServiceMigrationDialog />
       <SysproxyPrivilegeDialog />
       <div

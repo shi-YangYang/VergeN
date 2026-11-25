@@ -1,3 +1,5 @@
+pub(crate) mod notices;
+
 use crate::config::{
     Config, IProfiles, IVerge, PrfItem, PrfOption, profiles::PROFILE_WRITE_LOCK, profiles::profiles_save_file_safe,
     profiles_append_item_safe,
@@ -48,11 +50,27 @@ pub struct SubscriptionOption {
     pub url: std::string::String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeliveredAnnouncement {
+    pub id: i64,
+    pub revision: String,
+    pub title: String,
+    pub content: String,
+}
+
+#[derive(Deserialize)]
+struct AnnouncementResponse {
+    announcement: Option<DeliveredAnnouncement>,
+}
+
 /// Mirrors EnterpriseSession; options lists every enabled subscription.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct EnterpriseSession {
     pub enabled: bool,
     pub authenticated: bool,
+    pub announcement_epoch: u32,
+    pub announcement_account: Option<String>,
+    pub server_url: Option<String>,
     pub username: Option<std::string::String>,
     pub display_name: Option<std::string::String>,
     pub managed: ManagedFlags,
@@ -223,6 +241,9 @@ fn session_from(data: &IVerge, authenticated: bool) -> EnterpriseSession {
     EnterpriseSession {
         enabled: enabled_field(&data.enterprise_server_url),
         authenticated,
+        announcement_epoch: notices::session_epoch(),
+        announcement_account: data.enterprise_access_token.as_deref().and_then(notices::account_key),
+        server_url: data.enterprise_server_url.as_ref().map(ToString::to_string),
         username: data
             .enterprise_username
             .clone()
@@ -257,6 +278,10 @@ pub async fn session() -> EnterpriseSession {
 
 /// Apply a config mutation with write serialization, persist and commit it.
 async fn persist_verge_edit(f: impl FnOnce(&mut IVerge)) -> Result<()> {
+    persist_verge_change(f, false).await
+}
+
+async fn persist_verge_change(f: impl FnOnce(&mut IVerge), new_session: bool) -> Result<()> {
     let _config_write = Config::lock_config_write().await;
     let verge = Config::verge().await;
     let transaction = DraftTransaction::begin(vec![&verge])?;
@@ -272,6 +297,9 @@ async fn persist_verge_edit(f: impl FnOnce(&mut IVerge)) -> Result<()> {
         return Err(error);
     }
     transaction.commit();
+    if new_session {
+        notices::reset();
+    }
     drop(_config_write);
     announce(Refresh::Verge);
     Ok(())
@@ -279,12 +307,15 @@ async fn persist_verge_edit(f: impl FnOnce(&mut IVerge)) -> Result<()> {
 
 async fn clear_tokens() -> Result<()> {
     INITIAL_MANAGED_SYNC_COMPLETE.store(false, Ordering::Release);
-    persist_verge_edit(|d| {
-        d.enterprise_display_name = None;
-        d.enterprise_access_token = None;
-        d.enterprise_refresh_token = None;
-        d.enterprise_access_expires_at = None;
-    })
+    persist_verge_change(
+        |d| {
+            d.enterprise_display_name = None;
+            d.enterprise_access_token = None;
+            d.enterprise_refresh_token = None;
+            d.enterprise_access_expires_at = None;
+        },
+        true,
+    )
     .await
 }
 
@@ -305,14 +336,17 @@ async fn store_login(
     user: Option<&EnterpriseUser>,
 ) -> Result<()> {
     let expires_at = unix_now() + expires_in.max(30);
-    persist_verge_edit(|d| {
-        d.enterprise_server_url = Some(server.into());
-        d.enterprise_username = Some(username.into());
-        set_display_name(d, user);
-        d.enterprise_access_token = Some(access.into());
-        d.enterprise_refresh_token = Some(refresh.into());
-        d.enterprise_access_expires_at = Some(expires_at);
-    })
+    persist_verge_change(
+        |d| {
+            d.enterprise_server_url = Some(server.into());
+            d.enterprise_username = Some(username.into());
+            set_display_name(d, user);
+            d.enterprise_access_token = Some(access.into());
+            d.enterprise_refresh_token = Some(refresh.into());
+            d.enterprise_access_expires_at = Some(expires_at);
+        },
+        true,
+    )
     .await
 }
 

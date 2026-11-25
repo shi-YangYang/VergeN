@@ -268,6 +268,7 @@ export interface TranslationResources {
         logout: string
       }
       announcement: {
+        acknowledge: string
         title: string
       }
       capabilities: {

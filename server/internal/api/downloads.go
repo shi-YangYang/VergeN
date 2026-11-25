@@ -17,15 +17,15 @@ import (
 )
 
 const (
-	downloadStatePrefix     = "download."
-	downloadFileStatePrefix = downloadStatePrefix + "file."
-	downloadStateCookie     = "vergen_download_state"
-	downloadSessionCookie   = "vergen_download_session"
-	downloadSessionTTL      = 8 * time.Hour
-	packageTicketTTL        = 30 * time.Minute
+	downloadStatePrefix       = "download."
+	downloadTargetStatePrefix = downloadStatePrefix + "file." // keep in-flight file logins valid
+	downloadStateCookie       = "vergen_download_state"
+	downloadSessionCookie     = "vergen_download_session"
+	downloadSessionTTL        = 30 * 24 * time.Hour
+	packageTicketTTL          = 30 * time.Minute
 )
 
-func (a *Server) downloadCookie(r *http.Request, name string) *http.Cookie {
+func (a *Server) browserCookie(r *http.Request, name string) *http.Cookie {
 	secure := strings.HasPrefix(a.qrBaseURL(r), "https://")
 	if secure {
 		name = "__Host-" + name
@@ -42,50 +42,91 @@ func downloadFileName(name string) string {
 
 func (a *Server) downloadState(r *http.Request, state string) *http.Cookie {
 	name := downloadStateCookie
-	if nonce, ok := strings.CutPrefix(state, downloadFileStatePrefix); ok {
-		// Each outstanding file download must keep its own destination.
+	if nonce, ok := strings.CutPrefix(state, downloadTargetStatePrefix); ok {
+		// Keep concurrent authorizations bound to their own actions.
 		name += "." + nonce
 	}
-	return a.downloadCookie(r, name)
+	return a.browserCookie(r, name)
+}
+
+// Stored continuations are either a verified local filename (legacy format) or
+// one of two internal action paths. Never redirect to a caller-supplied URL.
+type downloadTarget string
+
+const iosDownloadPath = "/download/ios"
+
+func actionTarget(path string) downloadTarget {
+	if path == iosDownloadPath {
+		return downloadTarget(path)
+	}
+	if _, _, ok := releaseDownloadTarget(path); ok {
+		return downloadTarget(path)
+	}
+	return ""
+}
+
+func (t downloadTarget) destination() string {
+	if t == "" {
+		return "/download"
+	}
+	if strings.HasPrefix(string(t), "/") {
+		return string(t)
+	}
+	return "/files/" + url.PathEscape(string(t))
+}
+
+func (t downloadTarget) query() url.Values {
+	v := url.Values{}
+	if strings.HasPrefix(string(t), "/") {
+		v.Set("target", string(t))
+	} else if t != "" {
+		v.Set("file", string(t))
+	}
+	return v
 }
 
 func (a *Server) startDownloadLogin(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	file := downloadFileName(r.URL.Query().Get("file"))
+	target := downloadTarget(downloadFileName(r.URL.Query().Get("file")))
+	if target == "" {
+		target = actionTarget(r.URL.Query().Get("target"))
+	}
+	if a.downloadUser(r) != nil {
+		http.Redirect(w, r, target.destination(), http.StatusSeeOther)
+		return
+	}
 	appKey, _, ready := a.dingtalkReady()
 	corp, _, err := a.store.GetSetting(settingDingtalkCorp)
 	if err != nil || !ready || corp == "" {
-		downloadLoginError(w, r, "config", file)
+		downloadLoginError(w, r, "config", target)
 		return
 	}
 	if !a.throttleQr(remoteHost(r), "") {
-		downloadLoginError(w, r, "busy", file)
+		downloadLoginError(w, r, "busy", target)
 		return
 	}
 	nonce, err := auth.NewRefreshToken()
 	if err != nil {
-		downloadLoginError(w, r, "failed", file)
+		downloadLoginError(w, r, "failed", target)
 		return
 	}
 	state := downloadStatePrefix + nonce
-	if file != "" {
-		state = downloadFileStatePrefix + nonce
+	if target != "" {
+		state = downloadTargetStatePrefix + nonce
 	}
 	cookie := a.downloadState(r, state)
 	cookie.Value = state
-	if file != "" {
-		cookie.Value += "|" + url.QueryEscape(file)
+	if target != "" {
+		cookie.Value += "|" + url.QueryEscape(string(target))
 	}
 	cookie.MaxAge = int(qrSessionTTL.Seconds())
 	http.SetCookie(w, cookie)
 	http.Redirect(w, r, a.dingtalkAuthorizeURL(r, appKey, "openid corpid", state), http.StatusSeeOther)
 }
 
-func downloadLoginError(w http.ResponseWriter, r *http.Request, code, file string) {
-	query := url.Values{"login_error": {code}}
-	if file != "" {
-		query.Set("file", file)
-	}
+func downloadLoginError(w http.ResponseWriter, r *http.Request, code string, target downloadTarget) {
+	query := target.query()
+	query.Set("login_error", code)
 	http.Redirect(w, r, "/download?"+query.Encode(), http.StatusSeeOther)
 }
 
@@ -103,32 +144,31 @@ func (a *Server) finishDownloadLogin(w http.ResponseWriter, r *http.Request, sta
 		downloadLoginError(w, r, "expired", "")
 		return
 	}
-	file, _ := url.QueryUnescape(encoded)
-	file = downloadFileName(file)
+	value, _ := url.QueryUnescape(encoded)
+	target := downloadTarget(downloadFileName(value))
+	if target == "" {
+		target = actionTarget(value)
+	}
 	stateCookie.MaxAge = -1
 	http.SetCookie(w, stateCookie)
 	if code == "" || r.URL.Query().Get("error") != "" {
-		downloadLoginError(w, r, "canceled", file)
+		downloadLoginError(w, r, "canceled", target)
 		return
 	}
 	u, corp, failure := a.resolveDingtalkUser(code, true)
 	if failure != nil {
-		downloadLoginError(w, r, failure.code, file)
+		downloadLoginError(w, r, failure.code, target)
 		return
 	}
-	session := a.downloadCookie(r, downloadSessionCookie)
+	session := a.browserCookie(r, downloadSessionCookie)
 	session.Value, err = auth.IssueAccessToken(a.downloadSigningKey(), u.ID, webDownloadScope(corp, u), downloadSessionTTL)
 	if err != nil {
-		downloadLoginError(w, r, "failed", file)
+		downloadLoginError(w, r, "failed", target)
 		return
 	}
 	session.MaxAge = int(downloadSessionTTL.Seconds())
 	http.SetCookie(w, session)
-	destination := "/download"
-	if file != "" {
-		destination = "/files/" + url.PathEscape(file)
-	}
-	http.Redirect(w, r, destination, http.StatusSeeOther)
+	http.Redirect(w, r, target.destination(), http.StatusSeeOther)
 }
 
 // Download credentials must never be accepted as client or admin API tokens.
@@ -155,7 +195,7 @@ func (a *Server) downloadIdentity(token string) (*store.User, string) {
 }
 
 func (a *Server) downloadUser(r *http.Request) *store.User {
-	c, err := r.Cookie(a.downloadCookie(r, downloadSessionCookie).Name)
+	c, err := r.Cookie(a.browserCookie(r, downloadSessionCookie).Name)
 	if err != nil {
 		return nil
 	}
@@ -173,8 +213,8 @@ func (a *Server) downloadUser(r *http.Request) *store.User {
 func (a *Server) serveDownloadPage(panel http.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "private, no-store")
-		if a.downloadUser(r) == nil && !r.URL.Query().Has("login_error") {
-			http.Redirect(w, r, "/download/login", http.StatusSeeOther)
+		if r.URL.Path == iosDownloadPath && a.downloadUser(r) == nil {
+			http.Redirect(w, r, "/download?login_required=ios", http.StatusSeeOther)
 			return
 		}
 		panel.ServeHTTP(w, r)

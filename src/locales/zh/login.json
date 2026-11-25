@@ -21,7 +21,8 @@
     "retry": "重新打开钉钉登录窗口"
   },
   "announcement": {
-    "title": "公告"
+    "title": "公告",
+    "acknowledge": "我知道了"
   },
   "feedback": {
     "welcome": "欢迎回来，{{name}}",

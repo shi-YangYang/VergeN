@@ -138,6 +138,9 @@ interface EnterpriseAnnouncement {
 export interface EnterpriseSession {
   enabled: boolean
   authenticated: boolean
+  announcement_epoch: number
+  announcement_account: string | null
+  server_url: string | null
   username: string | null
   display_name: string | null
   managed: EnterpriseManagedFlags
@@ -235,6 +238,48 @@ export interface CompanyRelease {
   url: string
   pub_date: number
   updater_available: boolean
+}
+
+export interface DeliveredAnnouncement {
+  id: number
+  revision: string
+  title: string
+  content: string
+}
+
+export interface AnnouncementSession {
+  server: string
+  username: string
+  epoch: number
+  account: string
+}
+
+export interface NoticeSnapshot {
+  notice: DeliveredAnnouncement | null
+  next_ms: number
+  checked: boolean
+}
+
+export function enterpriseAnnouncementCurrent(session: AnnouncementSession) {
+  return invoke<NoticeSnapshot>('enterprise_announcement_current', {
+    server: session.server,
+    username: session.username,
+    epoch: session.epoch,
+  })
+}
+
+export function enterpriseAnnouncementAck(
+  session: AnnouncementSession,
+  id: number,
+  revision: string,
+) {
+  return invoke<'saved' | 'unknown_revision'>('enterprise_announcement_ack', {
+    server: session.server,
+    username: session.username,
+    epoch: session.epoch,
+    id,
+    revision,
+  })
 }
 
 export async function enterpriseReleaseCurrent() {

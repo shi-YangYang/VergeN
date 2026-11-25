@@ -16,6 +16,36 @@ pub async fn enterprise_capabilities(server_url: std::string::String) -> CmdResu
 }
 
 #[tauri::command]
+pub async fn enterprise_announcement_current(
+    window: tauri::WebviewWindow,
+    server: String,
+    username: String,
+    epoch: u32,
+) -> CmdResult<enterprise::notices::NoticeSnapshot> {
+    enterprise::notices::current(&server, &username, epoch, || {
+        window.label() == "main"
+            && window.is_visible().unwrap_or(false)
+            && window.is_focused().unwrap_or(false)
+            && !window.is_minimized().unwrap_or(true)
+    })
+    .await
+    .map_err(|error| super::coded_error("ENTERPRISE_ANNOUNCEMENT_FAILED", error))
+}
+
+#[tauri::command]
+pub async fn enterprise_announcement_ack(
+    server: String,
+    username: String,
+    epoch: u32,
+    id: i64,
+    revision: String,
+) -> CmdResult<enterprise::notices::ReceiptStatus> {
+    enterprise::notices::acknowledge(&server, &username, epoch, id, &revision)
+        .await
+        .map_err(|error| super::coded_error("ENTERPRISE_ANNOUNCEMENT_FAILED", error))
+}
+
+#[tauri::command]
 pub async fn enterprise_release_current() -> CmdResult<Option<CompanyRelease>> {
     enterprise::release_check()
         .await

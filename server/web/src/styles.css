@@ -465,7 +465,7 @@ label.check {
 }
 .release-notes,
 .download-notes,
-.announcement-content {
+.mobile-cards .announcement-content {
   white-space: pre-line;
   overflow-wrap: anywhere;
 }

@@ -2,7 +2,10 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useEffect } from 'react'
 
-import { revalidateQueries } from '@/services/query-client'
+import {
+  revalidateQueries,
+  revalidateQueryFamily,
+} from '@/services/query-client'
 import { useAppDispatch, useAppReads } from '@/store/app-store-context'
 
 import { createEventBus } from './create-bus-handlers'
@@ -20,7 +23,11 @@ export const useEventBus = (
 
   useEffect(() => {
     const revalidateKeys = (keys: readonly string[]) => {
-      void revalidateQueries(keys.map((key) => [key]))
+      if (keys.includes('getProxyView'))
+        void revalidateQueryFamily('getProxyView')
+      void revalidateQueries(
+        keys.filter((key) => key !== 'getProxyView').map((key) => [key]),
+      )
     }
     const { readPendingFailures } = reads
     const readRunState = () => {

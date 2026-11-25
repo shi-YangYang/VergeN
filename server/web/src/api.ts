@@ -1,49 +1,8 @@
-const TOKEN_KEY = 'vergen_admin_token'
-const REFRESH_KEY = 'vergen_admin_refresh'
-
-let token = sessionStorage.getItem(TOKEN_KEY) ?? ''
-let refreshToken = sessionStorage.getItem(REFRESH_KEY) ?? ''
-
-export const hasToken = () => token !== ''
-
-export const clearToken = () => {
-  token = ''
-  refreshToken = ''
-  sessionStorage.removeItem(TOKEN_KEY)
-  sessionStorage.removeItem(REFRESH_KEY)
-}
-
-// Access tokens live 30 minutes; a single in-flight refresh shared by all
-// concurrent 401s keeps the operator signed in instead of forcing a
-// re-login whenever the page lingers.
-let refreshing: Promise<boolean> | null = null
-
-async function refreshAccessToken(): Promise<boolean> {
-  if (!refreshToken) return false
-  if (!refreshing) {
-    refreshing = (async () => {
-      try {
-        const response = await fetch('/api/v1/auth/refresh', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refresh_token: refreshToken }),
-        })
-        if (!response.ok) return false
-        const data = await response.json()
-        token = data.access_token
-        if (data.refresh_token) refreshToken = data.refresh_token
-        sessionStorage.setItem(TOKEN_KEY, token)
-        sessionStorage.setItem(REFRESH_KEY, refreshToken)
-        return true
-      } catch {
-        return false
-      } finally {
-        refreshing = null
-      }
-    })()
-  }
-  return refreshing
-}
+import {
+  adminToken,
+  expireAdminSession,
+  refreshAdminAccess,
+} from './admin-session'
 
 export interface AdminUser {
   id: number
@@ -125,6 +84,7 @@ async function request<T>(
   path: string,
   options: { method?: string; body?: unknown; retried?: boolean } = {},
 ): Promise<T> {
+  const token = adminToken()
   const response = await fetch(`/api/v1${path}`, {
     method: options.method ?? 'GET',
     headers: {
@@ -141,13 +101,12 @@ async function request<T>(
       !options.retried &&
       data?.error?.code === 'invalid_access_token'
     ) {
-      if (await refreshAccessToken()) {
+      if (await refreshAdminAccess()) {
         return request<T>(path, { ...options, retried: true })
       }
       // The refresh token died too: drop the stale identity so the next
       // view lands on the login card instead of failing forever.
-      clearToken()
-      location.reload()
+      expireAdminSession()
     }
     const message =
       data?.error?.code === 'invalid_updater'
@@ -156,24 +115,6 @@ async function request<T>(
     throw new Error(message)
   }
   return data as T
-}
-
-export async function login(username: string, password: string) {
-  const data = await request<{
-    access_token: string
-    refresh_token?: string
-    user: { username: string; role: string }
-  }>('/auth/login', { method: 'POST', body: { username, password } })
-  if (data.user.role !== 'admin') {
-    throw new Error('该账号不是管理员')
-  }
-  token = data.access_token
-  sessionStorage.setItem(TOKEN_KEY, token)
-  if (data.refresh_token) {
-    refreshToken = data.refresh_token
-    sessionStorage.setItem(REFRESH_KEY, refreshToken)
-  }
-  return data.user
 }
 
 export const listUsers = () => request<{ users: AdminUser[] }>('/admin/users')
@@ -340,6 +281,7 @@ export function uploadPackage(
     new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest()
       xhr.open('POST', `/api/v1/admin/packages?${new URLSearchParams(target)}`)
+      const token = adminToken()
       if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
       xhr.upload.onprogress = (event) => {
         if (event.lengthComputable) onProgress(event.loaded, event.total)
@@ -363,13 +305,12 @@ export function uploadPackage(
             !retried &&
             data?.error?.code === 'invalid_access_token'
           ) {
-            if (await refreshAccessToken()) {
+            if (await refreshAdminAccess()) {
               onProgress(0, file.size)
               resolve(await send(true))
               return
             }
-            clearToken()
-            location.reload()
+            expireAdminSession()
           }
           const message =
             xhr.status === 409
@@ -412,10 +353,6 @@ export async function fetchDownloadReleases(): Promise<EmployeeDownloads> {
   const response = await fetch('/api/v1/download/releases', {
     cache: 'no-store',
   })
-  if (response.status === 401) {
-    window.location.replace('/download/login')
-    throw new Error('正在跳转到公司钉钉登录…')
-  }
   if (!response.ok) throw new Error(`请求失败 (${response.status})`)
   const data = (await response.json()) as EmployeeDownloads
   return {
@@ -451,7 +388,7 @@ export async function claimIOSSubscription(): Promise<string> {
     cache: 'no-store',
   })
   if (response.status === 401) {
-    window.location.assign('/download/login')
+    window.location.replace('/download/ios')
     throw new Error('正在跳转到钉钉登录…')
   }
   const result = await response.json()

@@ -50,6 +50,9 @@ export const setCacheData = <T>(
 
 export const revalidateQuery = (queryKey: QueryKey) => swrMutate(queryKey)
 
+export const revalidateQueryFamily = (name: string) =>
+  swrMutate((key) => Array.isArray(key) && key[0] === name)
+
 export const revalidateQueries = (queryKeys: readonly QueryKey[]) =>
   Promise.all(queryKeys.map(revalidateQuery))
 

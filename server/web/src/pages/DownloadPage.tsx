@@ -18,7 +18,7 @@ import { PLATFORM_GLYPHS, type PlatformKey } from '../assets/platform-glyphs'
 import { alertContext } from '../components/message-context'
 import { LoadError } from '../components/Messages'
 import { PHONE_LAYOUT_QUERY } from '../components/PhoneLayout'
-import { IOSDownloadCard } from '../features/ios/IOSAccess'
+import { IOSDownloadCard, IOSLoginPrompt } from '../features/ios/IOSAccess'
 import { PLATFORM_LABELS } from '../features/releases/platforms'
 
 export function DownloadPage({ onBack }: { onBack: () => void }) {
@@ -76,6 +76,7 @@ export function DownloadPage({ onBack }: { onBack: () => void }) {
 
   return (
     <main className="download-wrap">
+      <IOSLoginPrompt />
       <div className="download-hero">
         <div className="entry-brand">
           <img src={mark} alt="" /> VergeN

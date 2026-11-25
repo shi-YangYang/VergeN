@@ -21,7 +21,8 @@
     "retry": "Reopen DingTalk login"
   },
   "announcement": {
-    "title": "Notice"
+    "title": "Notice",
+    "acknowledge": "Anladım"
   },
   "feedback": {
     "welcome": "Welcome, {{name}}",
