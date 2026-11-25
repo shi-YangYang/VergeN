@@ -1,5 +1,5 @@
 //! Announcement state belongs to the signed-in native process, not a replaceable WebView.
-use super::{AnnouncementResponse, DeliveredAnnouncement, http_client, present};
+use super::{AnnouncementResponse, DeliveredAnnouncement, http_client};
 use crate::config::Config;
 use anyhow::{Result, anyhow};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -139,23 +139,23 @@ fn lane(epoch: u32) -> Result<Arc<SessionLane>> {
     if state.epoch != epoch {
         return Err(anyhow!("Announcement session ended"));
     }
-    Ok(state.lane.clone())
+    Ok(Arc::clone(&state.lane))
 }
 
 async fn access(server: &str, username: &str, epoch: u32) -> Result<String> {
     let config = Config::verge().await.data_arc();
     if config.enterprise_server_url.as_deref() != Some(server)
         || config.enterprise_username.as_deref() != Some(username)
-        || !present(&config.enterprise_access_token)
         || session_epoch() != epoch
     {
         return Err(anyhow!("Announcement session ended"));
     }
-    Ok(config
+    config
         .enterprise_access_token
-        .as_ref()
-        .expect("checked access token")
-        .to_string())
+        .as_deref()
+        .filter(|token| !token.trim().is_empty())
+        .map(str::to_owned)
+        .ok_or_else(|| anyhow!("Announcement session ended"))
 }
 
 enum Read {
@@ -193,7 +193,7 @@ pub async fn current(
     server: &str,
     username: &str,
     epoch: u32,
-    foreground: impl Fn() -> bool,
+    foreground: impl Fn() -> bool + Send + Sync,
 ) -> Result<NoticeSnapshot> {
     let lane = lane(epoch)?;
     let run = async {
@@ -246,22 +246,22 @@ pub async fn acknowledge(server: &str, username: &str, epoch: u32, id: i64, revi
             .json(&serde_json::json!({"id": id, "revision": revision}))
             .send()
             .await?;
-        let mut state = STATE.lock();
-        if state.epoch != epoch {
-            return Err(anyhow!("Announcement session ended"));
+        let status = result.status();
+        {
+            let mut state = STATE.lock();
+            if state.epoch != epoch {
+                return Err(anyhow!("Announcement session ended"));
+            }
+            match status {
+                StatusCode::NO_CONTENT => state.clear_match(id, revision),
+                StatusCode::FORBIDDEN => state.current = None,
+                _ => {}
+            }
         }
-        match result.status() {
-            StatusCode::NO_CONTENT => {
-                state.clear_match(id, revision);
-                Ok(ReceiptStatus::Saved)
-            }
+        match status {
+            StatusCode::NO_CONTENT => Ok(ReceiptStatus::Saved),
             StatusCode::CONFLICT => Ok(ReceiptStatus::UnknownRevision),
-            status => {
-                if status == StatusCode::FORBIDDEN {
-                    state.current = None;
-                }
-                Err(anyhow!("Announcement receipt was not accepted ({status})"))
-            }
+            _ => Err(anyhow!("Announcement receipt was not accepted ({status})")),
         }
     };
     lane.end
@@ -285,7 +285,7 @@ mod tests {
         assert!(!state.due(reopened));
         assert!(!state.due(reopened + Duration::from_secs(179)));
         assert!(state.due(reopened + Duration::from_secs(180)));
-        let original = state.lane.clone();
+        let original = Arc::clone(&state.lane);
         let epoch = state.epoch;
         state.reset();
         assert!(original.end.is_cancelled());
@@ -295,13 +295,15 @@ mod tests {
 
     #[test]
     fn ack_only_evicts_the_exact_cached_revision() {
-        let mut state = NoticeState::default();
-        state.current = Some(DeliveredAnnouncement {
-            id: 4,
-            revision: "current".into(),
-            title: "notice".into(),
-            content: String::new(),
-        });
+        let mut state = NoticeState {
+            current: Some(DeliveredAnnouncement {
+                id: 4,
+                revision: "current".into(),
+                title: "notice".into(),
+                content: String::new(),
+            }),
+            ..NoticeState::default()
+        };
         state.clear_match(4, "old");
         assert!(state.current.is_some());
         state.clear_match(4, "current");
