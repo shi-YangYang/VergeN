@@ -8,6 +8,7 @@ import com.github.kr328.clash.design.model.ProxyState
 import com.github.kr328.clash.enterprise.EnterpriseKit
 import com.github.kr328.clash.util.withClash
 import com.github.kr328.clash.util.withProfile
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
@@ -33,12 +34,38 @@ class ProxyActivity : BaseActivity<ProxyDesign>() {
 
         setContentDesign(design)
 
-        design.requests.send(ProxyDesign.Request.ReloadAll)
+        val reloads = arrayOfNulls<Job>(names.size)
+        fun reload(index: Int) {
+            reloads[index]?.cancel()
+            reloads[index] = launch {
+                val group = reloadLock.withPermit {
+                    withClash {
+                        queryProxyGroup(names[index], uiStore.proxySort)
+                    }
+                }
+                val state = states[index]
+
+                state.now = group.now
+
+                design.updateGroup(
+                    index,
+                    group.proxies,
+                    group.type == "Selector",
+                    state,
+                    unorderedStates
+                )
+            }
+        }
+        fun reloadAll() = names.indices.forEach(::reload)
+        var wasStopped = false
+
+        reloadAll()
 
         while (isActive) {
             select<Unit> {
                 events.onReceive {
                     when (it) {
+                        Event.ActivityStop -> wasStopped = true
                         Event.ProfileLoaded, Event.ProfileChanged, Event.ActivityStart -> {
                             val newNames = withClash {
                                 queryProxyGroupNames(uiStore.proxyExcludeNotSelectable)
@@ -48,7 +75,11 @@ class ProxyActivity : BaseActivity<ProxyDesign>() {
                                 startActivity(ProxyActivity::class.intent)
 
                                 finish()
+                            } else if (it == Event.ProfileLoaded || (it == Event.ActivityStart && wasStopped)) {
+                                // Loading new nodes does not necessarily change group names or the company label.
+                                reloadAll()
                             }
+                            if (it == Event.ActivityStart) wasStopped = false
                         }
                         else -> Unit
                     }
@@ -61,29 +92,10 @@ class ProxyActivity : BaseActivity<ProxyDesign>() {
                             finish()
                         }
                         ProxyDesign.Request.ReloadAll -> {
-                            names.indices.forEach { idx ->
-                                design.requests.trySend(ProxyDesign.Request.Reload(idx))
-                            }
+                            reloadAll()
                         }
                         is ProxyDesign.Request.Reload -> {
-                            launch {
-                                val group = reloadLock.withPermit {
-                                    withClash {
-                                        queryProxyGroup(names[it.index], uiStore.proxySort)
-                                    }
-                                }
-                                val state = states[it.index]
-
-                                state.now = group.now
-
-                                design.updateGroup(
-                                    it.index,
-                                    group.proxies,
-                                    group.type == "Selector",
-                                    state,
-                                    unorderedStates
-                                )
-                            }
+                            reload(it.index)
                         }
                         is ProxyDesign.Request.Select -> {
                             withClash {

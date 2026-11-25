@@ -7,6 +7,7 @@ import {
 
 import { useClashInfo, useRuntimeConfig } from '@/hooks/use-clash'
 import { useEnterpriseHeartbeat } from '@/hooks/use-enterprise'
+import { useProfiles } from '@/hooks/use-profiles'
 import { useVerge } from '@/hooks/use-verge'
 import { getProxyView, getSystemProxy } from '@/services/cmds'
 import { useQuery } from '@/services/query-client'
@@ -53,6 +54,8 @@ export const AppDataProvider = ({
   const { data: runtimeConfig } = useRuntimeConfig()
   const { clashInfo } = useClashInfo()
   useEnterpriseHeartbeat()
+  const { profiles } = useProfiles()
+  const profileUid = profiles?.current ?? null
 
   const {
     data: proxyView,
@@ -60,8 +63,15 @@ export const AppDataProvider = ({
     isPending: isProxyViewPending,
     refetch: _refetchProxyView,
   } = useQuery({
-    queryKey: ['getProxyView'],
-    queryFn: getProxyView,
+    queryKey: ['getProxyView', profileUid],
+    enabled: profiles !== undefined,
+    queryFn: async () => {
+      const view = await getProxyView()
+      if (view.profileUid !== profileUid) {
+        throw new Error('Proxy view does not match the active profile')
+      }
+      return view
+    },
     refetchInterval: 15000,
     refetchIntervalInBackground: false,
     ...TQ_MIHOMO,

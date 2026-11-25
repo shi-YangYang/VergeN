@@ -1,5 +1,6 @@
 import { beforeEach, expect, it, vi } from 'vitest'
 
+import { revalidateQueryFamily } from '@/services/query-client'
 import { createStoreReads } from '@/store/store-reads'
 
 import { useEventBus } from './use-event-bus'
@@ -34,7 +35,10 @@ vi.mock('@/services/cmds', () => ({
   getSidecarFailure: vi.fn().mockResolvedValue({ revision: 0, detail: null }),
   getRuntimeState: vi.fn().mockResolvedValue({ mode: 'NotRunning' }),
 }))
-vi.mock('@/services/query-client', () => ({ revalidateQueries: vi.fn() }))
+vi.mock('@/services/query-client', () => ({
+  revalidateQueries: vi.fn(),
+  revalidateQueryFamily: vi.fn(),
+}))
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 
@@ -73,4 +77,20 @@ it('drains event-only state only after every listener is registered', async () =
     type: 'sidecarFailure/loaded',
     snapshot: { revision: 0, detail: null },
   })
+})
+
+it('refreshes the mounted profile-scoped view on runtime and selection changes', () => {
+  useEventBus(handleNotice)
+  for (const name of [
+    'verge://refresh-clash-config',
+    'verge://refresh-proxy-config',
+  ]) {
+    const entry = listen.mock.calls.find(([event]) => event === name)
+    expect(entry).toBeDefined()
+    entry?.[1]({ payload: null })
+  }
+  expect(vi.mocked(revalidateQueryFamily).mock.calls).toEqual([
+    ['getProxyView'],
+    ['getProxyView'],
+  ])
 })
