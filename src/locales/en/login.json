@@ -33,9 +33,9 @@
   },
   "capabilities": {
     "checking": "Checking DingTalk sign-in…",
-    "failed": "Unable to check DingTalk sign-in. Check your connection or try again later.",
+    "failed": "Could not reach the company server. Check your connection and try again.",
     "disabled": "DingTalk sign-in is not enabled. Check again after your administrator configures it.",
     "unconfigured": "No company server is configured. Contact your administrator.",
-    "retry": "Check again"
+    "retry": "Recheck DingTalk availability"
   }
 }

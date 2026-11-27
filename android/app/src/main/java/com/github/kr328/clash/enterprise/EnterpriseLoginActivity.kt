@@ -2,19 +2,18 @@ package com.github.kr328.clash.enterprise
 
 import android.os.Bundle
 import android.view.View
+import android.widget.TextView
+import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.github.kr328.clash.MainActivity
 import com.github.kr328.clash.R
 import com.github.kr328.clash.common.util.intent
-import android.widget.TextView
 import com.google.android.material.textfield.TextInputEditText
 import io.github.vergen.android.enterprise.ApiError
 import io.github.vergen.android.enterprise.ErrorKind
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -25,12 +24,7 @@ import kotlinx.coroutines.withContext
  * task restarts.
  */
 class EnterpriseLoginActivity : AppCompatActivity() {
-    private lateinit var dingtalk: View
-    private lateinit var capabilityStatus: TextView
-    private lateinit var capabilityRetry: View
-    private lateinit var orDivider: View
-    private var capabilitiesJob: Job? = null
-    private var dingtalkAvailable = false
+    private val availability: DingtalkAvailability by viewModels()
 
     override fun onCreate(savedState: Bundle?) {
         super.onCreate(savedState)
@@ -42,17 +36,25 @@ class EnterpriseLoginActivity : AppCompatActivity() {
         val submit = findViewById<View>(R.id.enterprise_submit)
         val progress = findViewById<View>(R.id.enterprise_progress)
         val error = findViewById<TextView>(R.id.enterprise_error)
-        dingtalk = findViewById(R.id.enterprise_dingtalk)
-        capabilityStatus = findViewById(R.id.enterprise_dingtalk_status)
-        capabilityRetry = findViewById(R.id.enterprise_dingtalk_retry)
-        orDivider = findViewById(R.id.enterprise_login_or)
+        val dingtalk = findViewById<View>(R.id.enterprise_dingtalk)
+        val capabilityStatus = findViewById<TextView>(R.id.enterprise_dingtalk_status)
+        val capabilityRetry = findViewById<View>(R.id.enterprise_dingtalk_retry)
 
+        lifecycleScope.launch {
+            availability.state.collect { state ->
+                dingtalk.isEnabled = availability.configured && state.enabled != false
+                capabilityStatus.visibility = if (dingtalk.isEnabled) View.GONE else View.VISIBLE
+                capabilityStatus.setText(if (availability.configured) {
+                    R.string.enterprise_dingtalk_unavailable
+                } else R.string.enterprise_server_unconfigured)
+                capabilityRetry.visibility = if (availability.configured) View.VISIBLE else View.GONE
+                capabilityRetry.isEnabled = !state.checking
+            }
+        }
         dingtalk.setOnClickListener {
             startActivity(EnterpriseDingtalkActivity::class.intent)
         }
-        capabilityRetry.setOnClickListener {
-            checkDingtalkAvailability()
-        }
+        capabilityRetry.setOnClickListener { availability.recheck() }
 
         submit.setOnClickListener {
             val user = username.text.toString().trim()
@@ -111,64 +113,8 @@ class EnterpriseLoginActivity : AppCompatActivity() {
         }
     }
 
-    override fun onResume() {
-        super.onResume()
-        checkDingtalkAvailability()
-    }
-
-    private fun checkDingtalkAvailability() {
-        if (capabilitiesJob?.isActive == true) return
-
-        capabilitiesJob = lifecycleScope.launch {
-            dingtalk.isEnabled = dingtalkAvailable
-            orDivider.visibility = if (dingtalkAvailable) View.VISIBLE else View.GONE
-            capabilityStatus.visibility = View.VISIBLE
-            capabilityRetry.visibility = View.GONE
-
-            for (attempt in 0..CAPABILITY_RETRY_DELAYS.size) {
-                capabilityStatus.setText(R.string.enterprise_dingtalk_checking)
-                val ready = try {
-                    withContext(Dispatchers.IO) {
-                        EnterpriseKit.apiOrNull()?.capabilities()?.dingtalkQr
-                    }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (_: Exception) {
-                    null
-                }
-
-                if (ready != null) {
-                    dingtalkAvailable = ready
-                    dingtalk.isEnabled = ready
-                    orDivider.visibility = if (ready) View.VISIBLE else View.GONE
-                    capabilityStatus.visibility = if (ready) View.GONE else View.VISIBLE
-                    capabilityStatus.setText(R.string.enterprise_dingtalk_unavailable)
-                    capabilityRetry.visibility = if (ready) View.GONE else View.VISIBLE
-                    return@launch
-                }
-
-                if (attempt < CAPABILITY_RETRY_DELAYS.size) {
-                    val wait = CAPABILITY_RETRY_DELAYS[attempt]
-                    capabilityStatus.text = getString(
-                        R.string.enterprise_dingtalk_retrying,
-                        wait / 1000,
-                    )
-                    delay(wait)
-                } else {
-                    capabilityStatus.setText(R.string.enterprise_dingtalk_check_failed)
-                    capabilityRetry.visibility = View.VISIBLE
-                }
-            }
-        }
-    }
-
     private sealed class Outcome {
         class Success(val count: Int, val synced: Boolean) : Outcome()
         class Failure(val error: ApiError) : Outcome()
-    }
-
-    private companion object {
-        const val CRASH_KEY = "enterprise_last_error"
-        val CAPABILITY_RETRY_DELAYS = longArrayOf(2_000, 4_000, 8_000)
     }
 }

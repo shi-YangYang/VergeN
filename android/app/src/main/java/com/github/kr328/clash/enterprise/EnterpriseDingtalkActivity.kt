@@ -5,6 +5,7 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.View
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -16,7 +17,10 @@ import androidx.lifecycle.lifecycleScope
 import com.github.kr328.clash.MainActivity
 import com.github.kr328.clash.R
 import com.github.kr328.clash.common.util.intent
+import io.github.vergen.android.enterprise.ApiError
+import io.github.vergen.android.enterprise.ErrorKind
 import java.io.ByteArrayInputStream
+import java.io.IOException
 import java.net.URI
 import java.net.URLDecoder
 import kotlinx.coroutines.CancellationException
@@ -36,7 +40,9 @@ class EnterpriseDingtalkActivity : AppCompatActivity() {
     private lateinit var progress: View
     private lateinit var fallback: View
     private lateinit var webLogin: View
-    private val pollWakeups = Channel<Unit>(Channel.CONFLATED)
+    private lateinit var errorView: TextView
+    private lateinit var retry: View
+    private var pollWakeups: Channel<Unit>? = null
     private var loginJob: Job? = null
     private var nativeLoginOpened = false
     private var usingWebLogin = false
@@ -57,7 +63,8 @@ class EnterpriseDingtalkActivity : AppCompatActivity() {
         web = findViewById(R.id.dingtalk_web)
         status = findViewById(R.id.dingtalk_status)
         progress = findViewById(R.id.dingtalk_progress)
-        val errorView = findViewById<View>(R.id.dingtalk_error)
+        errorView = findViewById(R.id.dingtalk_error)
+        retry = findViewById(R.id.dingtalk_retry)
         fallback = findViewById(R.id.dingtalk_fallback)
         webLogin = findViewById(R.id.dingtalk_web_login)
 
@@ -78,34 +85,70 @@ class EnterpriseDingtalkActivity : AppCompatActivity() {
                 }
         }
 
-        fun openWebLogin() {
-            val url = authorizationUrl ?: return
-            usingWebLogin = true
-            progress.visibility = View.GONE
-            webLogin.visibility = View.GONE
-            status.visibility = View.GONE
-            web.visibility = View.VISIBLE
-            web.loadUrl(url.toString())
-        }
-
         webLogin.setOnClickListener { openWebLogin() }
+        retry.setOnClickListener { startLogin() }
         fallback.setOnClickListener {
             loginJob?.cancel()
-            startActivity(EnterpriseLoginActivity::class.intent)
+            if (isTaskRoot) startActivity(EnterpriseLoginActivity::class.intent)
             finish()
         }
+        startLogin()
+    }
+
+    private fun openWebLogin() {
+        val url = authorizationUrl ?: return
+        usingWebLogin = true
+        progress.visibility = View.GONE
+        webLogin.visibility = View.GONE
+        status.visibility = View.GONE
+        web.visibility = View.VISIBLE
+        web.loadUrl(url.toString())
+    }
+
+    private fun showError(message: Int) {
+        authorizationUrl = null
+        nativeLoginOpened = false
+        usingWebLogin = false
+        web.stopLoading()
+        web.visibility = View.GONE
+        status.visibility = View.GONE
+        webLogin.visibility = View.GONE
+        progress.visibility = View.GONE
+        errorView.setText(message)
+        errorView.visibility = View.VISIBLE
+        retry.visibility = View.VISIBLE
+        fallback.visibility = View.VISIBLE
+    }
+
+    private fun startLogin() {
+        loginJob?.cancel()
+        val wakeups = Channel<Unit>(Channel.CONFLATED)
+        pollWakeups = wakeups
+        nativeLoginOpened = false
+        usingWebLogin = false
+        authorizationUrl = null
+        loginComplete = false
+        retry.visibility = View.GONE
+        errorView.visibility = View.GONE
+        progress.visibility = View.VISIBLE
+        status.setText(R.string.enterprise_login_connecting)
+        status.visibility = View.VISIBLE
 
         loginJob = lifecycleScope.launch {
-            val api = EnterpriseKit.apiOrNull() ?: return@launch finish()
+            val api = EnterpriseKit.apiOrNull()
             var sessionId: String? = null
             try {
+                if (api == null) return@launch showError(R.string.enterprise_server_unconfigured)
                 val start = withContext(Dispatchers.IO) {
                     api.dingtalkQrStart(packageName).also { sessionId = it.sessionId }
                 }
+                require(start.sessionId.isNotBlank())
                 val url = validatedAuthorizationUrl(start.qrUrl)
                     ?: error("Invalid DingTalk authorization URL")
                 authorizationUrl = url
-                while (!resumed) delay(POLL_MILLIS)
+                val deadline = SystemClock.elapsedRealtime() + QR_LIFETIME_MILLIS
+                while (!resumed && SystemClock.elapsedRealtime() < deadline) delay(POLL_MILLIS)
+                if (SystemClock.elapsedRealtime() >= deadline) return@launch showError(R.string.enterprise_dingtalk_expired)
                 nativeLoginOpened = openDingtalk(url)
                 if (nativeLoginOpened) {
                     status.setText(R.string.enterprise_dingtalk_opened)
@@ -114,10 +157,14 @@ class EnterpriseDingtalkActivity : AppCompatActivity() {
                     openWebLogin()
                 }
 
-                while (isActive) {
+                var networkErrors = 0
+                while (isActive && SystemClock.elapsedRealtime() < deadline) {
                     // DingTalk owns the foreground while authorizing; collect its one-time result in the background.
-                    val poll = withContext(Dispatchers.IO) {
-                        runCatching { api.dingtalkQrPoll(start.sessionId) }.getOrNull()
+                    val poll = try {
+                        withContext(Dispatchers.IO) { api.dingtalkQrPoll(start.sessionId) }.also { networkErrors = 0 }
+                    } catch (e: Exception) {
+                        if (!isNetworkFailure(e) || ++networkErrors >= POLL_ERROR_TOLERANCE) throw e
+                        null
                     }
                     when (poll?.status) {
                         "ok" -> {
@@ -130,33 +177,40 @@ class EnterpriseDingtalkActivity : AppCompatActivity() {
                             finishLoginIfResumed()
                             return@launch
                         }
-                        "fail", "expired" -> error("DingTalk authorization did not complete")
+                        "expired" -> return@launch showError(R.string.enterprise_dingtalk_expired)
+                        "pending", null -> Unit
+                        else -> return@launch showError(R.string.enterprise_dingtalk_failed)
                     }
                     if (resumed && nativeLoginOpened && !usingWebLogin) {
                         status.setText(R.string.enterprise_dingtalk_opened)
                         webLogin.visibility = View.VISIBLE
                         fallback.visibility = View.VISIBLE
                     }
-                    withTimeoutOrNull(POLL_MILLIS) { pollWakeups.receive() }
+                    withTimeoutOrNull(POLL_MILLIS) { wakeups.receive() }
                 }
+                if (isActive) showError(R.string.enterprise_dingtalk_expired)
             } catch (e: CancellationException) {
                 throw e
-            } catch (_: Exception) {
-                web.stopLoading()
-                web.visibility = View.GONE
-                status.visibility = View.GONE
-                webLogin.visibility = View.GONE
-                progress.visibility = View.GONE
-                errorView.visibility = View.VISIBLE
-                fallback.visibility = View.VISIBLE
-                fallback.isEnabled = true
+            } catch (e: Exception) {
+                if (isActive && pollWakeups === wakeups) {
+                    showError(when {
+                        isNetworkFailure(e) -> R.string.enterprise_login_network
+                        e is ApiError && e.kind == ErrorKind.DINGTALK_NOT_CONFIGURED -> R.string.enterprise_dingtalk_unavailable
+                        else -> R.string.enterprise_dingtalk_failed
+                    })
+                }
             } finally {
-                withContext(NonCancellable + Dispatchers.IO) {
-                    sessionId?.let { api.dingtalkQrCancel(it) }
+                wakeups.close()
+                if (pollWakeups === wakeups) pollWakeups = null
+                sessionId?.let { id ->
+                    withContext(NonCancellable + Dispatchers.IO) { api?.dingtalkQrCancel(id) }
                 }
             }
         }
     }
+
+    private fun isNetworkFailure(error: Exception): Boolean =
+        error is IOException || (error is ApiError && error.kind == ErrorKind.NETWORK)
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -188,10 +242,11 @@ class EnterpriseDingtalkActivity : AppCompatActivity() {
     }
 
     private fun refreshLoginResult() {
-        if (loginJob?.isActive != true) return
+        val wakeups = pollWakeups ?: return
+        if (authorizationUrl == null || loginJob?.isActive != true) return
         usingWebLogin = false
         showCompleting()
-        pollWakeups.trySend(Unit)
+        wakeups.trySend(Unit)
     }
 
     private fun showCompleting() {
@@ -298,6 +353,8 @@ class EnterpriseDingtalkActivity : AppCompatActivity() {
 
     private companion object {
         const val POLL_MILLIS = 2000L
+        const val POLL_ERROR_TOLERANCE = 3
+        const val QR_LIFETIME_MILLIS = 5 * 60_000L
         const val RETURN_URI = "vergen://auth/dingtalk"
     }
 }

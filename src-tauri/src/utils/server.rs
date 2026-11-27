@@ -123,7 +123,11 @@ async fn bind_primary_listener(preferred: Option<u16>) -> Result<tokio::net::Tcp
 }
 
 async fn notify_existing_instance(record: &InstanceRecord) -> bool {
-    let client = match ClientBuilder::new().timeout(Duration::from_millis(500)).build() {
+    let client = match ClientBuilder::new()
+        .no_proxy()
+        .timeout(Duration::from_millis(500))
+        .build()
+    {
         Ok(client) => client,
         Err(_) => return false,
     };
