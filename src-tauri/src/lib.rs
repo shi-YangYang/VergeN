@@ -259,6 +259,17 @@ fn handle_singleton_startup(
     }
 }
 
+/// Login recovery must not initialize the GUI, the singleton or an enterprise session.
+pub fn recover_system_proxy() -> std::process::ExitCode {
+    match core::proxy_recovery::at_login() {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("VergeN proxy recovery: {error:#}");
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
 pub fn run() -> std::process::ExitCode {
     #[cfg(all(target_os = "macos", not(debug_assertions), not(test), not(feature = "verge-dev")))]
     if utils::macos_launch_guard::enforce_before_initialization() == utils::macos_launch_guard::LaunchDisposition::Exit
@@ -281,6 +292,13 @@ pub fn run() -> std::process::ExitCode {
         StartupAction::ExitSuccess => return std::process::ExitCode::SUCCESS,
         StartupAction::ExitFailure => return std::process::ExitCode::FAILURE,
     }
+
+    // The full app can win the login race even when the enterprise gate will keep its core stopped.
+    std::thread::spawn(|| {
+        if let Err(error) = core::proxy_recovery::at_login() {
+            logging!(warn, Type::Core, "startup proxy recovery deferred: {error:#}");
+        }
+    });
 
     #[cfg(target_os = "linux")]
     utils::linux::workarounds::apply_nvidia_dmabuf_renderer_workaround();

@@ -5,7 +5,7 @@ use crate::config::{
     profiles_append_item_safe,
 };
 use crate::core::notify::{Refresh, announce};
-use anyhow::{Result, anyhow};
+use anyhow::{Context as _, Result, anyhow};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use clash_verge_draft::DraftTransaction;
 use clash_verge_logging::{Type, logging};
@@ -1159,14 +1159,12 @@ mod subscription_tests {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthCapabilities {
-    #[serde(default)]
     pub dingtalk_qr: bool,
 }
 
-/// Pre-login probe of server-side login methods; connection failures fall
-/// back to password-only so the login window never offers a dead method.
+/// Only an explicitly confirmed setting is suitable for caching across logins.
 pub async fn auth_capabilities(server_url: &str) -> Result<AuthCapabilities> {
     let server = normalize_server(server_url)?;
     let client = http_client()?;
@@ -1449,19 +1447,39 @@ mod dingtalk_tests {
     }
 }
 
+#[derive(Debug)]
+pub enum DingtalkQrFailure {
+    Network,
+    Disabled,
+}
+
+impl std::fmt::Display for DingtalkQrFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Network => "Could not reach the company server",
+            Self::Disabled => "DingTalk sign-in is not enabled",
+        })
+    }
+}
+
+async fn dingtalk_response(request: reqwest::RequestBuilder) -> Result<std::string::String> {
+    let response = request.send().await.context(DingtalkQrFailure::Network)?;
+    let status = response.status();
+    let body = response.text().await.context(DingtalkQrFailure::Network)?;
+    if !status.is_success() {
+        let error: ServerError = serde_json::from_str(&body).unwrap_or_default();
+        if error.error.code.as_deref() == Some("dingtalk_not_configured") {
+            return Err(anyhow::Error::msg(DingtalkQrFailure::Disabled));
+        }
+        return Err(anyhow!("{}", server_error_message(status, &body)));
+    }
+    Ok(body)
+}
+
 pub async fn dingtalk_qr_start(app: &tauri::AppHandle, server_url: &str) -> Result<DingtalkQrStart> {
     let server = normalize_server(server_url)?;
     let client = http_client()?;
-    let response = client
-        .post(format!("{server}/api/v1/auth/dingtalk/qr/start"))
-        .send()
-        .await
-        .map_err(|e| anyhow!("无法连接服务器 {server}: {e}"))?;
-    let status = response.status();
-    let body = response.text().await.unwrap_or_default();
-    if !status.is_success() {
-        return Err(anyhow!("{}", server_error_message(status, &body)));
-    }
+    let body = dingtalk_response(client.post(format!("{server}/api/v1/auth/dingtalk/qr/start"))).await?;
     let parsed: DingtalkQrStart = serde_json::from_str(&body)?;
     if parsed.session_id.is_empty() {
         return Err(anyhow!("服务器响应无效"));
@@ -1521,17 +1539,12 @@ pub async fn dingtalk_qr_poll(app: &tauri::AppHandle, server_url: &str, session_
         });
     }
     let client = http_client()?;
-    let response = client
-        .post(format!("{server}/api/v1/auth/dingtalk/qr/poll"))
-        .json(&serde_json::json!({ "session_id": session_id.trim() }))
-        .send()
-        .await
-        .map_err(|e| anyhow!("无法连接服务器 {server}: {e}"))?;
-    let status = response.status();
-    let body = response.text().await.unwrap_or_default();
-    if !status.is_success() {
-        return Err(anyhow!("{}", server_error_message(status, &body)));
-    }
+    let body = dingtalk_response(
+        client
+            .post(format!("{server}/api/v1/auth/dingtalk/qr/poll"))
+            .json(&serde_json::json!({ "session_id": session_id.trim() })),
+    )
+    .await?;
     let mut parsed: DingtalkQrPoll = serde_json::from_str(&body)?;
     let Some(window) = app.get_webview_window(&label) else {
         let _ = cancel_dingtalk_session(&server, session_id).await;

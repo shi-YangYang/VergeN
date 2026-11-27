@@ -11,20 +11,23 @@ import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
 
-enum class ErrorKind { NETWORK, BAD_CREDENTIALS, FORBIDDEN, HTTP, PARSE }
+enum class ErrorKind { NETWORK, BAD_CREDENTIALS, FORBIDDEN, HTTP, PARSE, DINGTALK_NOT_CONFIGURED }
 
 class ApiError(val kind: ErrorKind, val code: Int = 0, val original: Throwable? = null) :
     Exception("$kind($code)", original)
 
 @Serializable
 data class CapabilitiesResponse(
-    @SerialName("dingtalk_qr") val dingtalkQr: Boolean = false,
+    @SerialName("dingtalk_qr") val dingtalkQr: Boolean,
 )
 
 @Serializable
@@ -155,7 +158,10 @@ class EnterpriseApi(
     fun capabilities(): CapabilitiesResponse {
         return request("GET", "/api/v1/auth/capabilities").use { response ->
             if (response.code != 200) throw ApiError(ErrorKind.HTTP, response.code)
-            decode(CapabilitiesResponse.serializer(), response.body?.string().orEmpty(), 200)
+            val fields = decode(JsonObject.serializer(), response.body?.string().orEmpty(), 200)
+            val flag = fields["dingtalk_qr"] as? JsonPrimitive
+            val enabled = flag?.takeUnless { it.isString }?.booleanOrNull ?: throw ApiError(ErrorKind.PARSE, 200)
+            CapabilitiesResponse(enabled)
         }
     }
 
@@ -165,8 +171,16 @@ class EnterpriseApi(
         val body = json.encodeToString(DingtalkQrStartRequest.serializer(), DingtalkQrStartRequest(client = "android", androidPackage = packageName))
             .toRequestBody(JSON_MEDIA)
         return request("POST", "/api/v1/auth/dingtalk/qr/start", body).use { response ->
-            if (response.code != 200) throw ApiError(ErrorKind.HTTP, response.code)
-            decode(DingtalkQrStartResponse.serializer(), response.body?.string().orEmpty(), 200)
+            val text = response.body?.string().orEmpty()
+            if (response.code != 200) {
+                val fields = runCatching { json.parseToJsonElement(text) as? JsonObject }.getOrNull()
+                val errorCode = (fields?.get("error") as? JsonObject)?.get("code") as? JsonPrimitive
+                val kind = if (errorCode?.content == "dingtalk_not_configured") {
+                    ErrorKind.DINGTALK_NOT_CONFIGURED
+                } else ErrorKind.HTTP
+                throw ApiError(kind, response.code)
+            }
+            decode(DingtalkQrStartResponse.serializer(), text, 200)
         }
     }
 

@@ -82,6 +82,15 @@ pub async fn enterprise_login(
         .map_err(|error| super::coded_error("ENTERPRISE_LOGIN_FAILED", error))
 }
 
+fn qr_failure(error: anyhow::Error, fallback: &str) -> super::CommandFailure {
+    let code = match error.downcast_ref::<enterprise::DingtalkQrFailure>() {
+        Some(enterprise::DingtalkQrFailure::Disabled) => "ENTERPRISE_QR_DISABLED",
+        Some(enterprise::DingtalkQrFailure::Network) => "ENTERPRISE_QR_NETWORK",
+        None => fallback,
+    };
+    super::coded_error(code, format_args!("{error:#}"))
+}
+
 #[tauri::command]
 pub async fn enterprise_dingtalk_qr_start(
     app: tauri::AppHandle,
@@ -89,7 +98,7 @@ pub async fn enterprise_dingtalk_qr_start(
 ) -> CmdResult<DingtalkQrStart> {
     enterprise::dingtalk_qr_start(&app, &server_url)
         .await
-        .map_err(|error| super::coded_error("ENTERPRISE_QR_START_FAILED", error))
+        .map_err(|error| qr_failure(error, "ENTERPRISE_QR_START_FAILED"))
 }
 
 #[tauri::command]
@@ -100,7 +109,7 @@ pub async fn enterprise_dingtalk_qr_poll(
 ) -> CmdResult<DingtalkQrPoll> {
     enterprise::dingtalk_qr_poll(&app, &server_url, &session_id)
         .await
-        .map_err(|error| super::coded_error("ENTERPRISE_QR_POLL_FAILED", error))
+        .map_err(|error| qr_failure(error, "ENTERPRISE_QR_POLL_FAILED"))
 }
 
 #[tauri::command]

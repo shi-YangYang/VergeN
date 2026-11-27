@@ -2,7 +2,6 @@ import {
   Alert,
   Box,
   Button,
-  CircularProgress,
   Paper,
   SvgIcon,
   Tab,
@@ -19,8 +18,11 @@ import { NoticeManager } from '@/components/layout/notice-manager'
 import { enterpriseActions } from '@/hooks/use-enterprise'
 import { useVerge } from '@/hooks/use-verge'
 import { useCustomTheme } from '@/pages/_layout/hooks'
-import { enterpriseCapabilities } from '@/services/cmds'
-import { useQuery } from '@/services/query-client'
+import {
+  cachedDingtalkEnabled,
+  checkDingtalkAvailability,
+  dingtalkServer,
+} from '@/services/dingtalk-availability'
 
 const POLL_INTERVAL_MS = 2000
 const POLL_MAX_ATTEMPTS = 150
@@ -32,7 +34,22 @@ const envServerUrl = String(
   import.meta.env.VITE_ENTERPRISE_SERVER_URL ?? '',
 ).trim()
 
-type QrPhase = 'starting' | 'scanning' | 'ok' | 'fail' | 'expired'
+const qrErrorMessages = {
+  fail: 'login.dingtalk.failed',
+  expired: 'login.dingtalk.expired',
+  network: 'login.capabilities.failed',
+  disabled: 'login.capabilities.disabled',
+} as const
+
+type QrPhase = 'starting' | 'scanning' | 'ok' | keyof typeof qrErrorMessages
+
+function qrErrorPhase(error: unknown): keyof typeof qrErrorMessages {
+  const code =
+    error && typeof error === 'object' && 'code' in error && error.code
+  if (code === 'ENTERPRISE_QR_NETWORK') return 'network'
+  if (code === 'ENTERPRISE_QR_DISABLED') return 'disabled'
+  return 'fail'
+}
 
 const DingtalkQrPanel = ({ serverUrl }: { serverUrl: string }) => {
   const { t } = useTranslation()
@@ -46,14 +63,20 @@ const DingtalkQrPanel = ({ serverUrl }: { serverUrl: string }) => {
     let timer = 0
     let attempts = 0
     let errors = 0
+    const cancelSession = () => {
+      if (session) {
+        void enterpriseActions.cancelQr(serverUrl, session)
+        session = ''
+      }
+    }
 
-    const stopPolling = () => {
-      window.clearTimeout(timer)
-      timer = 0
+    const fail = (error: unknown) => {
+      if (!active) return
+      cancelSession()
+      setPhase(qrErrorPhase(error))
     }
 
     const tick = async () => {
-      if (!active || !session) return
       try {
         const result = await enterpriseActions.dingtalkQrPoll(
           serverUrl,
@@ -61,87 +84,76 @@ const DingtalkQrPanel = ({ serverUrl }: { serverUrl: string }) => {
         )
         if (!active) return
         if (!result.ok) {
-          // Busy rejection: same shape as a transient error.
-          errors += 1
-          if (errors >= POLL_ERROR_TOLERANCE) {
-            stopPolling()
-            void enterpriseActions.cancelQr(serverUrl, session)
-            setPhase('fail')
-            return
-          }
+          if (++errors >= POLL_ERROR_TOLERANCE) return fail(undefined)
           timer = window.setTimeout(tick, POLL_INTERVAL_MS)
           return
         }
-        const { status, message } = result.value
         errors = 0
+        const { status, message } = result.value
         if (status === 'pending') {
-          attempts += 1
-          if (attempts >= POLL_MAX_ATTEMPTS) {
-            await enterpriseActions.cancelQr(serverUrl, session)
-            if (active) setPhase('expired')
-            return
+          if (++attempts >= POLL_MAX_ATTEMPTS) {
+            cancelSession()
+            setPhase('expired')
+          } else {
+            timer = window.setTimeout(tick, POLL_INTERVAL_MS)
           }
-          timer = window.setTimeout(tick, POLL_INTERVAL_MS)
           return
         }
-        stopPolling()
+        session = ''
         if (status === 'ok') {
-          setPhase('ok')
-          await enterpriseActions.completeQrLogin()
-          return
-        }
-        if (status === 'fail') {
+          await enterpriseActions.completeQrLogin(() => active)
+          if (active) setPhase('ok')
+        } else if (status === 'expired') {
+          setPhase('expired')
+        } else {
           setDetail(message)
           setPhase('fail')
+        }
+      } catch (error) {
+        if (
+          active &&
+          session &&
+          qrErrorPhase(error) === 'network' &&
+          ++errors < POLL_ERROR_TOLERANCE
+        ) {
+          timer = window.setTimeout(tick, POLL_INTERVAL_MS)
         } else {
-          setPhase('expired')
+          fail(error)
         }
-      } catch {
-        if (!active) return
-        errors += 1
-        if (errors >= POLL_ERROR_TOLERANCE) {
-          stopPolling()
-          void enterpriseActions.cancelQr(serverUrl, session)
-          setPhase('fail')
-          return
-        }
-        timer = window.setTimeout(tick, POLL_INTERVAL_MS)
       }
     }
 
     const start = async () => {
-      stopPolling()
-      setPhase('starting')
-      setDetail('')
       try {
         const result = await enterpriseActions.dingtalkQrStart(serverUrl)
-        if (!result.ok) {
-          if (active) setPhase('fail')
-          return
-        }
-        const { session_id } = result.value
-        if (!active) {
-          void enterpriseActions.cancelQr(serverUrl, session_id)
-          return
-        }
-        session = session_id
+        if (!result.ok) return fail(undefined)
+        session = result.value.session_id
+        if (!active) return cancelSession()
         setPhase('scanning')
         timer = window.setTimeout(tick, POLL_INTERVAL_MS)
-      } catch {
-        // mutate() already displayed the error notice
-        if (active) setPhase('fail')
+      } catch (error) {
+        fail(error)
       }
     }
 
-    start()
+    timer = window.setTimeout(start, 0)
     return () => {
       active = false
-      stopPolling()
-      if (session) {
-        void enterpriseActions.cancelQr(serverUrl, session)
-      }
+      window.clearTimeout(timer)
+      cancelSession()
     }
   }, [attempt, serverUrl])
+
+  const retry = () => {
+    setPhase('starting')
+    setDetail('')
+    setAttempt((n) => n + 1)
+  }
+
+  const errorMessage =
+    phase === 'starting' || phase === 'scanning' || phase === 'ok'
+      ? undefined
+      : qrErrorMessages[phase]
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -167,11 +179,7 @@ const DingtalkQrPanel = ({ serverUrl }: { serverUrl: string }) => {
             <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
               {t('login.dingtalk.hint')}
             </Typography>
-            <Button
-              size="small"
-              variant="outlined"
-              onClick={() => setAttempt((n) => n + 1)}
-            >
+            <Button size="small" variant="outlined" onClick={retry}>
               {t('login.dingtalk.retry')}
             </Button>
           </Box>
@@ -181,18 +189,22 @@ const DingtalkQrPanel = ({ serverUrl }: { serverUrl: string }) => {
             ✓
           </Typography>
         )}
-        {(phase === 'fail' || phase === 'expired') && (
+        {errorMessage && (
           <Box sx={{ textAlign: 'center' }}>
-            <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
-              {phase === 'fail'
-                ? t('login.dingtalk.failed')
-                : t('login.dingtalk.expired')}
-            </Typography>
-            <Button
-              size="small"
-              variant="outlined"
-              onClick={() => setAttempt((n) => n + 1)}
+            <Typography
+              role="status"
+              variant="body2"
+              sx={{ color: 'text.secondary', mb: 2 }}
             >
+              {t(errorMessage)}
+              {detail && (
+                <>
+                  <br />
+                  {detail}
+                </>
+              )}
+            </Typography>
+            <Button size="small" variant="outlined" onClick={retry}>
               {t('login.dingtalk.retry')}
             </Button>
           </Box>
@@ -209,11 +221,6 @@ const DingtalkQrPanel = ({ serverUrl }: { serverUrl: string }) => {
         >
           {t('login.dingtalk.waiting')}
         </Typography>
-      )}
-      {detail && (
-        <Alert severity="error" icon={false}>
-          <Typography variant="body2">{detail}</Typography>
-        </Alert>
       )}
     </Box>
   )
@@ -276,7 +283,6 @@ const PasswordForm = ({ serverUrl }: { serverUrl: string }) => {
 }
 
 export const EnterpriseLogin = () => {
-  const { t } = useTranslation()
   useCustomTheme()
   const { verge } = useVerge()
   // A previously provisioned device keeps its stored address; everyone else
@@ -286,26 +292,48 @@ export const EnterpriseLogin = () => {
   const serverUrl = /^https?:\/\//.test(storedServerUrl)
     ? storedServerUrl
     : envServerUrl || storedServerUrl
-  const [tab, setTab] = useState(0)
+  const qrServer = dingtalkServer(serverUrl)
+  return (
+    <LoginMethods
+      key={qrServer ?? ''}
+      serverUrl={serverUrl}
+      qrServer={qrServer}
+      noticePosition={verge?.notice_position}
+    />
+  )
+}
 
-  const hasServer = /^https?:\/\//.test(serverUrl)
-  const {
-    data: capabilities,
-    error: capabilitiesError,
-    isFetching: checkingCapabilities,
-    refetch: refreshCapabilities,
-  } = useQuery({
-    queryKey: ['enterpriseCapabilities', serverUrl],
-    queryFn: () => enterpriseCapabilities(serverUrl),
-    enabled: hasServer,
-    staleTime: 2000,
-    retry: 3,
-    retryDelay: (attempt) => Math.min(2000 * 2 ** attempt, 8000),
-    refetchOnWindowFocus: true,
-    refetchOnReconnect: true,
-  })
-  const dingtalkReady = capabilities?.dingtalk_qr ?? false
-  const activeTab = dingtalkReady ? tab : 0
+const LoginMethods = ({
+  serverUrl,
+  qrServer,
+  noticePosition,
+}: {
+  serverUrl: string
+  qrServer?: string
+  noticePosition?: IVergeConfig['notice_position']
+}) => {
+  const { t } = useTranslation()
+  const [tab, setTab] = useState(0)
+  const [available, setAvailable] = useState(() =>
+    cachedDingtalkEnabled(qrServer),
+  )
+  const [checking, setChecking] = useState(Boolean(qrServer))
+  const [round, setRound] = useState(0)
+  useEffect(() => {
+    if (!qrServer) return
+    return checkDingtalkAvailability(qrServer, (enabled) => {
+      if (enabled !== undefined) setAvailable(enabled)
+      if (enabled === false) setTab(0)
+      setChecking(false)
+    })
+  }, [qrServer, round])
+
+  const recheck = () => {
+    if (checking || !qrServer) return
+    setChecking(true)
+    setRound((n) => n + 1)
+  }
+  const dingtalkAvailable = Boolean(qrServer) && available !== false
   const tabs = [
     { key: 'password', label: t('login.tabs.password') },
     { key: 'dingtalk', label: t('login.tabs.dingtalk') },
@@ -325,7 +353,7 @@ export const EnterpriseLogin = () => {
         flexDirection: 'column',
       }}
     >
-      <NoticeManager position={verge?.notice_position} />
+      <NoticeManager position={noticePosition} />
       <div className="the_titlebar">
         <div
           className="the_titlebar-drag-region"
@@ -397,7 +425,7 @@ export const EnterpriseLogin = () => {
           </Typography>
 
           <Tabs
-            value={activeTab}
+            value={tab}
             onChange={(_, next: number) => setTab(next)}
             variant="fullWidth"
             sx={{ mb: 2, '& .MuiTab-root': { textTransform: 'none' } }}
@@ -406,33 +434,22 @@ export const EnterpriseLogin = () => {
               <Tab
                 key={entry.key}
                 label={entry.label}
-                disabled={entry.key === 'dingtalk' && !dingtalkReady}
+                disabled={entry.key === 'dingtalk' && !dingtalkAvailable}
               />
             ))}
           </Tabs>
 
-          {checkingCapabilities ? (
-            <Box
-              role="status"
-              sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}
-            >
-              <CircularProgress size={16} />
-              <Typography variant="body2" color="text.secondary">
-                {t('login.capabilities.checking')}
-              </Typography>
-            </Box>
-          ) : capabilitiesError || !dingtalkReady ? (
+          {!dingtalkAvailable && (
             <Alert
-              severity={capabilitiesError || !hasServer ? 'warning' : 'info'}
+              severity="info"
               sx={{ mb: 2 }}
               action={
-                hasServer && (
+                qrServer && (
                   <Button
                     color="inherit"
                     size="small"
-                    onClick={() => {
-                      void refreshCapabilities().catch(() => undefined)
-                    }}
+                    disabled={checking}
+                    onClick={recheck}
                   >
                     {t('login.capabilities.retry')}
                   </Button>
@@ -440,19 +457,27 @@ export const EnterpriseLogin = () => {
               }
             >
               {t(
-                !hasServer
-                  ? 'login.capabilities.unconfigured'
-                  : capabilitiesError
-                    ? 'login.capabilities.failed'
-                    : 'login.capabilities.disabled',
+                qrServer
+                  ? 'login.capabilities.disabled'
+                  : 'login.capabilities.unconfigured',
               )}
             </Alert>
-          ) : null}
+          )}
 
-          {tabs[activeTab].key === 'password' ? (
+          {tab === 0 ? (
             <PasswordForm serverUrl={serverUrl} />
-          ) : (
-            <DingtalkQrPanel serverUrl={serverUrl} />
+          ) : dingtalkAvailable && qrServer ? (
+            <DingtalkQrPanel serverUrl={qrServer} />
+          ) : null}
+          {dingtalkAvailable && tab === 1 && (
+            <Button
+              size="small"
+              disabled={checking}
+              onClick={recheck}
+              sx={{ mt: 1 }}
+            >
+              {t('login.capabilities.retry')}
+            </Button>
           )}
         </Paper>
       </Box>

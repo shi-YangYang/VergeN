@@ -1,6 +1,6 @@
 use super::CmdResult;
 use crate::cmd::StringifyErr as _;
-use crate::core::{proxy_control, sysopt::Sysopt};
+use crate::core::proxy_control;
 
 use gethostname::gethostname;
 use network_interface::NetworkInterface;
@@ -10,7 +10,7 @@ use tauri_plugin_clash_verge_sysinfo;
 
 #[tauri::command]
 pub async fn get_sys_proxy() -> CmdResult<Mapping> {
-    Sysopt::global().wait_idle().await;
+    proxy_control::wait_idle().await;
     // With no network service there is no proxy configured anywhere, which reads as disabled.
     let sys_proxy = match Sysproxy::get_system_proxy() {
         Err(error) if proxy_control::is_missing_network_service(&error) => Sysproxy::default(),
@@ -32,7 +32,7 @@ pub async fn get_sys_proxy() -> CmdResult<Mapping> {
 
 #[tauri::command]
 pub async fn get_auto_proxy() -> CmdResult<Mapping> {
-    Sysopt::global().wait_idle().await;
+    proxy_control::wait_idle().await;
     let auto_proxy = match Autoproxy::get_auto_proxy() {
         Err(error) if proxy_control::is_missing_network_service(&error) => Autoproxy::default(),
         other => other.stringify_err()?,

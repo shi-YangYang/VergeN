@@ -89,45 +89,8 @@
             android:textSize="15sp"
             app:cornerRadius="14dp" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@id/enterprise_dingtalk"
-            style="?attr/materialButtonOutlinedStyle"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:layout_marginTop="12dp"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:enabled="false"
-            android:text="@string/enterprise_login_dingtalk"
-            android:textColor="?android:attr/textColorPrimary"
-            app:cornerRadius="14dp"
-            app:icon="@drawable/baseline_qr_code_scanner"
-            app:iconGravity="textStart"
-            app:iconTint="?android:attr/textColorPrimary"
-            app:strokeColor="@color/enterprise_login_divider"
-            app:strokeWidth="1dp" />
-
-        <TextView
-            android:id="@+id/enterprise_dingtalk_status"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:gravity="center"
-            android:accessibilityLiveRegion="polite"
-            android:text="@string/enterprise_dingtalk_checking"
-            android:textAppearance="?attr/textAppearanceBodySmall" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/enterprise_dingtalk_retry"
-            style="@style/Widget.MaterialComponents.Button.TextButton"
-            android:layout_width="wrap_content"
-            android:layout_height="48dp"
-            android:text="@string/enterprise_dingtalk_check_again"
-            android:visibility="gone" />
-
         <LinearLayout
             android:id="@id/enterprise_login_or"
-            android:visibility="gone"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
@@ -154,6 +117,41 @@
                 android:layout_weight="1"
                 android:background="@color/enterprise_login_divider" />
         </LinearLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@id/enterprise_dingtalk"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="12dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:text="@string/enterprise_login_dingtalk"
+            android:textColor="?android:attr/textColorPrimary"
+            app:cornerRadius="14dp"
+            app:icon="@drawable/baseline_qr_code_scanner"
+            app:iconGravity="textStart"
+            app:iconTint="?android:attr/textColorPrimary"
+            app:strokeColor="@color/enterprise_login_divider"
+            app:strokeWidth="1dp" />
+
+        <TextView
+            android:id="@+id/enterprise_dingtalk_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:gravity="center"
+            android:accessibilityLiveRegion="polite"
+            android:visibility="gone"
+            android:textAppearance="?attr/textAppearanceBodySmall" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/enterprise_dingtalk_retry"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:text="@string/enterprise_dingtalk_check_again"
+            android:visibility="gone" />
 
         <com.google.android.material.progressindicator.LinearProgressIndicator
             android:id="@id/enterprise_progress"

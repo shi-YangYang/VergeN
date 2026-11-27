@@ -57,19 +57,27 @@ export const enterpriseActions = {
     }),
   dingtalkQrStart: (serverUrl: string) =>
     mutate(() => enterpriseDingtalkQrStart(serverUrl), {
-      id: 'enterprise-qr-start',
+      id: `enterprise-qr-start:${serverUrl}`,
+      errorNotice: false,
     }),
   dingtalkQrPoll: (serverUrl: string, sessionId: string) =>
     mutate(() => enterpriseDingtalkQrPoll(serverUrl, sessionId), {
-      id: 'enterprise-qr-poll',
+      id: `enterprise-qr-poll:${serverUrl}:${sessionId}`,
+      errorNotice: false,
     }),
-  completeQrLogin: () =>
+  completeQrLogin: (isCurrent: () => boolean) =>
     mutate(() => getEnterpriseSession(), {
       id: 'enterprise-qr-complete',
-      onFulfilled: cacheSession,
+      errorNotice: false,
+      onFulfilled: (session) => {
+        if (isCurrent()) cacheSession(session)
+      },
     }),
   cancelQr: (serverUrl: string, sessionId: string) =>
-    enterpriseDingtalkQrCancel(serverUrl, sessionId),
+    mutate(() => enterpriseDingtalkQrCancel(serverUrl, sessionId), {
+      id: `enterprise-qr-cancel:${serverUrl}:${sessionId}`,
+      errorNotice: false,
+    }).catch(() => undefined),
 }
 
 const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000

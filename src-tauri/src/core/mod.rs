@@ -11,6 +11,7 @@ pub mod network_watch;
 pub mod notify;
 pub(crate) mod owner_identity;
 pub mod proxy_control;
+pub(crate) mod proxy_recovery;
 pub mod proxy_view;
 pub mod runstate;
 pub(crate) mod runtime_bundle;
