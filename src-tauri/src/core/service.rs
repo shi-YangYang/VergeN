@@ -903,7 +903,14 @@ pub(super) async fn start_with_existing_service(config_file: &Path) -> Result<()
         macos_proxy: None,
     };
 
-    let response = match clash_verge_service_ipc::start_clash(&credentials, &request).await {
+    #[cfg(target_os = "macos")]
+    let rpc = crate::core::proxy_recovery::around_service_clear(|| {
+        clash_verge_service_ipc::start_clash(&credentials, &request)
+    })
+    .await;
+    #[cfg(not(target_os = "macos"))]
+    let rpc = clash_verge_service_ipc::start_clash(&credentials, &request).await;
+    let response = match rpc {
         Ok(response) => response,
         Err(error) => {
             tracing::Span::current().record("outcome", "ipc-unreachable");
@@ -1486,7 +1493,14 @@ pub(super) async fn stop_core_by_service() -> Result<()> {
             return Err(error);
         }
     };
-    let response = match clash_verge_service_ipc::stop_clash(&credentials, &session).await {
+    #[cfg(target_os = "macos")]
+    let rpc = crate::core::proxy_recovery::around_service_clear(|| {
+        clash_verge_service_ipc::stop_clash(&credentials, &session)
+    })
+    .await;
+    #[cfg(not(target_os = "macos"))]
+    let rpc = clash_verge_service_ipc::stop_clash(&credentials, &session).await;
+    let response = match rpc {
         Ok(response) => response,
         Err(error) => {
             start_owner_monitor();
@@ -1540,11 +1554,6 @@ pub(crate) async fn update_writer_by_service(writer: &WriterConfig) -> Result<()
         bail!(response.message);
     }
     Ok(())
-}
-
-pub(super) async fn set_system_proxy_by_service(proxy: &MacosProxyConfig) -> Result<ProxyApplyOutcome> {
-    let session = active_service_session()?;
-    set_system_proxy_by_service_with_session(proxy, &session).await
 }
 
 pub(super) async fn set_system_proxy_by_service_with_session(

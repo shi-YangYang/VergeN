@@ -389,6 +389,8 @@ impl CoreManager {
     pub(super) async fn stop_core_by_service(&self) -> Result<()> {
         service::stop_core_by_service().await?;
         self.core_stopped();
+        #[cfg(target_os = "macos")]
+        crate::core::proxy_recovery::release_owned().await?;
         Ok(())
     }
 

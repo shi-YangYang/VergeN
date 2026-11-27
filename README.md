@@ -12,7 +12,7 @@ VergeN 是基于 [clash-verge-rev](https://github.com/clash-verge-rev/clash-verg
 - 内置 mihomo 内核,支持切换 `Alpha` 版本内核
 - 简洁美观的用户界面,支持自定义主题颜色、代理组/托盘图标以及 `CSS Injection`
 - 配置文件管理和增强(Merge 和 Script),配置文件语法提示
-- 系统代理和守卫、`TUN(虚拟网卡)` 模式
+- 系统代理和守卫、`TUN(虚拟网卡)` 模式。桌面端接管系统代理前会保存原设置；异常关机后，下次登录电脑时可自动还原，无需打开 VergeN。仅恢复有接管记录的设置，不重置后来更改的代理。
 - 可视化节点和规则编辑
 - WebDav 配置备份和同步
 - 企业模式:

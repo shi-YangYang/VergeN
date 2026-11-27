@@ -15,6 +15,12 @@ fn main() -> ExitCode {
 
 #[cfg(not(all(feature = "perf-harness", target_os = "macos")))]
 fn main() -> ExitCode {
+    if std::env::args_os()
+        .skip(1)
+        .eq([std::ffi::OsStr::new("--recover-proxy")])
+    {
+        return app_lib::recover_system_proxy();
+    }
     let default_parallelism = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
     let worker_limit = std::cmp::min(default_parallelism, 8);
     let blocking_limit = 2 * worker_limit;

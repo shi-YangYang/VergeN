@@ -4,9 +4,9 @@ use crate::{
         CoreManager,
         manager::RunningMode,
         notification::{self, FailedOperation},
+        proxy_recovery::{self, Target},
         runstate::RUN_STATE,
-        service,
-        sysopt::Sysopt,
+        service, sysopt,
     },
     process::AsyncHandler,
     utils::{
@@ -15,7 +15,7 @@ use crate::{
         window_manager::WindowManager,
     },
 };
-use anyhow::{Result, ensure};
+use anyhow::{Context as _, Result, ensure};
 use clash_verge_logging::{Type, logging};
 use clash_verge_service_ipc::{MacosProxyConfig, OwnerSessionProof, ProxyApplyOutcome};
 use std::{
@@ -213,6 +213,7 @@ static SERVICE_PROXY_OPERATIONS: ServiceProxyOperations = ServiceProxyOperations
 struct ServiceProxyOperations {
     guard_generation: AtomicU64,
     operation_lock: Mutex<()>,
+    guard_changed: tokio::sync::Notify,
 }
 
 impl ServiceProxyOperations {
@@ -220,11 +221,14 @@ impl ServiceProxyOperations {
         Self {
             guard_generation: AtomicU64::new(0),
             operation_lock: Mutex::const_new(()),
+            guard_changed: tokio::sync::Notify::const_new(),
         }
     }
 
     fn invalidate_guard(&self) -> u64 {
-        self.guard_generation.fetch_add(1, Ordering::AcqRel).wrapping_add(1)
+        let next = self.guard_generation.fetch_add(1, Ordering::AcqRel).wrapping_add(1);
+        self.guard_changed.notify_waiters();
+        next
     }
 
     async fn run_service_operation<F, Fut, T>(&self, operation: F) -> T
@@ -243,16 +247,6 @@ impl ServiceProxyOperations {
     {
         self.invalidate_guard();
         self.run_service_operation(operation).await
-    }
-
-    async fn cancel_and_drain<F, Fut, T>(&self, cancel: F) -> (u64, T)
-    where
-        F: FnOnce() -> Fut,
-        Fut: Future<Output = T>,
-    {
-        let generation = self.invalidate_guard();
-        let cancelled = self.run_service_operation(cancel).await;
-        (generation, cancelled)
     }
 
     async fn record_if_current<Record>(&self, captured_generation: u64, record: Record) -> bool
@@ -408,29 +402,6 @@ pub fn report_failure(operation: FailedOperation, error: &anyhow::Error) -> bool
     true
 }
 
-/// Drain any local guard before writing through the service.
-async fn apply_through_service<Drain, DrainFuture, Write, WriteFuture>(
-    drain_local_guard: Drain,
-    write: Write,
-) -> Result<()>
-where
-    Drain: FnOnce() -> DrainFuture,
-    DrainFuture: Future<Output = bool>,
-    Write: FnOnce() -> WriteFuture,
-    WriteFuture: Future<Output = Result<()>>,
-{
-    if !drain_local_guard().await {
-        // Its `networksetup` calls are separate from the service's one privileged transaction,
-        // so a stale guard write may still land after ours.
-        logging!(
-            warn,
-            Type::Core,
-            "the system proxy guard did not stop in time; writing through the service anyway"
-        );
-    }
-    write().await
-}
-
 #[derive(Debug)]
 enum TableEffect<'a> {
     Retire(FailedOperation),
@@ -476,26 +447,28 @@ pub async fn apply() -> Result<()> {
     let verge = Config::verge().await.latest_arc();
     let route = proxy_backend_route(cfg!(target_os = "macos"), &running_mode);
     tracing::Span::current().record("route", tracing::field::debug(&route));
-    let result = match route {
-        ProxyBackendRoute::Local => match Sysopt::global().update_sysproxy().await {
-            Ok(()) => Ok(()),
-            Err(error) => Err(classify_local_apply_failure(error).await),
-        },
-        ProxyBackendRoute::Service => {
-            let proxy = current_service_proxy_config(&verge).await?;
-            apply_through_service(
-                || Sysopt::global().stop_proxy_guard(),
-                || async {
-                    SERVICE_PROXY_OPERATIONS
-                        .run_final_service_operation(|| async {
-                            service_apply_result(&proxy, service::set_system_proxy_by_service(&proxy).await?)
-                        })
-                        .await
+    let result = SERVICE_PROXY_OPERATIONS
+        .run_final_service_operation(|| async {
+            if !verge.enable_system_proxy.unwrap_or_default() {
+                return proxy_recovery::release_owned().await.map_err(classify_local_failure);
+            }
+            ensure!(
+                CoreManager::global().current_core_readiness_generation().is_some(),
+                SysproxyFailure::CoreNotReady
+            );
+            match route {
+                ProxyBackendRoute::Local => match sysopt::apply(false).await {
+                    Ok(()) => Ok(()),
+                    Err(error) => Err(classify_local_apply_failure(error).await),
                 },
-            )
-            .await
-        }
-    };
+                ProxyBackendRoute::Service => {
+                    let proxy = current_service_proxy_config(&verge).await?;
+                    let proof = service::active_service_session()?;
+                    write_service_proxy(&proxy, &proof, false).await.map(|_| ())
+                }
+            }
+        })
+        .await;
     // Settle failures where every proxy-apply path converges.
     settle_table(
         table_effect(&result),
@@ -557,61 +530,114 @@ async fn clear_inner() -> Result<()> {
     let running_mode = CoreManager::global().get_running_mode();
     let route = proxy_backend_route(cfg!(target_os = "macos"), &running_mode);
     tracing::Span::current().record("route", tracing::field::debug(&route));
-    match route {
-        ProxyBackendRoute::Local => Sysopt::global().reset_sysproxy().await.map_err(classify_local_failure),
-        ProxyBackendRoute::Service => {
-            SERVICE_PROXY_OPERATIONS
-                .run_final_service_operation(|| async {
-                    service_apply_result(
-                        &MacosProxyConfig::Disabled,
-                        service::set_system_proxy_by_service(&MacosProxyConfig::Disabled).await?,
-                    )
-                })
-                .await
-        }
-    }
+    SERVICE_PROXY_OPERATIONS
+        .run_final_service_operation(proxy_recovery::release_owned)
+        .await
+        .map_err(classify_local_failure)
+}
+
+async fn write_service_proxy(
+    config: &MacosProxyConfig,
+    proof: &OwnerSessionProof,
+    enforcing: bool,
+) -> Result<ProxyApplyOutcome> {
+    let target = match config {
+        MacosProxyConfig::Global { host, port, bypass } => Target::Manual {
+            host: host.clone(),
+            port: *port,
+            bypass: bypass.clone(),
+        },
+        MacosProxyConfig::Pac { url } => Target::Pac {
+            url: url.clone(),
+            bypass: None,
+        },
+        MacosProxyConfig::Disabled => anyhow::bail!("disabled proxies must release their receipt"),
+    };
+    proxy_recovery::apply(
+        target,
+        enforcing,
+        || async {
+            service_apply_result(
+                config,
+                service::set_system_proxy_by_service_with_session(config, proof).await?,
+            )?;
+            Ok(ProxyApplyOutcome::Applied)
+        },
+        || ProxyApplyOutcome::NotRequested,
+    )
+    .await
+}
+
+pub async fn wait_idle() {
+    let _operation = SERVICE_PROXY_OPERATIONS.operation_lock.lock().await;
 }
 
 pub async fn refresh_guard() -> Result<()> {
-    let (generation, _drained) = SERVICE_PROXY_OPERATIONS
-        .cancel_and_drain(|| Sysopt::global().stop_proxy_guard())
-        .await;
+    let generation = SERVICE_PROXY_OPERATIONS.invalidate_guard();
+    wait_idle().await;
     let running_mode = CoreManager::global().get_running_mode();
-    if matches!(
-        proxy_backend_route(cfg!(target_os = "macos"), &running_mode),
-        ProxyBackendRoute::Local
-    ) {
-        // Retire the warning only after a guard is enforcing.
-        if Sysopt::global().refresh_guard().await {
-            notification::retire_guard_failures();
-        }
-        return Ok(());
-    }
-
+    let route = proxy_backend_route(cfg!(target_os = "macos"), &running_mode);
     let verge = Config::verge().await.latest_arc();
     if !verge.enable_system_proxy.unwrap_or_default() || !verge.enable_proxy_guard.unwrap_or_default() {
         notification::retire_guard_failures();
         return Ok(());
     }
 
-    let proxy = current_service_proxy_config(&verge).await?;
-    let proof = service::active_service_session()?;
+    let ready = CoreManager::global()
+        .current_core_readiness_generation()
+        .context(SysproxyFailure::CoreNotReady)?;
+    let service_target = if route == ProxyBackendRoute::Service {
+        Some((
+            current_service_proxy_config(&verge).await?,
+            service::active_service_session()?,
+        ))
+    } else {
+        None
+    };
     let interval = Duration::from_secs(verge.proxy_guard_duration.unwrap_or(30).max(1));
     AsyncHandler::spawn(move || async move {
         let mut consecutive_failures = 0u32;
         loop {
-            tokio::time::sleep(interval).await;
-            match SERVICE_PROXY_OPERATIONS
-                .run_guard_request(
-                    generation,
-                    &proof,
-                    &proxy,
-                    || matches!(*CoreManager::global().get_running_mode(), RunningMode::Service),
-                    service::active_service_session,
-                    || service::set_system_proxy_by_service_with_session(&proxy, &proof),
-                )
-                .await
-            {
+            let changed = SERVICE_PROXY_OPERATIONS.guard_changed.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
+            if !guard_generation_is_current(&SERVICE_PROXY_OPERATIONS.guard_generation, generation) {
+                break;
+            }
+            tokio::select! {
+                biased;
+                _ = changed => break,
+                _ = tokio::time::sleep(interval) => (),
+            }
+            let result = if let Some((proxy, proof)) = service_target.as_ref() {
+                SERVICE_PROXY_OPERATIONS
+                    .run_guard_request(
+                        generation,
+                        proof,
+                        proxy,
+                        || {
+                            matches!(*CoreManager::global().get_running_mode(), RunningMode::Service)
+                                && CoreManager::global().current_core_readiness_generation() == Some(ready)
+                        },
+                        service::active_service_session,
+                        || write_service_proxy(proxy, proof, true),
+                    )
+                    .await
+            } else {
+                SERVICE_PROXY_OPERATIONS
+                    .run_service_operation(|| async {
+                        if !guard_generation_is_current(&SERVICE_PROXY_OPERATIONS.guard_generation, generation)
+                            || *CoreManager::global().get_running_mode() != *running_mode
+                            || CoreManager::global().current_core_readiness_generation() != Some(ready)
+                        {
+                            return Ok(false);
+                        }
+                        sysopt::apply(true).await?;
+                        Ok(true)
+                    })
+                    .await
+            };
+            match result {
                 Ok(true) => consecutive_failures = 0,
                 Ok(false) => {
                     logging!(debug, Type::Core, "proxy guard superseded (generation {generation})");
@@ -622,7 +648,7 @@ pub async fn refresh_guard() -> Result<()> {
                     logging!(
                         warn,
                         Type::Core,
-                        "failed to refresh system proxy through Service (generation {generation}, {}/{}): {:#}",
+                        "failed to refresh system proxy (generation {generation}, {}/{}): {:#}",
                         consecutive_failures,
                         GUARD_FAILURES_BEFORE_STOPPING,
                         error
@@ -659,10 +685,9 @@ async fn report_guard_stopped(captured_generation: u64, error: &anyhow::Error) {
 }
 
 pub async fn stop_guard() -> bool {
-    SERVICE_PROXY_OPERATIONS
-        .cancel_and_drain(|| Sysopt::global().stop_proxy_guard())
-        .await
-        .1
+    SERVICE_PROXY_OPERATIONS.invalidate_guard();
+    wait_idle().await;
+    true
 }
 
 #[cfg(test)]
@@ -922,43 +947,6 @@ mod tests {
         let generation = operations.invalidate_guard();
 
         assert!(operations.record_if_current(generation, || true).await);
-    }
-
-    async fn record_service_apply(drained: bool, write_succeeds: bool) -> (Vec<&'static str>, bool) {
-        let calls = Mutex::new(Vec::new());
-        let result = super::apply_through_service(
-            || {
-                calls.lock().push("drain");
-                async move { drained }
-            },
-            || {
-                calls.lock().push("write");
-                async move {
-                    if write_succeeds {
-                        Ok(())
-                    } else {
-                        anyhow::bail!("the helper refused")
-                    }
-                }
-            },
-        )
-        .await;
-        (calls.into_inner(), result.is_ok())
-    }
-
-    #[tokio::test]
-    async fn the_service_writes_only_once_the_local_guard_is_gone() {
-        assert_eq!(record_service_apply(true, true).await, (vec!["drain", "write"], true));
-    }
-
-    #[tokio::test]
-    async fn a_write_the_service_refused_is_still_a_failure() {
-        assert_eq!(record_service_apply(true, false).await, (vec!["drain", "write"], false));
-    }
-
-    #[tokio::test]
-    async fn a_local_guard_that_would_not_stop_does_not_block_the_service_write() {
-        assert_eq!(record_service_apply(false, true).await, (vec!["drain", "write"], true));
     }
 
     #[test]
